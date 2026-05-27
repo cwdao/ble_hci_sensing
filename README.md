@@ -5,11 +5,10 @@ BLE 信道探测（CS）与方向估计（DF）数据的离线分析与算法验
 ## 项目结构
 
 ```
-├── notebooks/                    # Jupyter 分析 notebook
-│   ├── glb_cs_load_and_explore.ipynb          # CS 单通道快速探索
-│   ├── glb_cs_segment_breath_analysis.ipynb   # CS 分段呼吸评估 + 误差分析
-│   ├── glb_cs_full_pipeline_demo.ipynb        # 全量滤波演示（冻结）
-│   └── glb_load_cs_saved_frames_show_analysis.ipynb  # 已拆分，仅保留跳转说明
+├── notebooks/                    # Jupyter 分析 notebook（详见 notebooks/README.md）
+│   ├── glb_cs_*.ipynb            # Globecom 26 投稿：CS/DF 金属板呼吸指标
+│   ├── dip_load_and_filter_example.ipynb  # Direct IQ Pipeline 加载与滤波
+│   └── load_*/show_*             # 早期代码，可忽略
 ├── sampleData/                   # 示例 JSONL/JSON 帧数据
 ├── outputs/
 │   ├── figures/                  # 图表
