@@ -5,8 +5,9 @@ BLE 信道探测（CS）与方向估计（DF）数据的离线分析与算法验
 ## 项目结构
 
 ```
-├── *.ipynb              # Jupyter 分析 notebook
+├── notebooks/           # Jupyter 分析 notebook
 ├── sampleData/          # 示例 JSONL/JSON 帧数据
+├── outputs/             # notebook 生成的图表与分析结果
 ├── src/
 │   ├── data_saver.py    # JSONL 帧数据加载
 │   ├── config.py        # 配置（data_saver 依赖）
@@ -30,11 +31,11 @@ pip install -r requirements.txt
 ## 使用
 
 1. 在项目根目录启动 Jupyter
-2. 打开对应的 notebook（如 `glb_load_df_saved_frames_show_analysis.ipynb`）
+2. 打开 `notebooks/` 下对应的 notebook（如 `notebooks/glb_load_df_saved_frames_show_analysis.ipynb`）
 3. 修改 `filepath` 指向 `sampleData/` 下的 JSONL 文件
 4. 按顺序执行 cell
 
-Notebook 会自动将 `src/` 加入 Python 路径，无需额外配置。
+Notebook 会通过 `find_project_root()` 自动定位项目根目录，将 `src/` 加入 Python 路径；数据与输出路径均相对项目根目录（`sampleData/`、`outputs/`），无需额外配置。
 
 ## 数据格式
 
