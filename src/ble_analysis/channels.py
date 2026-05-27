@@ -1,4 +1,8 @@
-"""Channel extraction helpers for BLE frame data."""
+"""通道相关操作。
+
+CS 数据中每帧的 ``channels`` 字典 key 可能是 int 或 str；
+本模块负责枚举、匹配，以及从全部帧中提取单通道时间序列。
+"""
 
 import warnings
 
@@ -14,7 +18,10 @@ def _channel_sort_key(channel):
 
 
 def get_available_channels(frames):
-    """Return sorted list of all available channels in frames."""
+    """返回所有帧中出现过的通道号列表（已排序）。
+
+    排序规则：数字通道按数值升序，非数字 key 排在后面。
+    """
     all_channels = set()
     for frame in frames:
         all_channels.update(frame.get("channels", {}).keys())
@@ -22,11 +29,14 @@ def get_available_channels(frames):
 
 
 def find_channel_key(channels, channel):
-    """
-    Try to find a channel key in a channels dict.
-    Support int and str channel keys.
+    """在 channels 字典中查找与给定通道等价的 key。
 
-    Returns the matched key, or None.
+    依次尝试原值、``str(channel)``、``int(channel)``，兼容 int/str 混用。
+
+    Returns
+    -------
+    key or None
+        匹配到的 dict key；未找到返回 None。
     """
     candidates = [channel]
     try:
@@ -49,7 +59,22 @@ def find_channel_key(channels, channel):
 
 
 def resolve_channel(frames, channel, verbose=True):
-    """Resolve *channel* against available channels, with optional fallback."""
+    """解析通道号；不存在时可回退到第一个可用通道。
+
+    Parameters
+    ----------
+    frames : list
+        帧列表。
+    channel : int or str
+        期望分析的通道号。
+    verbose : bool
+        是否打印匹配/回退信息。
+
+    Returns
+    -------
+    channel
+        实际使用的通道 key（int 或 str）。
+    """
     available = get_available_channels(frames)
     if not available:
         return channel
@@ -68,9 +93,17 @@ def resolve_channel(frames, channel, verbose=True):
 
 
 def extract_channel_series(frames, channel, verbose=True):
-    """
-    Extract amplitude, phase, local amplitude, remote amplitude and timestamps
-    for a given channel from all frames.
+    """从全部帧中提取单通道幅值/相位时间序列。
+
+    仅收集**包含该通道**的帧；缺失帧记录在 ``missing_frames`` 中，不报错。
+    ``time_sec`` 以该通道第一个有效时间戳为 0 点。
+
+    Returns
+    -------
+    dict
+        含 ``channel``, ``indices``, ``timestamps_ms``, ``time_sec``,
+        ``amplitudes``, ``phases``, ``local_amplitudes``, ``remote_amplitudes``,
+        ``presence``, ``missing_frames``。
     """
     empty = {
         "channel": channel,

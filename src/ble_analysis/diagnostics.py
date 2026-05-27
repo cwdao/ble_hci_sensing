@@ -1,4 +1,8 @@
-"""Diagnostics and statistics for BLE frame data."""
+"""诊断与统计打印。
+
+包括文件元信息、通道在各帧中的覆盖率、
+单通道时间戳间隔分析（CV、估计采样率、大间隔检测）等。
+"""
 
 import warnings
 
@@ -8,7 +12,11 @@ from ble_analysis.plotting import plot_time_intervals
 
 
 def print_file_info(data, frames):
-    """Print file metadata and basic frame timing information."""
+    """打印文件元数据与帧级时间统计。
+
+    输出版本、保存时间、帧数、首尾帧 index/timestamp、时间跨度与平均帧率。
+    无数据时仅打印警告并返回。
+    """
     if not data:
         print("⚠️  无数据可显示")
         return
@@ -57,11 +65,34 @@ def _cv_label(cv):
     return "不均匀"
 
 
+def cv_uniformity_label(cv):
+    """根据变异系数 CV 返回中文均匀性描述（均匀 / 较均匀 / 不均匀）。"""
+    return _cv_label(cv)
+
+
 def diagnose_channel_presence(
     frames, channel, max_missing_to_print=10, verbose=True
 ):
-    """
-    Diagnose whether a channel exists in each frame.
+    """诊断指定通道在每一帧中是否存在。
+
+    兼容 int/str 通道 key。缺失帧写入 ``missing_frames``，并统计缺失间隔。
+
+    Parameters
+    ----------
+    frames : list
+        帧列表。
+    channel : int or str
+        目标通道。
+    max_missing_to_print : int
+        verbose 模式下最多打印多少条缺失帧记录。
+    verbose : bool
+        是否打印覆盖率与缺失详情。
+
+    Returns
+    -------
+    dict
+        ``channel``, ``total_frames``, ``frames_with_channel``,
+        ``coverage``, ``presence``, ``missing_frames``, ``missing_gaps``。
     """
     from ble_analysis.channels import find_channel_key, resolve_channel
 
@@ -158,8 +189,28 @@ def diagnose_channel_presence(
 def analyze_time_intervals(
     timestamps_ms, plot=False, save_path=None, verbose=True
 ):
-    """
-    Analyze timestamp intervals.
+    """分析时间戳间隔并估计采样率。
+
+    - CV < 0.1：均匀；CV < 0.3：较均匀；否则不均匀。
+    - 大间隔定义：间隔 > 2 × 平均间隔。
+    - ``estimated_sampling_rate = 1 / mean_interval``（Hz）。
+
+    Parameters
+    ----------
+    timestamps_ms : array-like
+        毫秒时间戳（通常为单通道有效帧的时间戳）。
+    plot : bool
+        是否绘制间隔序列图与直方图。
+    save_path : path-like, optional
+        存图路径。
+    verbose : bool
+        是否打印统计与滤波影响提示。
+
+    Returns
+    -------
+    dict
+        含 ``time_intervals_sec``, ``mean_interval``, ``cv``,
+        ``estimated_sampling_rate``, ``large_gap_indices`` 等。
     """
     empty = {
         "time_intervals_ms": np.array([]),
@@ -248,7 +299,7 @@ def analyze_time_intervals(
 
 
 def print_time_interval_summary(channel, n_points, total_frames, time_info):
-    """Print a concise summary after time interval analysis."""
+    """在时间间隔分析后打印简短中文总结（点数差异、CV、建议采样率）。"""
     cv = time_info.get("cv", np.nan)
     estimated_sampling_rate = time_info.get("estimated_sampling_rate", np.nan)
     cv_text = "未知" if np.isnan(cv) else f"{cv:.3f}"

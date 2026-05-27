@@ -1,4 +1,7 @@
-"""Plotting helpers for BLE analysis."""
+"""Matplotlib 绘图辅助。
+
+提供统一的 notebook 绘图风格，以及幅值/相位、时间间隔等常用图。
+"""
 
 from pathlib import Path
 
@@ -7,7 +10,7 @@ import numpy as np
 
 
 def setup_plot_style():
-    """Set default matplotlib plotting style for BLE analysis."""
+    """设置 BLE 分析 notebook 的 matplotlib 默认样式（图尺寸、网格、字号、存图 DPI）。"""
     plt.rcParams.update(
         {
             "figure.figsize": (12, 6),
@@ -29,8 +32,21 @@ def _ensure_parent_dir(save_path):
 
 
 def plot_channel_amplitude_phase(series, channel=None, save_path=None, show=True):
-    """
-    Plot amplitude and phase over time for one channel.
+    """绘制单通道幅值与相位随时间变化的双子图。
+
+    Parameters
+    ----------
+    series : dict
+        ``extract_channel_series`` 的返回值。
+    channel : int, str, or None
+        图标题用通道号；None 时使用 series["channel"]。
+    save_path, show
+        存图路径与是否 ``plt.show()``。
+
+    Returns
+    -------
+    (fig, axes) or (None, None)
+        无数据时返回 (None, None) 并打印警告。
     """
     amplitudes = series.get("amplitudes", np.array([]))
     phases = series.get("phases", np.array([]))
@@ -70,7 +86,7 @@ def plot_channel_amplitude_phase(series, channel=None, save_path=None, show=True
 
 
 def plot_time_intervals(time_info, save_path=None, show=True):
-    """Plot time interval sequence and histogram."""
+    """绘制时间间隔序列图与直方图（输入为 ``analyze_time_intervals`` 的返回值）。"""
     time_intervals_sec = time_info.get("time_intervals_sec", np.array([]))
     mean_interval = time_info.get("mean_interval", np.nan)
 

@@ -1,11 +1,28 @@
-"""Resampling helpers for irregular BLE time series."""
+"""非均匀时间序列重采样。
+
+当前仅支持线性插值（``np.interp``），由 notebook 显式调用，
+不在加载或通道提取阶段自动执行。
+"""
 
 import numpy as np
 
 
 def resample_to_uniform_grid(time_sec, values, target_fs=None, method="linear"):
-    """
-    Resample an irregular time series to a uniform time grid.
+    """将非均匀时间序列重采样到均匀网格（线性插值）。
+
+    Parameters
+    ----------
+    time_sec, values : array-like
+        原始时间与数值；长度不足 2 时返回空数组。
+    target_fs : float, optional
+        目标采样率；None 时用 ``1 / mean(diff(time_sec))``。
+    method : str
+        目前仅支持 ``"linear"``。
+
+    Returns
+    -------
+    dict
+        ``time_sec``, ``values``, ``target_fs``。
     """
     time_sec = np.asarray(time_sec, dtype=float)
     values = np.asarray(values, dtype=float)

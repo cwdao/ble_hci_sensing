@@ -1,4 +1,8 @@
-"""BLE frame data loading."""
+"""BLE 帧数据加载。
+
+封装 ``data_saver.DataSaver``，对 notebook 提供统一的
+``load_ble_frames(filepath) -> (data, frames)`` 接口。
+"""
 
 import os
 from pathlib import Path
@@ -7,22 +11,23 @@ from data_saver import DataSaver
 
 
 def load_ble_frames(filepath, verbose=True):
-    """
-    Load BLE frame data using existing DataSaver.
+    """加载 BLE JSON/JSONL 帧数据。
+
+    内部使用 ``DataSaver.load_frames``，自动识别 JSON 与 JSONL 格式。
 
     Parameters
     ----------
     filepath : str or Path
-        Path to JSON or JSONL frame data.
-    verbose : bool
-        Whether to print loading information.
+        帧数据文件路径。
+    verbose : bool, optional
+        是否打印文件大小、加载状态、帧数量；默认 True。
 
     Returns
     -------
     data : dict or None
-        Loaded data object.
+        含 ``version``, ``frames``, ``saved_at`` 等字段；失败时为 None。
     frames : list
-        data["frames"] if available, otherwise [].
+        ``data["frames"]``，失败或缺失时为 ``[]``。
     """
     filepath = str(filepath)
 

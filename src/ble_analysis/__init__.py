@@ -1,4 +1,7 @@
-"""BLE CS data analysis utilities."""
+"""BLE CS 数据分析工具包 ``ble_analysis``.
+
+从 notebook 抽取的通用函数集合，详见同目录 ``README.md``。
+"""
 
 from ble_analysis.channels import (
     extract_channel_series,
@@ -22,6 +25,24 @@ from ble_analysis.plotting import (
 )
 from ble_analysis.resampling import resample_to_uniform_grid
 
+from ble_analysis.bootstrap import init_notebook
+from ble_analysis.metrics import (
+    collect_error_metrics,
+    plot_error_analysis,
+    plot_window_error_distribution,
+    run_error_analysis,
+    save_error_results,
+)
+from ble_analysis.segments import (
+    detect_apnea_segments,
+    estimate_segment_breath_metrics,
+    extract_segment_data,
+    process_segments,
+    run_segment_breath_analysis,
+    save_segment_processed,
+)
+from ble_analysis.workflow import run_cs_exploration
+
 __all__ = [
     "load_ble_frames",
     "get_available_channels",
@@ -39,4 +60,17 @@ __all__ = [
     "plot_time_intervals",
     "find_project_root",
     "ensure_output_dirs",
+    "init_notebook",
+    "run_cs_exploration",
+    "extract_segment_data",
+    "process_segments",
+    "detect_apnea_segments",
+    "estimate_segment_breath_metrics",
+    "save_segment_processed",
+    "run_segment_breath_analysis",
+    "collect_error_metrics",
+    "plot_error_analysis",
+    "plot_window_error_distribution",
+    "save_error_results",
+    "run_error_analysis",
 ]

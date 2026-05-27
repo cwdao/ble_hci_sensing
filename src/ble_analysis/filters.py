@@ -1,4 +1,9 @@
-"""Filter pipeline wrappers for BLE analysis."""
+"""滤波 pipeline 封装。
+
+内部 try/except 导入 ``utils.signal_algrithom``；
+导入失败时相关滤波器会 warning 并跳过，而不是崩溃。
+Notebook 应通过 ``apply_filter_pipeline`` 使用滤波，不要直接 import signal_algrithom。
+"""
 
 import warnings
 
@@ -77,8 +82,27 @@ def _apply_single_filter(values, fs, step):
 
 
 def apply_filter_pipeline(values, fs=None, pipeline=None):
-    """
-    Apply a sequence of filters to values.
+    """按顺序对一维信号应用多个滤波器。
+
+    Parameters
+    ----------
+    values : array-like
+        输入信号。
+    fs : float or None
+        采样率（Hz）；高通/带通必需，缺失时跳过并 warning。
+    pipeline : list[dict], str, or None
+        滤波步骤列表。每步为 ``{"type": "median", ...}``。
+        ``None`` 时原样返回。
+
+    支持的 type
+    -----------
+    median, hampel, highpass, bandpass
+    （lowpass 暂未实现）
+
+    Returns
+    -------
+    np.ndarray
+        滤波后的信号。
     """
     values = np.asarray(values, dtype=float)
     if pipeline is None:

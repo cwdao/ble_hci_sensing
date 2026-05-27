@@ -1,20 +1,28 @@
 # BLE HCI Sensing
 
-BLE 信道探测（CS）与方向估计（DF）数据的离线分析与算法验证项目。从原 BLE Host 上位机项目中拆分而来，仅保留 notebook 实验与数据处理核心模块。
+BLE 信道探测（CS）与方向估计（DF）数据的离线分析与算法验证项目。从原 BLE Host 上位机项目中拆分而来，保留 notebook 实验与数据处理核心模块。
 
 ## 项目结构
 
 ```
-├── notebooks/           # Jupyter 分析 notebook
-├── sampleData/          # 示例 JSONL/JSON 帧数据
-├── outputs/             # notebook 生成的图表与分析结果
+├── notebooks/                    # Jupyter 分析 notebook
+│   ├── glb_cs_load_and_explore.ipynb          # CS 单通道快速探索
+│   ├── glb_cs_segment_breath_analysis.ipynb   # CS 分段呼吸评估 + 误差分析
+│   ├── glb_cs_full_pipeline_demo.ipynb        # 全量滤波演示（冻结）
+│   └── glb_load_cs_saved_frames_show_analysis.ipynb  # 已拆分，仅保留跳转说明
+├── sampleData/                   # 示例 JSONL/JSON 帧数据
+├── outputs/
+│   ├── figures/                  # 图表
+│   ├── processed/                # 中间处理结果 (.npy)
+│   └── reports/                  # 误差报告 (.npy)
 ├── src/
-│   ├── data_saver.py    # JSONL 帧数据加载
-│   ├── config.py        # 配置（data_saver 依赖）
+│   ├── ble_analysis/             # CS 分析工具包（详见 src/ble_analysis/README.md）
+│   ├── data_saver.py             # JSONL 帧数据加载
+│   ├── config.py                 # 配置（data_saver 依赖）
 │   └── utils/
-│       └── signal_algrithom.py  # 滤波与信号处理
+│       └── signal_algrithom.py   # 滤波与信号处理
 └── docs/
-    └── jsonl_format.md  # JSONL 数据格式说明
+    └── jsonl_format.md           # JSONL 数据格式说明
 ```
 
 ## 环境要求
@@ -28,14 +36,48 @@ BLE 信道探测（CS）与方向估计（DF）数据的离线分析与算法验
 pip install -r requirements.txt
 ```
 
-## 使用
+## 快速开始
 
-1. 在项目根目录启动 Jupyter
-2. 打开 `notebooks/` 下对应的 notebook（如 `notebooks/glb_load_df_saved_frames_show_analysis.ipynb`）
+1. 在项目根目录或 `notebooks/` 下启动 Jupyter
+2. 打开对应 notebook，**先运行第一个 cell**（会自动定位项目根目录并将 `src/` 加入 Python 路径）
 3. 修改 `filepath` 指向 `sampleData/` 下的 JSONL 文件
 4. 按顺序执行 cell
 
-Notebook 会通过 `find_project_root()` 自动定位项目根目录，将 `src/` 加入 Python 路径；数据与输出路径均相对项目根目录（`sampleData/`、`outputs/`），无需额外配置。
+### CS 数据分析推荐流程
+
+| 步骤 | Notebook | 说明 |
+|------|----------|------|
+| 1 | `glb_cs_load_and_explore.ipynb` | 加载数据、选通道、看采样率与时间间隔 |
+| 2 | `glb_cs_segment_breath_analysis.ipynb` | 配置段落 GT，跑 BPM/IE/apnea 指标与误差图 |
+| （参考） | `glb_cs_full_pipeline_demo.ipynb` | 全通道滤波算法步骤演示，**不再维护** |
+
+### Notebook 引导代码
+
+```python
+import sys
+from pathlib import Path
+
+_cwd = Path.cwd().resolve()
+project_root = next(
+    (p for p in [_cwd, *_cwd.parents] if (p / "src").is_dir()),
+    None,
+)
+sys.path.insert(0, str(project_root / "src"))
+
+from ble_analysis.bootstrap import init_notebook
+_env = init_notebook(project_root)
+```
+
+## ble_analysis 工具包
+
+通用分析函数已从 notebook 抽取至 `src/ble_analysis/`，包括：
+
+- 数据加载与通道提取
+- 时间间隔诊断与绘图
+- 滤波 pipeline 封装
+- 分段呼吸处理与 GT 误差评估
+
+完整 API 说明见 **[src/ble_analysis/README.md](src/ble_analysis/README.md)**。
 
 ## 数据格式
 
