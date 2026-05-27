@@ -21,6 +21,7 @@ Thumbs.db
 # Local data / logs
 logs/
 data_exp/
+outputs/
 *.npy
 
 # Build artifacts (legacy)
