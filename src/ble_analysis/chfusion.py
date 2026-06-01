@@ -248,16 +248,28 @@ def _quality_from_snr(snr: float, snr_min: float, snr_good: float, eps: float) -
     return float(np.clip(numerator / denominator, 0.0, 1.0))
 
 
+def _quality_from_energy_ratio(
+    energy_ratio: float, er_min: float, er_good: float, eps: float
+) -> float:
+    """Map breath/total band energy ratio η to q_energy ∈ [0, 1] (linear clip)."""
+    er = float(np.clip(energy_ratio, 0.0, 1.0))
+    return float(np.clip((er - er_min) / (er_good - er_min + eps), 0.0, 1.0))
+
+
 def _compose_q_weight(
     q_valid: float,
     q_peak: float,
     q_phi: float,
     mode: QWeightMode,
     eps: float,
+    *,
+    q_energy: float = 0.0,
 ) -> float:
     """Combine sub-scores into scalar fusion weight q_c."""
     if mode == "peak_only":
         return float(q_peak)
+    if mode == "energy_peak":
+        return float((q_energy * q_peak + eps) ** 0.5)
     # compact: geometric mean of three sub-scores (doc §1.3)
     return float((q_valid * q_peak * q_phi + eps) ** (1.0 / 3.0))
 
@@ -522,7 +534,7 @@ def _aggregate_q_details(q_details: List[Dict[str, float]]) -> dict:
     """Mean q sub-scores over all channel×window entries."""
     if not q_details:
         return {}
-    keys = ("q_valid", "q_peak", "q_phi", "q_c", "peak_snr", "jump_rate", "valid_frac")
+    keys = ("q_valid", "q_peak", "q_energy", "q_phi", "q_c", "peak_snr", "energy_ratio", "jump_rate", "valid_frac")
     out = {}
     for k in keys:
         vals = [d[k] for d in q_details if k in d and np.isfinite(d[k])]
@@ -536,7 +548,7 @@ def estimate_segment_bpm_methods(
     variable: str = "amplitudes",
     config: Optional[ChFusionConfig] = None,
     metric_params: Optional[BreathMetricParams] = None,
-    methods: Sequence[str] = ("single", "uniform", "q_peak", "q_compact"),
+    methods: Sequence[str] = ("single", "uniform", "q_peak", "q_energy_peak", "q_compact"),
     verbose: bool = False,
 ) -> Dict[str, Optional[dict]]:
     """Per-segment BPM for selected fusion methods.
@@ -544,15 +556,16 @@ def estimate_segment_bpm_methods(
     Parameters
     ----------
     methods
-        Subset of ``single``, ``uniform``, ``q_peak``, ``q_compact``.
+        Subset of ``single``, ``uniform``, ``q_peak``, ``q_energy_peak``, ``q_compact``.
         Part-1 variable study typically uses ``("single",)`` only.
-        Part-2 method study uses ``("single", "uniform", "q_peak")``.
+        Part-2 method study uses ``("single", "uniform", "q_peak", "q_energy_peak")``.
     """
     cfg = config or ChFusionConfig()
     mp = metric_params or BreathMetricParams()
     want_single = "single" in methods
     want_uniform = "uniform" in methods
     want_q_peak = "q_peak" in methods
+    want_q_energy_peak = "q_energy_peak" in methods
     want_q_compact = "q_compact" in methods
     compute_q_phi = _is_phase_variable(variable)
     results: Dict[str, Optional[dict]] = {}
@@ -596,6 +609,7 @@ def estimate_segment_bpm_methods(
         uniform_bpms: List[float] = []
         q_compact_bpms: List[float] = []
         q_peak_bpms: List[float] = []
+        q_energy_peak_bpms: List[float] = []
         selected_channels: List[Any] = []
         all_q_details: List[Dict[str, float]] = []
 
@@ -624,16 +638,18 @@ def estimate_segment_bpm_methods(
                     single_bpms.append(np.nan)
                     selected_channels.append(None)
 
-            need_fusion = want_uniform or want_q_peak or want_q_compact
+            need_fusion = want_uniform or want_q_peak or want_q_energy_peak or want_q_compact
             if need_fusion:
-                spectra, q_compact, q_peak_only, peak_freqs = [], [], [], []
+                spectra, q_compact, q_peak_only, q_energy_peak_only, peak_freqs = [], [], [], [], []
                 for ch in ch_list:
                     bp = ch_map[ch][variable]["bandpass_filtered"]
+                    hp = ch_map[ch][variable]["highpass_filtered"]
                     raw = ch_map[ch][variable]["original"]
                     if len(bp) < end:
                         spectra.append(np.zeros_like(band_freqs))
                         q_compact.append(0.0)
                         q_peak_only.append(0.0)
+                        q_energy_peak_only.append(0.0)
                         peak_freqs.append(np.nan)
                         continue
 
@@ -650,8 +666,32 @@ def estimate_segment_bpm_methods(
                         q_weight_mode="compact",
                         compute_q_phi=compute_q_phi,
                     )
+                    energy_ratio = (
+                        _energy_ratio(hp[st:end], fs, cfg) if len(hp) >= end else 0.0
+                    )
+                    q_energy = _quality_from_energy_ratio(
+                        energy_ratio,
+                        cfg.energy_ratio_min,
+                        cfg.energy_ratio_good,
+                        cfg.eps,
+                    )
+                    q_ep = _compose_q_weight(
+                        detail_c["q_valid"],
+                        detail_c["q_peak"],
+                        detail_c["q_phi"],
+                        "energy_peak",
+                        cfg.eps,
+                        q_energy=q_energy,
+                    )
+                    detail_c = {
+                        **detail_c,
+                        "energy_ratio": energy_ratio,
+                        "q_energy": q_energy,
+                        "q_energy_peak": q_ep,
+                    }
                     q_compact.append(detail_c["q_c"])
                     q_peak_only.append(detail_c["q_peak"])
+                    q_energy_peak_only.append(q_ep)
                     peak_freqs.append(f_peak)
                     all_q_details.append(detail_c)
                     spectra.append(p_norm)
@@ -680,6 +720,17 @@ def estimate_segment_bpm_methods(
                         )
                     )
 
+                if want_q_energy_peak:
+                    q_energy_peak_bpms.append(
+                        _fuse_weighted_spectrum(
+                            spectra_arr,
+                            np.asarray(q_energy_peak_only),
+                            band_freqs,
+                            cfg,
+                            peak_freqs,
+                        )
+                    )
+
         seg_out: dict = {
             "segment": seg_name,
             "bpm_gt": bpm_gt,
@@ -703,6 +754,10 @@ def estimate_segment_bpm_methods(
         if want_q_peak:
             seg_out["fft_q_peak_fusion"] = _seg_bpm_stats(
                 np.asarray(q_peak_bpms), bpm_gt, len(starts)
+            )
+        if want_q_energy_peak:
+            seg_out["fft_q_energy_peak_fusion"] = _seg_bpm_stats(
+                np.asarray(q_energy_peak_bpms), bpm_gt, len(starts)
             )
         results[seg_name] = seg_out
 
@@ -856,7 +911,7 @@ def run_chfusion_benchmark(
     """Two-part benchmark over all CS signal variables.
 
     Part 1 — variable comparison (Single / max-energy channel only).
-    Part 2 — method comparison (Single, Uniform, FFT+q_peak) per variable.
+    Part 2 — method comparison (Single, Uniform, FFT+q_peak, FFT+q_energy_peak) per variable.
 
     Returns dict with ``part1``, ``part2``, ``leaderboard`` keys.
     """
@@ -880,7 +935,7 @@ def run_chfusion_benchmark(
             variable=variable,
             config=cfg,
             metric_params=mp,
-            methods=("single", "uniform", "q_peak"),
+            methods=("single", "uniform", "q_peak", "q_energy_peak"),
         )
         part1[variable] = {"results": r1, "sampling_rate": fs}
         part2[variable] = {"results": r2, "sampling_rate": fs}
@@ -941,8 +996,8 @@ def print_part1_variable_table(part1: dict) -> None:
 
 
 def print_part2_method_tables(part2: dict) -> None:
-    """Part 2: per variable, compare Single / Uniform / FFT+q_peak."""
-    print("\n=== Part 2：同一变量下方法对比（Single / Uniform / FFT+q_peak）===")
+    """Part 2: per variable, compare Single / Uniform / FFT+q_peak / FFT+q_energy_peak."""
+    print("\n=== Part 2：同一变量下方法对比（Single / Uniform / FFT+q_peak / FFT+q_energy_peak）===")
     for variable, block in part2.items():
         print(f"\n--- {_variable_display_name(variable)} ({variable}) ---")
         print(f"{'方法':<12} {'mean err%':>10} {'±std%':>8} {'n_seg':>6}")
@@ -1007,16 +1062,16 @@ def collect_window_signed_errors(
 
 
 # ---------------------------------------------------------------------------
-# Overview plotting: full 4 variables × 3 methods matrix
+# Overview plotting: full 4 variables × 4 methods matrix
 # ---------------------------------------------------------------------------
 # Part 1 violins compare variables (Single only); Part 2 violins compare methods
 # per variable (4 separate figures). The functions below add aggregate views:
 #
-#   collect_part2_variable_method_errors  → flat records for all 12 combos
+#   collect_part2_variable_method_errors  → flat records for all 16 combos
 #   _part2_matrix_stats                   → mean/std matrices for bars & heatmap
 #   plot_overview_matrix_bars             → grouped bar chart (leaderboard view)
 #   plot_overview_matrix_heatmap          → colour matrix of mean rel error
-#   plot_overview_violins_by_method       → Part 1 extended to 3 methods (N×1 stack)
+#   plot_overview_violins_by_method       → Part 1 extended to 4 methods (N×1 stack)
 #   plot_overview_violins_by_variable     → Part 2 merged into one N×1 figure
 #
 # Called from plot_benchmark_violins() after Part 1/2 individual figures.
@@ -1084,7 +1139,7 @@ def collect_part2_variable_method_errors(part2: dict) -> List[dict]:
     """Collect window-level signed errors for every segment × variable × method.
 
     Each record has keys: segment, variable, variable_label, method, method_key,
-    bpm_gt, signed_errors. Used by overview violin plots (4×3 matrix).
+    bpm_gt, signed_errors. Used by overview violin plots (4×4 matrix).
     """
     records: List[dict] = []
     for variable, block in part2.items():
@@ -1245,7 +1300,7 @@ def _draw_grouped_violins_on_ax(
     """Draw segment-grouped violins on an existing axes.
 
     Layout: one x-axis group per script segment; within each group, one violin
-    per entry in ``group_ids`` (either 4 variables or 3 methods). Shared by
+    per entry in ``group_ids`` (either 4 variables or 4 methods). Shared by
     Part 1/2 and overview multi-panel figures.
     """
     n_groups = len(group_ids)
@@ -1297,7 +1352,7 @@ def _draw_grouped_violins_on_ax(
 
 
 def _part2_matrix_stats(part2: dict) -> Tuple[List[str], np.ndarray, np.ndarray]:
-    """Aggregate Part-2 results into 4×3 mean/std matrices (%).
+    """Aggregate Part-2 results into 4×4 mean/std matrices (%).
 
     Rows follow ``CS_SIGNAL_VARIABLES`` order; columns follow ``FUSION_METHOD_LABELS``.
     Mean = average segment-level relative BPM error; std = std of those segment errors.
@@ -1322,9 +1377,9 @@ def plot_overview_matrix_bars(
     show: bool = True,
     save: bool = True,
 ):
-    """Grouped bar chart summarising all 12 variable×method combos.
+    """Grouped bar chart summarising all 16 variable×method combos.
 
-    X-axis: four CS observables. Three bars per group = Single / Uniform / FFT+q_peak.
+    X-axis: four CS observables. Four bars per group = Single / Uniform / FFT+q_peak / FFT+q_energy_peak.
     Height = mean segment relative BPM error (%); error bars = ±std across segments.
     """
     import matplotlib.pyplot as plt
@@ -1342,7 +1397,7 @@ def plot_overview_matrix_bars(
     n_var = len(variables)
     n_meth = len(FUSION_METHOD_LABELS)
     x = np.arange(n_var)
-    bar_width = 0.22
+    bar_width = 0.18
     offsets = (np.arange(n_meth) - (n_meth - 1) / 2) * bar_width
 
     fig, ax = plt.subplots(figsize=(max(10, n_var * 2.5), 5.5))
@@ -1362,7 +1417,7 @@ def plot_overview_matrix_bars(
     ax.set_xticks(x)
     ax.set_xticklabels(var_labels, rotation=15, ha="right")
     ax.set_ylabel("Mean relative BPM error (%)")
-    ax.set_title("Overview: 4 variables × 3 methods (segment mean ± window std)")
+    ax.set_title("Overview: 4 variables × 4 methods (segment mean ± window std)")
     ax.legend(loc="upper right", fontsize=8)
     ax.grid(True, axis="y", alpha=0.25)
     plt.tight_layout()
@@ -1386,7 +1441,7 @@ def plot_overview_matrix_heatmap(
     show: bool = True,
     save: bool = True,
 ):
-    """Heatmap of mean relative BPM error (%) for the 4×3 benchmark matrix.
+    """Heatmap of mean relative BPM error (%) for the 4×4 benchmark matrix.
 
     Darker/warmer cells = higher error. Cell text shows numeric mean err%.
     Same underlying stats as ``plot_overview_matrix_bars``.
@@ -1411,7 +1466,7 @@ def plot_overview_matrix_heatmap(
     ax.set_yticks(np.arange(len(var_labels)))
     ax.set_xticklabels(meth_labels)
     ax.set_yticklabels(var_labels)
-    ax.set_title("Mean relative BPM error (%) — 4 variables × 3 methods")
+    ax.set_title("Mean relative BPM error (%) — 4 variables × 4 methods")
 
     for i in range(means.shape[0]):
         for j in range(means.shape[1]):
@@ -1444,7 +1499,7 @@ def plot_overview_violins_by_method(
 ):
     """N×1 violin panels: variable comparison under each fusion method (vertical stack).
 
-    Extends Part 1 (which only shows Single) to Uniform and FFT+q_peak.
+    Extends Part 1 (which only shows Single) to Uniform, FFT+q_peak, FFT+q_energy_peak.
     Each panel layout matches ``plot_part1_variable_violins`` (4 colours per segment).
     """
     import matplotlib.pyplot as plt
@@ -1706,7 +1761,7 @@ def plot_benchmark_violins(
     """Generate all benchmark violin/overview figures from a ``run_chfusion_benchmark`` result.
 
     Order: Part-1 variable violins → Part-2 per-variable method violins (×4) →
-    4×3 overview (bars, heatmap, violins-by-method, violins-by-variable).
+    4×4 overview (bars, heatmap, violins-by-method, violins-by-variable).
 
     Returns list of saved PDF paths when ``save=True``.
     """
@@ -1731,7 +1786,7 @@ def plot_benchmark_violins(
             method_labels=FUSION_METHOD_LABELS,
             figures_dir=figures_dir,
             filename=part2_name,
-            title=f"Part 2: {_variable_plot_label(variable)} - Single / Uniform / FFT+q_peak",
+            title=f"Part 2: {_variable_plot_label(variable)} - methods comparison",
             show=show,
             save=save,
         )
