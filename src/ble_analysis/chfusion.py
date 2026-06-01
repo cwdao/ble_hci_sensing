@@ -69,17 +69,21 @@ VARIABLE_PLOT_LABELS: Dict[str, str] = {
     "phases": "Total phase (unwrapped)",
 }
 
-# Benchmark fusion methods (3-way comparison; docs/chfusion_q_energy_peak.md)
+# Benchmark methods (baselines first, then q-weighted fusion; docs/chfusion_q_energy_peak.md)
 FUSION_METHOD_KEYS: Tuple[str, ...] = (
+    "fft_single_max_energy",
+    "fft_uniform_fusion",
     "fft_q_energy_fusion",
     "fft_q_peak_fusion",
     "fft_q_energy_peak_fusion",
 )
 
 FUSION_METHOD_LABELS: Tuple[Tuple[str, str, str], ...] = (
+    ("Single", "fft_single_max_energy", "steelblue"),
+    ("Uniform", "fft_uniform_fusion", "seagreen"),
     ("FFT+q_energy", "fft_q_energy_fusion", "darkorange"),
     ("FFT+q_peak", "fft_q_peak_fusion", "mediumpurple"),
-    ("FFT+q_energy_peak", "fft_q_energy_peak_fusion", "steelblue"),
+    ("FFT+q_energy_peak", "fft_q_energy_peak_fusion", "coral"),
 )
 
 # q_c composition modes (compact/peak used internally; benchmark uses energy / peak / energy_peak)
@@ -529,12 +533,14 @@ def estimate_segment_bpm_methods(
     variable: str = "amplitudes",
     config: Optional[ChFusionConfig] = None,
     metric_params: Optional[BreathMetricParams] = None,
-    methods: Sequence[str] = ("q_energy", "q_peak", "q_energy_peak"),
+    methods: Sequence[str] = ("single", "uniform", "q_energy", "q_peak", "q_energy_peak"),
     verbose: bool = False,
 ) -> Dict[str, Optional[dict]]:
-    """Per-segment BPM for q_energy / q_peak / q_energy_peak fusion (see docs/chfusion_q_energy_peak.md)."""
+    """Per-segment BPM for Single / Uniform / q-weighted fusion (see docs/chfusion_q_energy_peak.md)."""
     cfg = config or ChFusionConfig()
     mp = metric_params or BreathMetricParams()
+    want_single = "single" in methods
+    want_uniform = "uniform" in methods
     want_q_energy = "q_energy" in methods
     want_q_peak = "q_peak" in methods
     want_q_energy_peak = "q_energy_peak" in methods
@@ -576,13 +582,37 @@ def estimate_segment_bpm_methods(
         band_freqs = freqs[band_mask]
         hann = np.hanning(win_len)
 
+        single_bpms: List[float] = []
+        uniform_bpms: List[float] = []
         q_energy_bpms: List[float] = []
         q_peak_bpms: List[float] = []
         q_energy_peak_bpms: List[float] = []
+        selected_channels: List[Any] = []
         all_q_details: List[Dict[str, float]] = []
 
         for st in starts:
             end = st + win_len
+
+            if want_single:
+                best_ch, best_er = None, -1.0
+                for ch in ch_list:
+                    hp = ch_map[ch][variable]["highpass_filtered"]
+                    if len(hp) < end:
+                        continue
+                    er = _energy_ratio(hp[st:end], fs, cfg)
+                    if er > best_er:
+                        best_er, best_ch = er, ch
+                if best_ch is not None:
+                    bp_slice = ch_map[best_ch][variable]["bandpass_filtered"][st:end]
+                    f_hz = _estimate_breathing_freq_hz(
+                        bp_slice, fs, cfg.breath_freq_low, cfg.breath_freq_high
+                    )
+                    single_bpms.append(f_hz * 60.0 if np.isfinite(f_hz) else np.nan)
+                    selected_channels.append(best_ch)
+                else:
+                    single_bpms.append(np.nan)
+                    selected_channels.append(None)
+
             spectra: List[np.ndarray] = []
             q_energy_w: List[float] = []
             q_peak_w: List[float] = []
@@ -646,6 +676,14 @@ def estimate_segment_bpm_methods(
 
             spectra_arr = np.vstack(spectra)
 
+            if want_uniform:
+                valid_rows = np.sum(spectra_arr, axis=1) > cfg.eps
+                if np.any(valid_rows):
+                    uniform_fused = np.mean(spectra_arr[valid_rows], axis=0)
+                else:
+                    uniform_fused = np.zeros_like(band_freqs)
+                uniform_bpms.append(_bpm_from_fused_spectrum(uniform_fused, band_freqs, cfg))
+
             if want_q_energy:
                 q_energy_bpms.append(
                     _fuse_weighted_spectrum(
@@ -672,6 +710,15 @@ def estimate_segment_bpm_methods(
             "metadata": metadata,
             "q_summary": _aggregate_q_details(all_q_details),
         }
+        if want_single:
+            seg_out["fft_single_max_energy"] = {
+                **_seg_bpm_stats(np.asarray(single_bpms), bpm_gt, len(starts)),
+                "selected_channels": selected_channels,
+            }
+        if want_uniform:
+            seg_out["fft_uniform_fusion"] = _seg_bpm_stats(
+                np.asarray(uniform_bpms), bpm_gt, len(starts)
+            )
         if want_q_energy:
             seg_out["fft_q_energy_fusion"] = _seg_bpm_stats(
                 np.asarray(q_energy_bpms), bpm_gt, len(starts)
@@ -833,7 +880,7 @@ def run_chfusion_benchmark(
     config: Optional[ChFusionConfig] = None,
     verbose: bool = True,
 ) -> dict:
-    """Benchmark 4 CS variables × 3 fusion methods (FFT+q_energy / q_peak / q_energy_peak).
+    """Benchmark 4 CS variables × 5 methods (Single / Uniform / FFT+q_*).
 
     See ``docs/chfusion_q_energy_peak.md``. Returns ``part2``, ``leaderboard``.
     """
@@ -841,7 +888,7 @@ def run_chfusion_benchmark(
     mp = metric_params or BreathMetricParams()
     fp = filter_params or FilterParams()
     var_list = list(variables or [v[0] for v in CS_SIGNAL_VARIABLES])
-    fusion_methods = ("q_energy", "q_peak", "q_energy_peak")
+    fusion_methods = ("single", "uniform", "q_energy", "q_peak", "q_energy_peak")
 
     part2: Dict[str, dict] = {}
 
@@ -914,8 +961,8 @@ def print_part1_variable_table(part1: dict) -> None:
 
 
 def print_part2_method_tables(part2: dict) -> None:
-    """Part 2: per variable, compare FFT+q_energy / FFT+q_peak / FFT+q_energy_peak."""
-    print("\n=== 方法对比（FFT+q_energy / FFT+q_peak / FFT+q_energy_peak）===")
+    """Part 2: per variable, compare Single / Uniform / FFT+q_* fusion."""
+    print("\n=== 方法对比（Single / Uniform / FFT+q_energy / FFT+q_peak / FFT+q_energy_peak）===")
     for variable, block in part2.items():
         print(f"\n--- {_variable_display_name(variable)} ({variable}) ---")
         print(f"{'方法':<12} {'mean err%':>10} {'±std%':>8} {'n_seg':>6}")
@@ -1297,7 +1344,7 @@ def plot_overview_matrix_bars(
 ):
     """Grouped bar chart summarising all 16 variable×method combos.
 
-    X-axis: four CS observables. Three bars = FFT+q_energy / FFT+q_peak / FFT+q_energy_peak.
+    X-axis: four CS observables. Five bars = Single / Uniform / FFT+q_* fusion.
     Height = mean segment relative BPM error (%); error bars = ±std across segments.
     """
     import matplotlib.pyplot as plt
@@ -1315,7 +1362,7 @@ def plot_overview_matrix_bars(
     n_var = len(variables)
     n_meth = len(FUSION_METHOD_LABELS)
     x = np.arange(n_var)
-    bar_width = 0.22
+    bar_width = 0.15
     offsets = (np.arange(n_meth) - (n_meth - 1) / 2) * bar_width
 
     fig, ax = plt.subplots(figsize=(max(10, n_var * 2.5), 5.5))
@@ -1335,7 +1382,7 @@ def plot_overview_matrix_bars(
     ax.set_xticks(x)
     ax.set_xticklabels(var_labels, rotation=15, ha="right")
     ax.set_ylabel("Mean relative BPM error (%)")
-    ax.set_title("Overview: 4 variables × 3 methods (segment mean ± window std)")
+    ax.set_title("Overview: 4 variables × 5 methods (segment mean ± window std)")
     ax.legend(loc="upper right", fontsize=8)
     ax.grid(True, axis="y", alpha=0.25)
     plt.tight_layout()
@@ -1384,7 +1431,7 @@ def plot_overview_matrix_heatmap(
     ax.set_yticks(np.arange(len(var_labels)))
     ax.set_xticklabels(meth_labels)
     ax.set_yticklabels(var_labels)
-    ax.set_title("Mean relative BPM error (%) — 4 variables × 3 methods")
+    ax.set_title("Mean relative BPM error (%) — 4 variables × 5 methods")
 
     for i in range(means.shape[0]):
         for j in range(means.shape[1]):
@@ -1676,7 +1723,7 @@ def plot_benchmark_violins(
     show: bool = True,
     save: bool = True,
 ) -> List[Path]:
-    """Generate benchmark violin/overview figures (3 methods × 4 variables).
+    """Generate benchmark violin/overview figures (5 methods × 4 variables).
 
     Per-variable method violins + overview bars / heatmap / matrix violins.
     """
@@ -1708,5 +1755,12 @@ def plot_benchmark_violins(
         plot_fn(benchmark, figures_dir=figures_dir, filename=fname, show=show, save=save)
         if save and figures_dir is not None:
             saved.append(Path(figures_dir) / fname)
+
+    if saved:
+        print("\n=== 图表输出 ===")
+        for path in saved:
+            print(f"  {path}")
+        if show:
+            print("（窗口已弹出，关闭当前图后继续下一张）")
 
     return saved

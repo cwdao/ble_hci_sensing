@@ -5,15 +5,17 @@
 
 ---
 
-## 1. Benchmark 对比的三种方法
+## 1. Benchmark 对比的五种方法
 
-| 方法 | 权重 `w_c` | 方法键 |
-|------|-----------|--------|
+| 方法 | 权重 / 策略 | 方法键 |
+|------|------------|--------|
+| **Single** | 最大 η 单信道 FFT 峰 | `fft_single_max_energy` |
+| **Uniform** | 各信道谱等权平均 | `fft_uniform_fusion` |
 | **FFT+q_energy** | `q_energy` | `fft_q_energy_fusion` |
 | **FFT+q_peak** | `q_peak` | `fft_q_peak_fusion` |
 | **FFT+q_energy_peak** | `√(q_energy · q_peak)` | `fft_q_energy_peak_fusion` |
 
-四种 CS 变量（amp / remote / local / phase）各跑一遍 → **4×3 = 12** 组合排行榜。
+四种 CS 变量（amp / remote / local / phase）各跑一遍 → **4×5 = 20** 组合排行榜。
 
 ---
 
@@ -62,5 +64,6 @@
 |------|------|
 | 2026-06-01 | 初版 energy+peak；Top-K 实验（已归档，不再纳入 benchmark） |
 | 2026-06-01 | **精简为 3 方法**：FFT+q_energy / q_peak / q_energy_peak；q_energy 统一 log 映射 |
+| 2026-06-01 | **恢复 Single / Uniform 基线**，benchmark 共 5 方法（基线在前） |
 
 *后续改动请在本表追加并更新上文章节。*
