@@ -7,51 +7,28 @@ Pipeline (see ``docs/chfusion_fft-q.md``):
 2. Sliding-window FFT on bandpass signals → normalized spectra ``P̄_c(f)``.
 3. Compute per-channel quality sub-scores and fuse spectra with weights ``w_c``.
 
-Comparison methods
-------------------
-- **fft_single_max_energy**: pick channel with max breath-band energy ratio, FFT peak.
-- **fft_uniform_fusion**: equal-weight average of ``P̄_c(f)`` (FFT-uniform).
-- **fft_q_fusion**: compact q-weighted fusion (default ``q_weight_mode='compact'``).
-- **fft_q_peak_fusion**: use **only** ``q_peak`` as weight (ablation vs compact q).
-- **fft_q_energy_peak_fusion**: ``q_energy_peak`` = geometric mean of ``q_energy`` and ``q_peak`` (see ``docs/chfusion_q_energy_peak.md``).
-- **fft_q_energy_peak_topk_fusion**: Top-K channels by ``q_energy`` (linear map), then fusion.
-- **fft_q_energy_peak_topk_log_fusion**: Same as top-K, but ``q_energy`` uses log map like ``q_peak``.
+Comparison methods (benchmark — see ``docs/chfusion_q_energy_peak.md``)
+---------------------------------------------------------------------
+- **fft_q_energy_fusion**: ``q_energy`` only (log-mapped η = E_breath/E_total).
+- **fft_q_peak_fusion**: ``q_peak`` only (log-mapped spectral peak SNR).
+- **fft_q_energy_peak_fusion**: ``(q_energy · q_peak)^(1/2)``, all channels, no Top-K.
 
 Quality score (q_c)
 -----------------
-Three sub-scores (doc §1.3):
-
-``q_valid``
-    Fraction of finite phase samples in the window, mapped linearly to [0, 1]
-    with threshold ``min_valid_frac`` (default 0.70).
+``q_energy``
+    Breath-band energy ratio η on highpass signal; **log-linear** map to [0, 1]
+    (same formula as ``q_peak``; thresholds ``energy_ratio_min/good``).
 
 ``q_peak``
-    Peak prominence in the breath band. Compute
-    ``ρ = max(P) / median(P)``, then log-map ρ to [0, 1] between
-    ``peak_snr_min`` and ``peak_snr_good``.
+    Peak prominence ρ = max(P)/median(P) in breath band; log-linear map to [0, 1].
 
-``q_energy``
-    Breath-band energy concentration (Single-channel selector metric):
-    ``η = E_breath / E_total`` on highpass signal, linear-mapped to [0, 1]
-    between ``energy_ratio_min`` and ``energy_ratio_good``.
+Fusion weights::
 
-``q_phi``
-    Phase smoothness after unwrap. Jump rate =
-    ``mean(|Δφ| > phase_jump_rad)``; then ``q_phi = exp(-jump_rate / jump_rate_good)``.
+    q_energy only:  w_c ∝ q_energy
+    q_peak only:    w_c ∝ q_peak
+    energy+peak:    w_c ∝ (q_energy · q_peak)^(1/2)
 
-Compact fusion weight (default)::
-
-    q_c = (q_valid · q_peak · q_phi)^(1/3)    # geometric mean
-
-Peak-only ablation::
-
-    q_c = q_peak
-
-Energy + peak fusion (``q_energy_peak``)::
-
-    q_c = (q_energy · q_peak)^(1/2)
-
-Fusion (doc §1.4)::
+Fusion (doc §1.4 / chfusion_q_energy_peak.md)::
 
     S(f) = Σ_c w_c · P̄_c(f),   w_c = q_c / Σ_j q_j
     BPM  = 60 · argmax_{f∈B} S(f)
@@ -92,31 +69,26 @@ VARIABLE_PLOT_LABELS: Dict[str, str] = {
     "phases": "Total phase (unwrapped)",
 }
 
-# Part-2 默认对比的融合方法（详见 docs/chfusion_q_energy_peak.md）
+# Benchmark fusion methods (3-way comparison; docs/chfusion_q_energy_peak.md)
 FUSION_METHOD_KEYS: Tuple[str, ...] = (
-    "fft_single_max_energy",
-    "fft_uniform_fusion",
+    "fft_q_energy_fusion",
     "fft_q_peak_fusion",
     "fft_q_energy_peak_fusion",
-    "fft_q_energy_peak_topk_fusion",
-    "fft_q_energy_peak_topk_log_fusion",
 )
 
 FUSION_METHOD_LABELS: Tuple[Tuple[str, str, str], ...] = (
-    ("Single", "fft_single_max_energy", "steelblue"),
-    ("Uniform", "fft_uniform_fusion", "seagreen"),
+    ("FFT+q_energy", "fft_q_energy_fusion", "darkorange"),
     ("FFT+q_peak", "fft_q_peak_fusion", "mediumpurple"),
-    ("FFT+q_energy_peak", "fft_q_energy_peak_fusion", "darkorange"),
-    ("FFT+q_ep_topK", "fft_q_energy_peak_topk_fusion", "crimson"),
-    ("FFT+q_ep_topK_log", "fft_q_energy_peak_topk_log_fusion", "chocolate"),
+    ("FFT+q_energy_peak", "fft_q_energy_peak_fusion", "steelblue"),
 )
 
-# Supported q_c composition modes for weighted fusion.
-QWeightMode = Literal["compact", "peak_only", "energy_peak"]
+# q_c composition modes (compact/peak used internally; benchmark uses energy / peak / energy_peak)
+QWeightMode = Literal["compact", "peak_only", "energy_only", "energy_peak"]
 
 Q_WEIGHT_MODE_LABELS: Dict[str, str] = {
     "compact": "q_c = (q_valid × q_peak × q_phi)^(1/3)",
     "peak_only": "q_c = q_peak",
+    "energy_only": "q_c = q_energy",
     "energy_peak": "q_c = (q_energy × q_peak)^(1/2)",
 }
 
@@ -147,9 +119,6 @@ class ChFusionConfig:
     energy_ratio_min: float = 0.02
     energy_ratio_good: float = 0.20
 
-    # --- q_energy + q_peak Top-K prefilter (see docs/chfusion_q_energy_peak.md §5) ---
-    energy_peak_top_k: Optional[int] = 5
-
     # --- q_phi: unwrap phase jump penalty ---
     phase_jump_rad: float = 1.2
     jump_rate_good: float = 0.05
@@ -178,30 +147,17 @@ def print_q_score_documentation(cfg: Optional[ChFusionConfig] = None) -> None:
         f"ρ=max(P)/median(P), log map [{cfg.peak_snr_min}, {cfg.peak_snr_good}]"
     )
     print(
-        f"q_energy      | 呼吸/全频段能量比 (≈SNR)     | "
-        f"η linear [{cfg.energy_ratio_min}, {cfg.energy_ratio_good}] "
-        f"or log (topK_log)"
+        f"q_energy      | 呼吸/全频段能量比 η           | "
+        f"log map [{cfg.energy_ratio_min}, {cfg.energy_ratio_good}]"
     )
     print(
         f"q_phi         | 相位 unwrap 后平滑度         | "
         f"exp(-jump_rate/{cfg.jump_rate_good}), jump>{cfg.phase_jump_rad} rad"
     )
     print("-" * 72)
-    print(f"compact q_c   | 默认融合权重                 | {Q_WEIGHT_MODE_LABELS['compact']}")
-    print(f"peak-only q_c | 消融：仅谱峰质量             | {Q_WEIGHT_MODE_LABELS['peak_only']}")
-    print(
-        f"energy_peak   | 能量比 + 谱峰                | {Q_WEIGHT_MODE_LABELS['energy_peak']}"
-    )
-    topk = cfg.energy_peak_top_k
-    topk_str = str(topk) if topk is not None and topk > 0 else "all channels"
-    print(
-        f"q_ep_topK     | 先 q_energy Top-{topk_str} 再 energy+peak (linear η) | "
-        f"ChFusionConfig.energy_peak_top_k"
-    )
-    print(
-        f"q_ep_topK_log | 同上，q_energy 用 log 映射 (同 q_peak) | "
-        f"fft_q_energy_peak_topk_log_fusion"
-    )
+    print(f"energy_only   | 仅 q_energy 加权               | {Q_WEIGHT_MODE_LABELS['energy_only']}")
+    print(f"peak-only     | 仅 q_peak 加权                 | {Q_WEIGHT_MODE_LABELS['peak_only']}")
+    print(f"energy_peak   | q_energy + q_peak 几何平均     | {Q_WEIGHT_MODE_LABELS['energy_peak']}")
     print(f"详细说明见 docs/chfusion_q_energy_peak.md")
     print(f"当前配置 q_weight_mode = '{cfg.q_weight_mode}'\n")
 
@@ -269,23 +225,11 @@ def _quality_from_snr(snr: float, snr_min: float, snr_good: float, eps: float) -
 
 
 def _quality_from_energy_ratio(
-    energy_ratio: float,
-    er_min: float,
-    er_good: float,
-    eps: float,
-    *,
-    log_map: bool = False,
+    energy_ratio: float, er_min: float, er_good: float, eps: float
 ) -> float:
-    """Map breath/total band energy ratio η to q_energy ∈ [0, 1].
-
-    ``log_map=False`` (default): linear clip — used by ``FFT+q_energy_peak`` and
-    ``FFT+q_ep_topK``.  ``log_map=True``: same log-linear formula as ``q_peak``
-    — used by ``FFT+q_ep_topK_log``. See ``docs/chfusion_q_energy_peak.md`` §5–§6.
-    """
+    """Map breath/total band energy ratio η to q_energy ∈ [0, 1] (log-linear, same as q_peak)."""
     er = max(float(np.clip(energy_ratio, 0.0, 1.0)), eps)
-    if log_map:
-        return _quality_from_snr(er, er_min, er_good, eps)
-    return float(np.clip((er - er_min) / (er_good - er_min + eps), 0.0, 1.0))
+    return _quality_from_snr(er, er_min, er_good, eps)
 
 
 def _compose_q_weight(
@@ -300,30 +244,12 @@ def _compose_q_weight(
     """Combine sub-scores into scalar fusion weight q_c."""
     if mode == "peak_only":
         return float(q_peak)
+    if mode == "energy_only":
+        return float(q_energy)
     if mode == "energy_peak":
         return float((q_energy * q_peak + eps) ** 0.5)
     # compact: geometric mean of three sub-scores (doc §1.3)
     return float((q_valid * q_peak * q_phi + eps) ** (1.0 / 3.0))
-
-
-def _mask_top_k_by_score(
-    weights: np.ndarray, scores: np.ndarray, top_k: Optional[int]
-) -> np.ndarray:
-    """Zero fusion weights for channels outside Top-K (ranked by ``scores`` descending).
-
-    Used by ``fft_q_energy_peak_topk_fusion``: prefilter on ``q_energy``, then fuse
-    with ``q_energy_peak`` weights on survivors. See ``docs/chfusion_q_energy_peak.md`` §5.
-    """
-    w = np.asarray(weights, dtype=float)
-    s = np.asarray(scores, dtype=float)
-    n = len(w)
-    if top_k is None or top_k <= 0 or n <= top_k:
-        return w
-    k = min(int(top_k), n)
-    top_idx = np.argsort(s)[-k:]
-    mask = np.zeros(n, dtype=bool)
-    mask[top_idx] = True
-    return np.where(mask, w, 0.0)
 
 
 def _parabolic_peak_freq(f_band: np.ndarray, power_band: np.ndarray, k: int, eps: float) -> float:
@@ -587,7 +513,7 @@ def _aggregate_q_details(q_details: List[Dict[str, float]]) -> dict:
     if not q_details:
         return {}
     keys = (
-        "q_valid", "q_peak", "q_energy", "q_energy_log", "q_phi", "q_c",
+        "q_valid", "q_peak", "q_energy", "q_phi", "q_c",
         "peak_snr", "energy_ratio", "jump_rate", "valid_frac",
     )
     out = {}
@@ -603,31 +529,15 @@ def estimate_segment_bpm_methods(
     variable: str = "amplitudes",
     config: Optional[ChFusionConfig] = None,
     metric_params: Optional[BreathMetricParams] = None,
-    methods: Sequence[str] = (
-        "single", "uniform", "q_peak", "q_energy_peak", "q_energy_peak_topk",
-        "q_energy_peak_topk_log", "q_compact",
-    ),
+    methods: Sequence[str] = ("q_energy", "q_peak", "q_energy_peak"),
     verbose: bool = False,
 ) -> Dict[str, Optional[dict]]:
-    """Per-segment BPM for selected fusion methods.
-
-    Parameters
-    ----------
-    methods
-        Subset of ``single``, ``uniform``, ``q_peak``, ``q_energy_peak``,
-        ``q_energy_peak_topk``, ``q_energy_peak_topk_log``, ``q_compact``.
-        Part-2 benchmark uses all five fusion baselines; see ``docs/chfusion_q_energy_peak.md``.
-    """
+    """Per-segment BPM for q_energy / q_peak / q_energy_peak fusion (see docs/chfusion_q_energy_peak.md)."""
     cfg = config or ChFusionConfig()
     mp = metric_params or BreathMetricParams()
-    want_single = "single" in methods
-    want_uniform = "uniform" in methods
+    want_q_energy = "q_energy" in methods
     want_q_peak = "q_peak" in methods
     want_q_energy_peak = "q_energy_peak" in methods
-    want_q_energy_peak_topk = "q_energy_peak_topk" in methods
-    want_q_energy_peak_topk_log = "q_energy_peak_topk_log" in methods
-    want_q_compact = "q_compact" in methods
-    need_log_q_energy = want_q_energy_peak_topk_log
     compute_q_phi = _is_phase_variable(variable)
     results: Dict[str, Optional[dict]] = {}
 
@@ -666,208 +576,94 @@ def estimate_segment_bpm_methods(
         band_freqs = freqs[band_mask]
         hann = np.hanning(win_len)
 
-        single_bpms: List[float] = []
-        uniform_bpms: List[float] = []
-        q_compact_bpms: List[float] = []
+        q_energy_bpms: List[float] = []
         q_peak_bpms: List[float] = []
         q_energy_peak_bpms: List[float] = []
-        q_energy_peak_topk_bpms: List[float] = []
-        q_energy_peak_topk_log_bpms: List[float] = []
-        selected_channels: List[Any] = []
         all_q_details: List[Dict[str, float]] = []
 
         for st in starts:
             end = st + win_len
+            spectra: List[np.ndarray] = []
+            q_energy_w: List[float] = []
+            q_peak_w: List[float] = []
+            q_ep_w: List[float] = []
+            peak_freqs: List[float] = []
 
-            # --- Single: max energy-ratio channel + FFT peak ---
-            if want_single:
-                best_ch, best_er = None, -1.0
-                for ch in ch_list:
-                    hp = ch_map[ch][variable]["highpass_filtered"]
-                    if len(hp) < end:
-                        continue
-                    er = _energy_ratio(hp[st:end], fs, cfg)
-                    if er > best_er:
-                        best_er, best_ch = er, ch
+            for ch in ch_list:
+                bp = ch_map[ch][variable]["bandpass_filtered"]
+                hp = ch_map[ch][variable]["highpass_filtered"]
+                raw = ch_map[ch][variable]["original"]
+                if len(bp) < end:
+                    spectra.append(np.zeros_like(band_freqs))
+                    q_energy_w.append(0.0)
+                    q_peak_w.append(0.0)
+                    q_ep_w.append(0.0)
+                    peak_freqs.append(np.nan)
+                    continue
 
-                if best_ch is not None:
-                    bp_slice = ch_map[best_ch][variable]["bandpass_filtered"][st:end]
-                    f_hz = _estimate_breathing_freq_hz(
-                        bp_slice, fs, cfg.breath_freq_low, cfg.breath_freq_high
-                    )
-                    single_bpms.append(f_hz * 60.0 if np.isfinite(f_hz) else np.nan)
-                    selected_channels.append(best_ch)
-                else:
-                    single_bpms.append(np.nan)
-                    selected_channels.append(None)
+                ref_slice = raw[st:end] if len(raw) >= end else bp[st:end]
+                p_norm, _qc, f_peak, detail_c = _channel_spectrum_and_q(
+                    bp[st:end],
+                    ref_slice,
+                    fs,
+                    cfg,
+                    nfft,
+                    band_mask,
+                    band_freqs,
+                    hann,
+                    q_weight_mode="compact",
+                    compute_q_phi=compute_q_phi,
+                )
+                energy_ratio = (
+                    _energy_ratio(hp[st:end], fs, cfg) if len(hp) >= end else 0.0
+                )
+                q_energy = _quality_from_energy_ratio(
+                    energy_ratio,
+                    cfg.energy_ratio_min,
+                    cfg.energy_ratio_good,
+                    cfg.eps,
+                )
+                q_ep = _compose_q_weight(
+                    detail_c["q_valid"],
+                    detail_c["q_peak"],
+                    detail_c["q_phi"],
+                    "energy_peak",
+                    cfg.eps,
+                    q_energy=q_energy,
+                )
+                detail_c = {
+                    **detail_c,
+                    "energy_ratio": energy_ratio,
+                    "q_energy": q_energy,
+                    "q_energy_peak": q_ep,
+                }
+                q_energy_w.append(q_energy)
+                q_peak_w.append(detail_c["q_peak"])
+                q_ep_w.append(q_ep)
+                peak_freqs.append(f_peak)
+                all_q_details.append(detail_c)
+                spectra.append(p_norm)
 
-            need_fusion = (
-                want_uniform
-                or want_q_peak
-                or want_q_energy_peak
-                or want_q_energy_peak_topk
-                or want_q_energy_peak_topk_log
-                or want_q_compact
-            )
-            if need_fusion:
-                (
-                    spectra,
-                    q_compact,
-                    q_peak_only,
-                    q_energy_peak_only,
-                    q_energy_peak_log_only,
-                    q_energies,
-                    q_energies_log,
-                    peak_freqs,
-                ) = ([], [], [], [], [], [], [], [])
-                for ch in ch_list:
-                    bp = ch_map[ch][variable]["bandpass_filtered"]
-                    hp = ch_map[ch][variable]["highpass_filtered"]
-                    raw = ch_map[ch][variable]["original"]
-                    if len(bp) < end:
-                        spectra.append(np.zeros_like(band_freqs))
-                        q_compact.append(0.0)
-                        q_peak_only.append(0.0)
-                        q_energy_peak_only.append(0.0)
-                        q_energy_peak_log_only.append(0.0)
-                        q_energies.append(0.0)
-                        q_energies_log.append(0.0)
-                        peak_freqs.append(np.nan)
-                        continue
+            spectra_arr = np.vstack(spectra)
 
-                    ref_slice = raw[st:end] if len(raw) >= end else bp[st:end]
-                    p_norm, _qc, f_peak, detail_c = _channel_spectrum_and_q(
-                        bp[st:end],
-                        ref_slice,
-                        fs,
-                        cfg,
-                        nfft,
-                        band_mask,
-                        band_freqs,
-                        hann,
-                        q_weight_mode="compact",
-                        compute_q_phi=compute_q_phi,
+            if want_q_energy:
+                q_energy_bpms.append(
+                    _fuse_weighted_spectrum(
+                        spectra_arr, np.asarray(q_energy_w), band_freqs, cfg, peak_freqs
                     )
-                    energy_ratio = (
-                        _energy_ratio(hp[st:end], fs, cfg) if len(hp) >= end else 0.0
+                )
+            if want_q_peak:
+                q_peak_bpms.append(
+                    _fuse_weighted_spectrum(
+                        spectra_arr, np.asarray(q_peak_w), band_freqs, cfg, peak_freqs
                     )
-                    q_energy = _quality_from_energy_ratio(
-                        energy_ratio,
-                        cfg.energy_ratio_min,
-                        cfg.energy_ratio_good,
-                        cfg.eps,
-                        log_map=False,
+                )
+            if want_q_energy_peak:
+                q_energy_peak_bpms.append(
+                    _fuse_weighted_spectrum(
+                        spectra_arr, np.asarray(q_ep_w), band_freqs, cfg, peak_freqs
                     )
-                    q_ep = _compose_q_weight(
-                        detail_c["q_valid"],
-                        detail_c["q_peak"],
-                        detail_c["q_phi"],
-                        "energy_peak",
-                        cfg.eps,
-                        q_energy=q_energy,
-                    )
-                    if need_log_q_energy:
-                        q_energy_log = _quality_from_energy_ratio(
-                            energy_ratio,
-                            cfg.energy_ratio_min,
-                            cfg.energy_ratio_good,
-                            cfg.eps,
-                            log_map=True,
-                        )
-                        q_ep_log = _compose_q_weight(
-                            detail_c["q_valid"],
-                            detail_c["q_peak"],
-                            detail_c["q_phi"],
-                            "energy_peak",
-                            cfg.eps,
-                            q_energy=q_energy_log,
-                        )
-                    else:
-                        q_energy_log, q_ep_log = 0.0, 0.0
-                    detail_c = {
-                        **detail_c,
-                        "energy_ratio": energy_ratio,
-                        "q_energy": q_energy,
-                        "q_energy_peak": q_ep,
-                        "q_energy_log": q_energy_log,
-                        "q_energy_peak_log": q_ep_log,
-                    }
-                    q_compact.append(detail_c["q_c"])
-                    q_peak_only.append(detail_c["q_peak"])
-                    q_energy_peak_only.append(q_ep)
-                    q_energy_peak_log_only.append(q_ep_log)
-                    q_energies.append(q_energy)
-                    q_energies_log.append(q_energy_log)
-                    peak_freqs.append(f_peak)
-                    all_q_details.append(detail_c)
-                    spectra.append(p_norm)
-
-                spectra_arr = np.vstack(spectra)
-
-                if want_uniform:
-                    valid_rows = np.sum(spectra_arr, axis=1) > cfg.eps
-                    if np.any(valid_rows):
-                        uniform_fused = np.mean(spectra_arr[valid_rows], axis=0)
-                    else:
-                        uniform_fused = np.zeros_like(band_freqs)
-                    uniform_bpms.append(_bpm_from_fused_spectrum(uniform_fused, band_freqs, cfg))
-
-                if want_q_compact:
-                    q_compact_bpms.append(
-                        _fuse_weighted_spectrum(
-                            spectra_arr, np.asarray(q_compact), band_freqs, cfg, peak_freqs
-                        )
-                    )
-
-                if want_q_peak:
-                    q_peak_bpms.append(
-                        _fuse_weighted_spectrum(
-                            spectra_arr, np.asarray(q_peak_only), band_freqs, cfg, peak_freqs
-                        )
-                    )
-
-                if want_q_energy_peak:
-                    q_energy_peak_bpms.append(
-                        _fuse_weighted_spectrum(
-                            spectra_arr,
-                            np.asarray(q_energy_peak_only),
-                            band_freqs,
-                            cfg,
-                            peak_freqs,
-                        )
-                    )
-
-                if want_q_energy_peak_topk:
-                    topk_weights = _mask_top_k_by_score(
-                        np.asarray(q_energy_peak_only),
-                        np.asarray(q_energies),
-                        cfg.energy_peak_top_k,
-                    )
-                    q_energy_peak_topk_bpms.append(
-                        _fuse_weighted_spectrum(
-                            spectra_arr,
-                            topk_weights,
-                            band_freqs,
-                            cfg,
-                            peak_freqs,
-                        )
-                    )
-
-                if want_q_energy_peak_topk_log:
-                    topk_log_weights = _mask_top_k_by_score(
-                        np.asarray(q_energy_peak_log_only),
-                        np.asarray(q_energies_log),
-                        cfg.energy_peak_top_k,
-                    )
-                    q_energy_peak_topk_log_bpms.append(
-                        _fuse_weighted_spectrum(
-                            spectra_arr,
-                            topk_log_weights,
-                            band_freqs,
-                            cfg,
-                            peak_freqs,
-                        )
-                    )
+                )
 
         seg_out: dict = {
             "segment": seg_name,
@@ -876,18 +672,9 @@ def estimate_segment_bpm_methods(
             "metadata": metadata,
             "q_summary": _aggregate_q_details(all_q_details),
         }
-        if want_single:
-            seg_out["fft_single_max_energy"] = {
-                **_seg_bpm_stats(np.asarray(single_bpms), bpm_gt, len(starts)),
-                "selected_channels": selected_channels,
-            }
-        if want_uniform:
-            seg_out["fft_uniform_fusion"] = _seg_bpm_stats(
-                np.asarray(uniform_bpms), bpm_gt, len(starts)
-            )
-        if want_q_compact:
-            seg_out["fft_q_fusion"] = _seg_bpm_stats(
-                np.asarray(q_compact_bpms), bpm_gt, len(starts)
+        if want_q_energy:
+            seg_out["fft_q_energy_fusion"] = _seg_bpm_stats(
+                np.asarray(q_energy_bpms), bpm_gt, len(starts)
             )
         if want_q_peak:
             seg_out["fft_q_peak_fusion"] = _seg_bpm_stats(
@@ -896,14 +683,6 @@ def estimate_segment_bpm_methods(
         if want_q_energy_peak:
             seg_out["fft_q_energy_peak_fusion"] = _seg_bpm_stats(
                 np.asarray(q_energy_peak_bpms), bpm_gt, len(starts)
-            )
-        if want_q_energy_peak_topk:
-            seg_out["fft_q_energy_peak_topk_fusion"] = _seg_bpm_stats(
-                np.asarray(q_energy_peak_topk_bpms), bpm_gt, len(starts)
-            )
-        if want_q_energy_peak_topk_log:
-            seg_out["fft_q_energy_peak_topk_log_fusion"] = _seg_bpm_stats(
-                np.asarray(q_energy_peak_topk_log_bpms), bpm_gt, len(starts)
             )
         results[seg_name] = seg_out
 
@@ -1054,54 +833,43 @@ def run_chfusion_benchmark(
     config: Optional[ChFusionConfig] = None,
     verbose: bool = True,
 ) -> dict:
-    """Two-part benchmark over all CS signal variables.
+    """Benchmark 4 CS variables × 3 fusion methods (FFT+q_energy / q_peak / q_energy_peak).
 
-    Part 1 — variable comparison (Single / max-energy channel only).
-    Part 2 — method comparison (Single, Uniform, FFT+q_peak, FFT+q_energy_peak,
-    FFT+q_ep_topK) per variable. See ``docs/chfusion_q_energy_peak.md``.
-
-    Returns dict with ``part1``, ``part2``, ``leaderboard`` keys.
+    See ``docs/chfusion_q_energy_peak.md``. Returns ``part2``, ``leaderboard``.
     """
     cfg = config or ChFusionConfig()
     mp = metric_params or BreathMetricParams()
     fp = filter_params or FilterParams()
     var_list = list(variables or [v[0] for v in CS_SIGNAL_VARIABLES])
+    fusion_methods = ("q_energy", "q_peak", "q_energy_peak")
 
-    part1: Dict[str, dict] = {}
     part2: Dict[str, dict] = {}
 
     for variable in var_list:
         mc, fs = run_multichannel_segment_filtering(
             frames, segment_config, variable=variable, filter_params=fp, verbose=verbose
         )
-        r1 = estimate_segment_bpm_methods(
-            mc, variable=variable, config=cfg, metric_params=mp, methods=("single",)
-        )
         r2 = estimate_segment_bpm_methods(
             mc,
             variable=variable,
             config=cfg,
             metric_params=mp,
-            methods=(
-                "single", "uniform", "q_peak", "q_energy_peak",
-                "q_energy_peak_topk", "q_energy_peak_topk_log",
-            ),
+            methods=fusion_methods,
         )
-        part1[variable] = {"results": r1, "sampling_rate": fs}
         part2[variable] = {"results": r2, "sampling_rate": fs}
 
-    leaderboard = build_benchmark_leaderboard(part1, part2)
+    leaderboard = build_benchmark_leaderboard(part2)
     return {
         "variables": var_list,
-        "part1": part1,
         "part2": part2,
         "leaderboard": leaderboard,
         "segment_config": segment_config,
+        "methods": fusion_methods,
     }
 
 
-def build_benchmark_leaderboard(part1: dict, part2: dict) -> List[dict]:
-    """Rank all (variable × method) combos from Part 2 by mean relative BPM error."""
+def build_benchmark_leaderboard(part2: dict) -> List[dict]:
+    """Rank all (variable × method) combos by mean relative BPM error."""
     rows: List[dict] = []
 
     for variable, block in part2.items():
@@ -1146,11 +914,8 @@ def print_part1_variable_table(part1: dict) -> None:
 
 
 def print_part2_method_tables(part2: dict) -> None:
-    """Part 2: compare Single / Uniform / FFT+q_peak / FFT+q_energy_peak / topK / topK_log."""
-    print(
-        "\n=== Part 2：方法对比（Single / Uniform / FFT+q_peak / "
-        "FFT+q_energy_peak / FFT+q_ep_topK / FFT+q_ep_topK_log）==="
-    )
+    """Part 2: per variable, compare FFT+q_energy / FFT+q_peak / FFT+q_energy_peak."""
+    print("\n=== 方法对比（FFT+q_energy / FFT+q_peak / FFT+q_energy_peak）===")
     for variable, block in part2.items():
         print(f"\n--- {_variable_display_name(variable)} ({variable}) ---")
         print(f"{'方法':<12} {'mean err%':>10} {'±std%':>8} {'n_seg':>6}")
@@ -1532,7 +1297,7 @@ def plot_overview_matrix_bars(
 ):
     """Grouped bar chart summarising all 16 variable×method combos.
 
-    X-axis: four CS observables. Four bars per group = Single / Uniform / FFT+q_peak / FFT+q_energy_peak.
+    X-axis: four CS observables. Three bars = FFT+q_energy / FFT+q_peak / FFT+q_energy_peak.
     Height = mean segment relative BPM error (%); error bars = ±std across segments.
     """
     import matplotlib.pyplot as plt
@@ -1550,7 +1315,7 @@ def plot_overview_matrix_bars(
     n_var = len(variables)
     n_meth = len(FUSION_METHOD_LABELS)
     x = np.arange(n_var)
-    bar_width = 0.13
+    bar_width = 0.22
     offsets = (np.arange(n_meth) - (n_meth - 1) / 2) * bar_width
 
     fig, ax = plt.subplots(figsize=(max(10, n_var * 2.5), 5.5))
@@ -1570,7 +1335,7 @@ def plot_overview_matrix_bars(
     ax.set_xticks(x)
     ax.set_xticklabels(var_labels, rotation=15, ha="right")
     ax.set_ylabel("Mean relative BPM error (%)")
-    ax.set_title("Overview: 4 variables × 6 methods (segment mean ± window std)")
+    ax.set_title("Overview: 4 variables × 3 methods (segment mean ± window std)")
     ax.legend(loc="upper right", fontsize=8)
     ax.grid(True, axis="y", alpha=0.25)
     plt.tight_layout()
@@ -1619,7 +1384,7 @@ def plot_overview_matrix_heatmap(
     ax.set_yticks(np.arange(len(var_labels)))
     ax.set_xticklabels(meth_labels)
     ax.set_yticklabels(var_labels)
-    ax.set_title("Mean relative BPM error (%) — 4 variables × 6 methods")
+    ax.set_title("Mean relative BPM error (%) — 4 variables × 3 methods")
 
     for i in range(means.shape[0]):
         for j in range(means.shape[1]):
@@ -1911,25 +1676,11 @@ def plot_benchmark_violins(
     show: bool = True,
     save: bool = True,
 ) -> List[Path]:
-    """Generate all benchmark violin/overview figures from a ``run_chfusion_benchmark`` result.
+    """Generate benchmark violin/overview figures (3 methods × 4 variables).
 
-    Order: Part-1 variable violins → Part-2 per-variable method violins (×4) →
-    4×4 overview (bars, heatmap, violins-by-method, violins-by-variable).
-
-    Returns list of saved PDF paths when ``save=True``.
+    Per-variable method violins + overview bars / heatmap / matrix violins.
     """
     saved: List[Path] = []
-
-    part1_name = _chfusion_figure_name("chfusion_part1_variable_violins")
-    plot_part1_variable_violins(
-        benchmark["part1"],
-        figures_dir=figures_dir,
-        filename=part1_name,
-        show=show,
-        save=save,
-    )
-    if save and figures_dir is not None:
-        saved.append(Path(figures_dir) / part1_name)
 
     for variable, block in benchmark["part2"].items():
         slug = variable.replace("_", "-")
@@ -1939,7 +1690,7 @@ def plot_benchmark_violins(
             method_labels=FUSION_METHOD_LABELS,
             figures_dir=figures_dir,
             filename=part2_name,
-            title=f"Part 2: {_variable_plot_label(variable)} - methods comparison",
+            title=f"{_variable_plot_label(variable)} — fusion methods",
             show=show,
             save=save,
         )
