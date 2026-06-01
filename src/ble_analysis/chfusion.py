@@ -995,6 +995,25 @@ def collect_window_signed_errors(
 #   plot_overview_violins_by_variable     → Part 2 merged into one 2×2 figure
 #
 # Called from plot_benchmark_violins() after Part 1/2 individual figures.
+# All benchmark figures are saved as vector PDF (CHFUSION_FIGURE_FORMAT).
+
+# Benchmark figure output format (vector PDF for publication / LaTeX)
+CHFUSION_FIGURE_FORMAT = "pdf"
+CHFUSION_FIGURE_EXT = ".pdf"
+
+
+def _chfusion_figure_name(stem: str) -> str:
+    """Return benchmark figure filename with the configured extension."""
+    return f"{stem}{CHFUSION_FIGURE_EXT}"
+
+
+def _save_chfusion_figure(fig, path: Path, *, bbox_inches: Optional[str] = None) -> Path:
+    """Save a matplotlib figure as PDF (``CHFUSION_FIGURE_FORMAT``)."""
+    kwargs: Dict[str, Any] = {"format": CHFUSION_FIGURE_FORMAT}
+    if bbox_inches is not None:
+        kwargs["bbox_inches"] = bbox_inches
+    fig.savefig(path, **kwargs)
+    return path
 
 
 def _signed_errors_from_method_block(block: dict, bpm_gt: float) -> np.ndarray:
@@ -1075,13 +1094,16 @@ def plot_bpm_error_violins(
     *,
     method_labels: Sequence[Tuple[str, str, str]] = FUSION_METHOD_LABELS,
     figures_dir=None,
-    filename: str = "chfusion_fft_q_bpm_error_violins.png",
+    filename: str = "",
     title: Optional[str] = None,
     show: bool = True,
     save: bool = True,
 ):
     """Violin plot of signed window-level BPM error; y=0 is ground truth."""
     import matplotlib.pyplot as plt
+
+    if not filename:
+        filename = _chfusion_figure_name("chfusion_fft_q_bpm_error_violins")
 
     records = collect_window_signed_errors(method_results, method_labels)
     if not records:
@@ -1150,7 +1172,7 @@ def plot_bpm_error_violins(
     fig_path = None
     if save and figures_dir is not None:
         fig_path = Path(figures_dir) / filename
-        fig.savefig(fig_path, dpi=150)
+        _save_chfusion_figure(fig, fig_path)
         print(f"✓ 小提琴图已保存: {fig_path}")
     if show:
         plt.show()
@@ -1271,7 +1293,7 @@ def plot_overview_matrix_bars(
     benchmark: dict,
     *,
     figures_dir=None,
-    filename: str = "chfusion_overview_4x3_mean_error_bars.png",
+    filename: str = "",
     show: bool = True,
     save: bool = True,
 ):
@@ -1281,6 +1303,9 @@ def plot_overview_matrix_bars(
     Height = mean segment relative BPM error (%); error bars = ±std across segments.
     """
     import matplotlib.pyplot as plt
+
+    if not filename:
+        filename = _chfusion_figure_name("chfusion_overview_4x3_mean_error_bars")
 
     part2 = benchmark["part2"]
     variables, means, stds = _part2_matrix_stats(part2)
@@ -1319,7 +1344,7 @@ def plot_overview_matrix_bars(
 
     if save and figures_dir is not None:
         fig_path = Path(figures_dir) / filename
-        fig.savefig(fig_path, dpi=150)
+        _save_chfusion_figure(fig, fig_path)
         print(f"✓ 4×3 柱状图已保存: {fig_path}")
     if show:
         plt.show()
@@ -1332,7 +1357,7 @@ def plot_overview_matrix_heatmap(
     benchmark: dict,
     *,
     figures_dir=None,
-    filename: str = "chfusion_overview_4x3_heatmap.png",
+    filename: str = "",
     show: bool = True,
     save: bool = True,
 ):
@@ -1342,6 +1367,9 @@ def plot_overview_matrix_heatmap(
     Same underlying stats as ``plot_overview_matrix_bars``.
     """
     import matplotlib.pyplot as plt
+
+    if not filename:
+        filename = _chfusion_figure_name("chfusion_overview_4x3_heatmap")
 
     part2 = benchmark["part2"]
     variables, means, _stds = _part2_matrix_stats(part2)
@@ -1372,7 +1400,7 @@ def plot_overview_matrix_heatmap(
 
     if save and figures_dir is not None:
         fig_path = Path(figures_dir) / filename
-        fig.savefig(fig_path, dpi=150)
+        _save_chfusion_figure(fig, fig_path)
         print(f"✓ 4×3 热力图已保存: {fig_path}")
     if show:
         plt.show()
@@ -1385,7 +1413,7 @@ def plot_overview_violins_by_method(
     benchmark: dict,
     *,
     figures_dir=None,
-    filename: str = "chfusion_overview_4x3_violins_by_method.png",
+    filename: str = "",
     show: bool = True,
     save: bool = True,
 ):
@@ -1395,6 +1423,9 @@ def plot_overview_violins_by_method(
     Each panel layout matches ``plot_part1_variable_violins`` (4 colours per segment).
     """
     import matplotlib.pyplot as plt
+
+    if not filename:
+        filename = _chfusion_figure_name("chfusion_overview_4x3_violins_by_method")
 
     records = collect_part2_variable_method_errors(benchmark["part2"])
     if not records:
@@ -1450,7 +1481,7 @@ def plot_overview_violins_by_method(
 
     if save and figures_dir is not None:
         fig_path = Path(figures_dir) / filename
-        fig.savefig(fig_path, dpi=150, bbox_inches="tight")
+        _save_chfusion_figure(fig, fig_path, bbox_inches="tight")
         print(f"✓ 按方法分组小提琴图已保存: {fig_path}")
     if show:
         plt.show()
@@ -1463,7 +1494,7 @@ def plot_overview_violins_by_variable(
     benchmark: dict,
     *,
     figures_dir=None,
-    filename: str = "chfusion_overview_4x3_violins_by_variable.png",
+    filename: str = "",
     show: bool = True,
     save: bool = True,
 ):
@@ -1473,6 +1504,9 @@ def plot_overview_violins_by_variable(
     Each panel layout matches ``plot_bpm_error_violins`` (3 colours per segment).
     """
     import matplotlib.pyplot as plt
+
+    if not filename:
+        filename = _chfusion_figure_name("chfusion_overview_4x3_violins_by_variable")
 
     records = collect_part2_variable_method_errors(benchmark["part2"])
     if not records:
@@ -1528,7 +1562,7 @@ def plot_overview_violins_by_variable(
 
     if save and figures_dir is not None:
         fig_path = Path(figures_dir) / filename
-        fig.savefig(fig_path, dpi=150, bbox_inches="tight")
+        _save_chfusion_figure(fig, fig_path, bbox_inches="tight")
         print(f"✓ 按变量分组小提琴图已保存: {fig_path}")
     if show:
         plt.show()
@@ -1541,12 +1575,15 @@ def plot_part1_variable_violins(
     part1: dict,
     *,
     figures_dir=None,
-    filename: str = "chfusion_part1_variable_violins.png",
+    filename: str = "",
     show: bool = True,
     save: bool = True,
 ):
     """Part-1 violin: per segment, compare four variables (Single method). y=0 is GT."""
     import matplotlib.pyplot as plt
+
+    if not filename:
+        filename = _chfusion_figure_name("chfusion_part1_variable_violins")
 
     records = collect_part1_variable_errors(part1)
     if not records:
@@ -1618,7 +1655,7 @@ def plot_part1_variable_violins(
     fig_path = None
     if save and figures_dir is not None:
         fig_path = Path(figures_dir) / filename
-        fig.savefig(fig_path, dpi=150)
+        _save_chfusion_figure(fig, fig_path)
         print(f"✓ Part-1 小提琴图已保存: {fig_path}")
     if show:
         plt.show()
@@ -1639,41 +1676,45 @@ def plot_benchmark_violins(
     Order: Part-1 variable violins → Part-2 per-variable method violins (×4) →
     4×3 overview (bars, heatmap, violins-by-method, violins-by-variable).
 
-    Returns list of saved PNG paths when ``save=True``.
+    Returns list of saved PDF paths when ``save=True``.
     """
     saved: List[Path] = []
 
+    part1_name = _chfusion_figure_name("chfusion_part1_variable_violins")
     plot_part1_variable_violins(
         benchmark["part1"],
         figures_dir=figures_dir,
+        filename=part1_name,
         show=show,
         save=save,
     )
     if save and figures_dir is not None:
-        saved.append(Path(figures_dir) / "chfusion_part1_variable_violins.png")
+        saved.append(Path(figures_dir) / part1_name)
 
     for variable, block in benchmark["part2"].items():
         slug = variable.replace("_", "-")
+        part2_name = _chfusion_figure_name(f"chfusion_part2_{slug}_violins")
         plot_bpm_error_violins(
             block["results"],
             method_labels=FUSION_METHOD_LABELS,
             figures_dir=figures_dir,
-            filename=f"chfusion_part2_{slug}_violins.png",
+            filename=part2_name,
             title=f"Part 2: {_variable_plot_label(variable)} - Single / Uniform / FFT+q_peak",
             show=show,
             save=save,
         )
         if save and figures_dir is not None:
-            saved.append(Path(figures_dir) / f"chfusion_part2_{slug}_violins.png")
+            saved.append(Path(figures_dir) / part2_name)
 
     overview_specs = [
-        ("chfusion_overview_4x3_mean_error_bars.png", plot_overview_matrix_bars),
-        ("chfusion_overview_4x3_heatmap.png", plot_overview_matrix_heatmap),
-        ("chfusion_overview_4x3_violins_by_method.png", plot_overview_violins_by_method),
-        ("chfusion_overview_4x3_violins_by_variable.png", plot_overview_violins_by_variable),
+        ("chfusion_overview_4x3_mean_error_bars", plot_overview_matrix_bars),
+        ("chfusion_overview_4x3_heatmap", plot_overview_matrix_heatmap),
+        ("chfusion_overview_4x3_violins_by_method", plot_overview_violins_by_method),
+        ("chfusion_overview_4x3_violins_by_variable", plot_overview_violins_by_variable),
     ]
-    for fname, plot_fn in overview_specs:
-        plot_fn(benchmark, figures_dir=figures_dir, show=show, save=save)
+    for stem, plot_fn in overview_specs:
+        fname = _chfusion_figure_name(stem)
+        plot_fn(benchmark, figures_dir=figures_dir, filename=fname, show=show, save=save)
         if save and figures_dir is not None:
             saved.append(Path(figures_dir) / fname)
 

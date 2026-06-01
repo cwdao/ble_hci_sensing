@@ -55,14 +55,14 @@ Outputs
 - Console tables: Part 1 variable ranking, Part 2 method tables per variable,
   overall leaderboard (12 combos sorted by mean relative BPM error).
 - ``outputs/reports/chfusion_benchmark_matrix.npy`` — full numeric results.
-- Violin plots (English labels only; y=0 dashed line = ground truth):
-  - ``chfusion_part1_variable_violins.png`` — 4 variables x segments (Single only)
-  - ``chfusion_part2_<variable>_violins.png`` — 3 methods x segments per variable
+- Figures (PDF vector format, English labels; y=0 dashed line = ground truth):
+  - ``chfusion_part1_variable_violins.pdf`` — 4 variables x segments (Single only)
+  - ``chfusion_part2_<variable>_violins.pdf`` — 3 methods x segments per variable
   - **4×3 overview** (all variables × all methods):
-    - ``chfusion_overview_4x3_mean_error_bars.png`` — grouped bar chart (mean ± std)
-    - ``chfusion_overview_4x3_heatmap.png`` — mean error heatmap
-    - ``chfusion_overview_4x3_violins_by_method.png`` — 1×3 panels: per method, 4 variables
-    - ``chfusion_overview_4x3_violins_by_variable.png`` — 2×2 panels: per variable, 3 methods
+    - ``chfusion_overview_4x3_mean_error_bars.pdf`` — grouped bar chart (mean ± std)
+    - ``chfusion_overview_4x3_heatmap.pdf`` — mean error heatmap
+    - ``chfusion_overview_4x3_violins_by_method.pdf`` — 1×3 panels: per method, 4 variables
+    - ``chfusion_overview_4x3_violins_by_variable.pdf`` — 2×2 panels: per variable, 3 methods
   Violin markers: **black bar = mean**, **white bar = median** of window-level
   signed BPM errors (estimated - GT).
 
@@ -210,9 +210,9 @@ print(f"Saved: {report_path}")
 # %% [markdown]
 # ## 5. Violin plots (signed BPM error; GT at y=0)
 #
-# All figures are written by ``plot_benchmark_violins`` (see ``chfusion.py``).
+# All figures are written as **PDF** by ``plot_benchmark_violins`` (see ``chfusion.py``).
 #
-# | Figure | What it compares |
+# | Figure (``.pdf``) | What it compares |
 # |--------|------------------|
 # | ``part1_variable_violins`` | 4 variables, Single only (Part 1) |
 # | ``part2_<var>_violins`` | 3 methods for one variable (Part 2, ×4 files) |
