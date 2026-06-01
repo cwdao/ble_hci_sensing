@@ -981,6 +981,34 @@ def collect_window_signed_errors(
     return records
 
 
+# ---------------------------------------------------------------------------
+# Overview plotting: full 4 variables × 3 methods matrix
+# ---------------------------------------------------------------------------
+# Part 1 violins compare variables (Single only); Part 2 violins compare methods
+# per variable (4 separate figures). The functions below add aggregate views:
+#
+#   collect_part2_variable_method_errors  → flat records for all 12 combos
+#   _part2_matrix_stats                   → mean/std matrices for bars & heatmap
+#   plot_overview_matrix_bars             → grouped bar chart (leaderboard view)
+#   plot_overview_matrix_heatmap          → colour matrix of mean rel error
+#   plot_overview_violins_by_method       → Part 1 extended to 3 methods
+#   plot_overview_violins_by_variable     → Part 2 merged into one 2×2 figure
+#
+# Called from plot_benchmark_violins() after Part 1/2 individual figures.
+
+
+def _signed_errors_from_method_block(block: dict, bpm_gt: float) -> np.ndarray:
+    """Window-level signed BPM errors (estimated − GT) from one method result block."""
+    signed = block.get("bpm_signed_err_per_window")
+    if signed is None:
+        signed = np.array(
+            [b - bpm_gt if np.isfinite(b) else np.nan for b in block["bpm_per_window"]],
+            dtype=float,
+        )
+    signed = np.asarray(signed, dtype=float)
+    return signed[np.isfinite(signed)]
+
+
 def collect_part1_variable_errors(part1: dict) -> List[dict]:
     """Part-1: signed errors per segment × variable (Single method only)."""
     records: List[dict] = []
@@ -995,17 +1023,7 @@ def collect_part1_variable_errors(part1: dict) -> List[dict]:
             single = row.get("fft_single_max_energy")
             if single is None:
                 continue
-            signed = single.get("bpm_signed_err_per_window")
-            if signed is None:
-                signed = np.array(
-                    [
-                        b - bpm_gt if np.isfinite(b) else np.nan
-                        for b in single["bpm_per_window"]
-                    ],
-                    dtype=float,
-                )
-            signed = np.asarray(signed, dtype=float)
-            signed = signed[np.isfinite(signed)]
+            signed = _signed_errors_from_method_block(single, bpm_gt)
             records.append(
                 {
                     "segment": seg_name,
@@ -1015,6 +1033,40 @@ def collect_part1_variable_errors(part1: dict) -> List[dict]:
                     "signed_errors": signed,
                 }
             )
+    return records
+
+
+def collect_part2_variable_method_errors(part2: dict) -> List[dict]:
+    """Collect window-level signed errors for every segment × variable × method.
+
+    Each record has keys: segment, variable, variable_label, method, method_key,
+    bpm_gt, signed_errors. Used by overview violin plots (4×3 matrix).
+    """
+    records: List[dict] = []
+    for variable, block in part2.items():
+        results = block["results"]
+        var_label = _variable_plot_label(variable)
+        for seg_name in sorted(results.keys()):
+            row = results[seg_name]
+            if row is None or row.get("bpm_gt") is None:
+                continue
+            bpm_gt = float(row["bpm_gt"])
+            for label, key, _color in FUSION_METHOD_LABELS:
+                method_block = row.get(key)
+                if method_block is None:
+                    continue
+                signed = _signed_errors_from_method_block(method_block, bpm_gt)
+                records.append(
+                    {
+                        "segment": seg_name,
+                        "variable": variable,
+                        "variable_label": var_label,
+                        "method": label,
+                        "method_key": key,
+                        "bpm_gt": bpm_gt,
+                        "signed_errors": signed,
+                    }
+                )
     return records
 
 
@@ -1131,6 +1183,360 @@ def _violin_legend_with_stats(method_handles: List) -> List:
     return list(method_handles) + stat_handles
 
 
+def _draw_grouped_violins_on_ax(
+    ax,
+    records: List[dict],
+    *,
+    segments: Sequence[str],
+    group_ids: Sequence[str],
+    group_field: str,
+    colors: Dict[str, str],
+    gt_by_seg: Dict[str, float],
+    title: Optional[str] = None,
+    show_ylabel: bool = True,
+) -> None:
+    """Draw segment-grouped violins on an existing axes.
+
+    Layout: one x-axis group per script segment; within each group, one violin
+    per entry in ``group_ids`` (either 4 variables or 3 methods). Shared by
+    Part 1/2 and overview multi-panel figures.
+    """
+    n_groups = len(group_ids)
+    group_gap = 1.0
+    group_width = 0.85
+    violin_width = group_width / max(n_groups, 1)
+
+    for i, seg in enumerate(segments):
+        group_center = i * group_gap
+        for j, gid in enumerate(group_ids):
+            rec = next(
+                (r for r in records if r["segment"] == seg and r[group_field] == gid),
+                None,
+            )
+            if rec is None:
+                continue
+            errors = rec["signed_errors"]
+            pos = group_center + (j - (n_groups - 1) / 2) * violin_width
+            color = colors.get(gid, "gray")
+
+            if len(errors) >= 2:
+                parts = ax.violinplot(
+                    [errors],
+                    positions=[pos],
+                    widths=violin_width * 0.85,
+                    showmeans=True,
+                    showmedians=True,
+                    showextrema=False,
+                )
+                for body in parts["bodies"]:
+                    body.set_facecolor(color)
+                    body.set_edgecolor("black")
+                    body.set_alpha(0.65)
+                parts["cmeans"].set_color("black")
+                parts["cmeans"].set_linewidth(1.2)
+                parts["cmedians"].set_color("white")
+                parts["cmedians"].set_linewidth(1.5)
+            elif len(errors) == 1:
+                ax.scatter([pos], errors, color=color, edgecolors="black", s=40, zorder=4)
+
+    ax.axhline(0.0, color="black", linestyle="--", linewidth=1.2, alpha=0.75)
+    ax.set_xticks([i * group_gap for i in range(len(segments))])
+    ax.set_xticklabels([f"{seg}\nGT={gt_by_seg[seg]:.2f}" for seg in segments], fontsize=8)
+    if show_ylabel:
+        ax.set_ylabel("BPM error (estimated - GT)")
+    if title:
+        ax.set_title(title, fontsize=10)
+    ax.grid(True, axis="y", alpha=0.25)
+
+
+def _part2_matrix_stats(part2: dict) -> Tuple[List[str], np.ndarray, np.ndarray]:
+    """Aggregate Part-2 results into 4×3 mean/std matrices (%).
+
+    Rows follow ``CS_SIGNAL_VARIABLES`` order; columns follow ``FUSION_METHOD_LABELS``.
+    Mean = average segment-level relative BPM error; std = std of those segment errors.
+    """
+    variables = [v[0] for v in CS_SIGNAL_VARIABLES if v[0] in part2]
+    n_var, n_meth = len(variables), len(FUSION_METHOD_LABELS)
+    means = np.full((n_var, n_meth), np.nan)
+    stds = np.full((n_var, n_meth), np.nan)
+    for i, variable in enumerate(variables):
+        for j, (_label, key, _color) in enumerate(FUSION_METHOD_LABELS):
+            stats = _overall_rel_error(part2[variable]["results"], key)
+            means[i, j] = stats["mean_rel_err_pct"]
+            stds[i, j] = stats["std_rel_err_pct"]
+    return variables, means, stds
+
+
+def plot_overview_matrix_bars(
+    benchmark: dict,
+    *,
+    figures_dir=None,
+    filename: str = "chfusion_overview_4x3_mean_error_bars.png",
+    show: bool = True,
+    save: bool = True,
+):
+    """Grouped bar chart summarising all 12 variable×method combos.
+
+    X-axis: four CS observables. Three bars per group = Single / Uniform / FFT+q_peak.
+    Height = mean segment relative BPM error (%); error bars = ±std across segments.
+    """
+    import matplotlib.pyplot as plt
+
+    part2 = benchmark["part2"]
+    variables, means, stds = _part2_matrix_stats(part2)
+    if not variables:
+        print("⚠️  无 Part-2 数据，跳过 4×3 柱状图")
+        return None
+
+    var_labels = [_variable_plot_label(v) for v in variables]
+    n_var = len(variables)
+    n_meth = len(FUSION_METHOD_LABELS)
+    x = np.arange(n_var)
+    bar_width = 0.22
+    offsets = (np.arange(n_meth) - (n_meth - 1) / 2) * bar_width
+
+    fig, ax = plt.subplots(figsize=(max(10, n_var * 2.5), 5.5))
+    for j, (label, _key, color) in enumerate(FUSION_METHOD_LABELS):
+        ax.bar(
+            x + offsets[j],
+            means[:, j],
+            bar_width,
+            yerr=stds[:, j],
+            capsize=3,
+            label=label,
+            color=color,
+            edgecolor="black",
+            alpha=0.85,
+        )
+
+    ax.set_xticks(x)
+    ax.set_xticklabels(var_labels, rotation=15, ha="right")
+    ax.set_ylabel("Mean relative BPM error (%)")
+    ax.set_title("Overview: 4 variables × 3 methods (segment mean ± window std)")
+    ax.legend(loc="upper right", fontsize=8)
+    ax.grid(True, axis="y", alpha=0.25)
+    plt.tight_layout()
+
+    if save and figures_dir is not None:
+        fig_path = Path(figures_dir) / filename
+        fig.savefig(fig_path, dpi=150)
+        print(f"✓ 4×3 柱状图已保存: {fig_path}")
+    if show:
+        plt.show()
+    else:
+        plt.close(fig)
+    return fig
+
+
+def plot_overview_matrix_heatmap(
+    benchmark: dict,
+    *,
+    figures_dir=None,
+    filename: str = "chfusion_overview_4x3_heatmap.png",
+    show: bool = True,
+    save: bool = True,
+):
+    """Heatmap of mean relative BPM error (%) for the 4×3 benchmark matrix.
+
+    Darker/warmer cells = higher error. Cell text shows numeric mean err%.
+    Same underlying stats as ``plot_overview_matrix_bars``.
+    """
+    import matplotlib.pyplot as plt
+
+    part2 = benchmark["part2"]
+    variables, means, _stds = _part2_matrix_stats(part2)
+    if not variables:
+        print("⚠️  无 Part-2 数据，跳过 4×3 热力图")
+        return None
+
+    var_labels = [_variable_plot_label(v) for v in variables]
+    meth_labels = [m[0] for m in FUSION_METHOD_LABELS]
+
+    fig, ax = plt.subplots(figsize=(6.5, 4.5))
+    im = ax.imshow(means, aspect="auto", cmap="YlOrRd")
+    ax.set_xticks(np.arange(len(meth_labels)))
+    ax.set_yticks(np.arange(len(var_labels)))
+    ax.set_xticklabels(meth_labels)
+    ax.set_yticklabels(var_labels)
+    ax.set_title("Mean relative BPM error (%) — 4 variables × 3 methods")
+
+    for i in range(means.shape[0]):
+        for j in range(means.shape[1]):
+            val = means[i, j]
+            if np.isfinite(val):
+                ax.text(j, i, f"{val:.1f}", ha="center", va="center", fontsize=9, color="black")
+
+    cbar = fig.colorbar(im, ax=ax, fraction=0.046, pad=0.04)
+    cbar.set_label("Mean rel. error (%)")
+    plt.tight_layout()
+
+    if save and figures_dir is not None:
+        fig_path = Path(figures_dir) / filename
+        fig.savefig(fig_path, dpi=150)
+        print(f"✓ 4×3 热力图已保存: {fig_path}")
+    if show:
+        plt.show()
+    else:
+        plt.close(fig)
+    return fig
+
+
+def plot_overview_violins_by_method(
+    benchmark: dict,
+    *,
+    figures_dir=None,
+    filename: str = "chfusion_overview_4x3_violins_by_method.png",
+    show: bool = True,
+    save: bool = True,
+):
+    """1×3 violin panels: variable comparison under each fusion method.
+
+    Extends Part 1 (which only shows Single) to Uniform and FFT+q_peak.
+    Each panel layout matches ``plot_part1_variable_violins`` (4 colours per segment).
+    """
+    import matplotlib.pyplot as plt
+
+    records = collect_part2_variable_method_errors(benchmark["part2"])
+    if not records:
+        print("⚠️  无 Part-2 误差数据，跳过按方法分组小提琴图")
+        return None
+
+    segments = sorted({r["segment"] for r in records})
+    gt_by_seg = {r["segment"]: r["bpm_gt"] for r in records}
+    variables = [v[0] for v in CS_SIGNAL_VARIABLES if any(r["variable"] == v[0] for r in records)]
+    var_colors = {v: PART1_VARIABLE_COLORS.get(v, "gray") for v in variables}
+    var_legend_labels = {v: _variable_plot_label(v) for v in variables}
+
+    fig, axes = plt.subplots(1, 3, figsize=(max(18, len(segments) * 2.2 * 3), 5.5), sharey=True)
+    if len(FUSION_METHOD_LABELS) == 1:
+        axes = [axes]
+
+    for ax, (method_label, _key, _color) in zip(axes, FUSION_METHOD_LABELS):
+        subset = [r for r in records if r["method"] == method_label]
+        _draw_grouped_violins_on_ax(
+            ax,
+            subset,
+            segments=segments,
+            group_ids=variables,
+            group_field="variable",
+            colors=var_colors,
+            gt_by_seg=gt_by_seg,
+            title=f"Method: {method_label}",
+            show_ylabel=(ax is axes[0]),
+        )
+
+    legend_handles = _violin_legend_with_stats([
+        plt.Line2D(
+            [0], [0],
+            color=var_colors[v],
+            lw=6, alpha=0.65,
+            label=var_legend_labels[v],
+        )
+        for v in variables
+    ])
+    fig.legend(
+        handles=legend_handles,
+        loc="upper center",
+        bbox_to_anchor=(0.5, 0.02),
+        ncol=min(4, len(variables) + 3),
+        fontsize=7,
+    )
+    fig.suptitle(
+        "Overview: variable comparison per method (window-level signed BPM error)",
+        y=1.02,
+        fontsize=11,
+    )
+    plt.tight_layout(rect=[0, 0.06, 1, 0.98])
+
+    if save and figures_dir is not None:
+        fig_path = Path(figures_dir) / filename
+        fig.savefig(fig_path, dpi=150, bbox_inches="tight")
+        print(f"✓ 按方法分组小提琴图已保存: {fig_path}")
+    if show:
+        plt.show()
+    else:
+        plt.close(fig)
+    return fig
+
+
+def plot_overview_violins_by_variable(
+    benchmark: dict,
+    *,
+    figures_dir=None,
+    filename: str = "chfusion_overview_4x3_violins_by_variable.png",
+    show: bool = True,
+    save: bool = True,
+):
+    """2×2 violin panels: method comparison for each CS observable.
+
+    Merges the four Part-2 per-variable figures into one overview page.
+    Each panel layout matches ``plot_bpm_error_violins`` (3 colours per segment).
+    """
+    import matplotlib.pyplot as plt
+
+    records = collect_part2_variable_method_errors(benchmark["part2"])
+    if not records:
+        print("⚠️  无 Part-2 误差数据，跳过按变量分组小提琴图")
+        return None
+
+    segments = sorted({r["segment"] for r in records})
+    gt_by_seg = {r["segment"]: r["bpm_gt"] for r in records}
+    variables = [v[0] for v in CS_SIGNAL_VARIABLES if any(r["variable"] == v[0] for r in records)]
+    method_labels = [m[0] for m in FUSION_METHOD_LABELS]
+    method_colors = {m[0]: m[2] for m in FUSION_METHOD_LABELS}
+
+    n_var = len(variables)
+    n_cols = 2
+    n_rows = int(np.ceil(n_var / n_cols))
+    fig, axes = plt.subplots(n_rows, n_cols, figsize=(max(14, len(segments) * 2.2 * n_cols), 5.5 * n_rows), sharey=True)
+    axes_flat = np.atleast_1d(axes).flatten()
+
+    for ax, variable in zip(axes_flat, variables):
+        subset = [r for r in records if r["variable"] == variable]
+        _draw_grouped_violins_on_ax(
+            ax,
+            subset,
+            segments=segments,
+            group_ids=method_labels,
+            group_field="method",
+            colors=method_colors,
+            gt_by_seg=gt_by_seg,
+            title=_variable_plot_label(variable),
+            show_ylabel=(ax is axes_flat[0]),
+        )
+
+    for ax in axes_flat[n_var:]:
+        ax.set_visible(False)
+
+    legend_handles = _violin_legend_with_stats([
+        plt.Line2D([0], [0], color=method_colors[m], lw=6, alpha=0.65, label=m)
+        for m in method_labels
+    ])
+    fig.legend(
+        handles=legend_handles,
+        loc="upper center",
+        bbox_to_anchor=(0.5, 0.02),
+        ncol=len(method_labels) + 3,
+        fontsize=7,
+    )
+    fig.suptitle(
+        "Overview: method comparison per variable (window-level signed BPM error)",
+        y=1.01,
+        fontsize=11,
+    )
+    plt.tight_layout(rect=[0, 0.05, 1, 0.98])
+
+    if save and figures_dir is not None:
+        fig_path = Path(figures_dir) / filename
+        fig.savefig(fig_path, dpi=150, bbox_inches="tight")
+        print(f"✓ 按变量分组小提琴图已保存: {fig_path}")
+    if show:
+        plt.show()
+    else:
+        plt.close(fig)
+    return fig
+
+
 def plot_part1_variable_violins(
     part1: dict,
     *,
@@ -1228,7 +1634,13 @@ def plot_benchmark_violins(
     show: bool = True,
     save: bool = True,
 ) -> List[Path]:
-    """Draw Part-1 (variable) and Part-2 (method×variable) violin plots."""
+    """Generate all benchmark violin/overview figures from a ``run_chfusion_benchmark`` result.
+
+    Order: Part-1 variable violins → Part-2 per-variable method violins (×4) →
+    4×3 overview (bars, heatmap, violins-by-method, violins-by-variable).
+
+    Returns list of saved PNG paths when ``save=True``.
+    """
     saved: List[Path] = []
 
     plot_part1_variable_violins(
@@ -1242,7 +1654,7 @@ def plot_benchmark_violins(
 
     for variable, block in benchmark["part2"].items():
         slug = variable.replace("_", "-")
-        fig = plot_bpm_error_violins(
+        plot_bpm_error_violins(
             block["results"],
             method_labels=FUSION_METHOD_LABELS,
             figures_dir=figures_dir,
@@ -1253,5 +1665,16 @@ def plot_benchmark_violins(
         )
         if save and figures_dir is not None:
             saved.append(Path(figures_dir) / f"chfusion_part2_{slug}_violins.png")
+
+    overview_specs = [
+        ("chfusion_overview_4x3_mean_error_bars.png", plot_overview_matrix_bars),
+        ("chfusion_overview_4x3_heatmap.png", plot_overview_matrix_heatmap),
+        ("chfusion_overview_4x3_violins_by_method.png", plot_overview_violins_by_method),
+        ("chfusion_overview_4x3_violins_by_variable.png", plot_overview_violins_by_variable),
+    ]
+    for fname, plot_fn in overview_specs:
+        plot_fn(benchmark, figures_dir=figures_dir, show=show, save=save)
+        if save and figures_dir is not None:
+            saved.append(Path(figures_dir) / fname)
 
     return saved

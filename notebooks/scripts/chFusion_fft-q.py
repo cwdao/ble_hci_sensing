@@ -37,14 +37,32 @@ Comparison design (two parts)
   - **Uniform**     equal-weight average of per-channel normalized FFT spectra
   - **FFT+q_peak**  q_peak-weighted fusion (spectral peak SNR only; no q_phi)
 
+**Overview 4×3 — Full matrix across variables and methods**
+  Part 1 only compares variables under Single; Part 2 splits by variable.
+  The overview figures put all 12 (variable × method) combinations on one page:
+
+  - Bar chart / heatmap: segment-level mean relative error (leaderboard metrics)
+  - Violins by method (1×3): extends Part 1 to all three methods — which variable
+    wins under Single vs Uniform vs FFT+q_peak?
+  - Violins by variable (2×2): merges Part 2 into one figure — fusion vs single
+    per CS observable
+
+  Use bars/heatmap for a quick ranking; use matrix violins for dispersion
+  (window-level signed error distribution) across segments.
+
 Outputs
 -------
 - Console tables: Part 1 variable ranking, Part 2 method tables per variable,
   overall leaderboard (12 combos sorted by mean relative BPM error).
 - ``outputs/reports/chfusion_benchmark_matrix.npy`` — full numeric results.
 - Violin plots (English labels only; y=0 dashed line = ground truth):
-  - ``chfusion_part1_variable_violins.png`` — 4 variables x segments (Single)
+  - ``chfusion_part1_variable_violins.png`` — 4 variables x segments (Single only)
   - ``chfusion_part2_<variable>_violins.png`` — 3 methods x segments per variable
+  - **4×3 overview** (all variables × all methods):
+    - ``chfusion_overview_4x3_mean_error_bars.png`` — grouped bar chart (mean ± std)
+    - ``chfusion_overview_4x3_heatmap.png`` — mean error heatmap
+    - ``chfusion_overview_4x3_violins_by_method.png`` — 1×3 panels: per method, 4 variables
+    - ``chfusion_overview_4x3_violins_by_variable.png`` — 2×2 panels: per variable, 3 methods
   Violin markers: **black bar = mean**, **white bar = median** of window-level
   signed BPM errors (estimated - GT).
 
@@ -70,7 +88,7 @@ Or execute ``# %%`` cells in VS Code Python Interactive.
 # | 2 | Part 1 table — variable comparison (Single only) |
 # | 3 | Part 2 tables — method comparison per variable |
 # | 4 | Leaderboard + save `.npy` |
-# | 5 | Violin plots (signed window error; GT at y=0) |
+# | 5 | Violin plots (Part 1/2 + 4×3 overview: bars, heatmap, matrix violins) |
 #
 # See module docstring above for full workflow description.
 
@@ -192,12 +210,22 @@ print(f"Saved: {report_path}")
 # %% [markdown]
 # ## 5. Violin plots (signed BPM error; GT at y=0)
 #
-# - Part 1: one figure, 4 variables per segment (Single method)
-# - Part 2: one figure per variable, 3 methods per segment
-# - Black bar inside violin = **mean**; white bar = **median** of window errors
-# - Segments with only one window shown as scatter points
+# All figures are written by ``plot_benchmark_violins`` (see ``chfusion.py``).
+#
+# | Figure | What it compares |
+# |--------|------------------|
+# | ``part1_variable_violins`` | 4 variables, Single only (Part 1) |
+# | ``part2_<var>_violins`` | 3 methods for one variable (Part 2, ×4 files) |
+# | ``overview_4x3_mean_error_bars`` | 12 combos: mean segment rel err ± std |
+# | ``overview_4x3_heatmap`` | Same 12 combos as colour matrix |
+# | ``overview_4x3_violins_by_method`` | 1×3 panels: 4 variables per method |
+# | ``overview_4x3_violins_by_variable`` | 2×2 panels: 3 methods per variable |
+#
+# Violin conventions: y = estimated BPM − GT; dashed y=0 = ground truth;
+# black bar = mean, white bar = median of window errors; 1-window segments → scatter.
 
 # %%
+# Part 1 + Part 2 per-variable figures, then 4×3 overview (bars, heatmap, matrix violins).
 plot_benchmark_violins(
     benchmark,
     figures_dir=FIGURES_DIR,
