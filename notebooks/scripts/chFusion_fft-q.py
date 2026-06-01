@@ -42,9 +42,9 @@ Comparison design (two parts)
   The overview figures put all 12 (variable × method) combinations on one page:
 
   - Bar chart / heatmap: segment-level mean relative error (leaderboard metrics)
-  - Violins by method (1×3): extends Part 1 to all three methods — which variable
+  - Violins by method (3×1): extends Part 1 to all three methods — which variable
     wins under Single vs Uniform vs FFT+q_peak?
-  - Violins by variable (2×2): merges Part 2 into one figure — fusion vs single
+  - Violins by variable (4×1): merges Part 2 into one figure — fusion vs single
     per CS observable
 
   Use bars/heatmap for a quick ranking; use matrix violins for dispersion
@@ -61,8 +61,8 @@ Outputs
   - **4×3 overview** (all variables × all methods):
     - ``chfusion_overview_4x3_mean_error_bars.pdf`` — grouped bar chart (mean ± std)
     - ``chfusion_overview_4x3_heatmap.pdf`` — mean error heatmap
-    - ``chfusion_overview_4x3_violins_by_method.pdf`` — 1×3 panels: per method, 4 variables
-    - ``chfusion_overview_4x3_violins_by_variable.pdf`` — 2×2 panels: per variable, 3 methods
+    - ``chfusion_overview_4x3_violins_by_method.pdf`` — 3×1 panels: per method, 4 variables
+    - ``chfusion_overview_4x3_violins_by_variable.pdf`` — 4×1 panels: per variable, 3 methods
   Violin markers: **black bar = mean**, **white bar = median** of window-level
   signed BPM errors (estimated - GT).
 
@@ -218,8 +218,8 @@ print(f"Saved: {report_path}")
 # | ``part2_<var>_violins`` | 3 methods for one variable (Part 2, ×4 files) |
 # | ``overview_4x3_mean_error_bars`` | 12 combos: mean segment rel err ± std |
 # | ``overview_4x3_heatmap`` | Same 12 combos as colour matrix |
-# | ``overview_4x3_violins_by_method`` | 1×3 panels: 4 variables per method |
-# | ``overview_4x3_violins_by_variable`` | 2×2 panels: 3 methods per variable |
+# | ``overview_4x3_violins_by_method`` | 3×1 stack: 4 variables per method |
+# | ``overview_4x3_violins_by_variable`` | 4×1 stack: 3 methods per variable |
 #
 # Violin conventions: y = estimated BPM − GT; dashed y=0 = ground truth;
 # black bar = mean, white bar = median of window errors; 1-window segments → scatter.

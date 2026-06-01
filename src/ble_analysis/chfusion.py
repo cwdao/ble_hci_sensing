@@ -13,6 +13,8 @@ Comparison methods
 - **fft_uniform_fusion**: equal-weight average of ``P̄_c(f)`` (FFT-uniform).
 - **fft_q_fusion**: compact q-weighted fusion (default ``q_weight_mode='compact'``).
 - **fft_q_peak_fusion**: use **only** ``q_peak`` as weight (ablation vs compact q).
+- **fft_q_energy_peak_fusion**: ``q_energy_peak`` = geometric mean of ``q_energy``
+  (breath/total band energy ratio, same metric as Single channel pick) and ``q_peak``.
 
 Quality score (q_c)
 -----------------
@@ -27,6 +29,11 @@ Three sub-scores (doc §1.3):
     ``ρ = max(P) / median(P)``, then log-map ρ to [0, 1] between
     ``peak_snr_min`` and ``peak_snr_good``.
 
+``q_energy``
+    Breath-band energy concentration (Single-channel selector metric):
+    ``η = E_breath / E_total`` on highpass signal, linear-mapped to [0, 1]
+    between ``energy_ratio_min`` and ``energy_ratio_good``.
+
 ``q_phi``
     Phase smoothness after unwrap. Jump rate =
     ``mean(|Δφ| > phase_jump_rad)``; then ``q_phi = exp(-jump_rate / jump_rate_good)``.
@@ -38,6 +45,10 @@ Compact fusion weight (default)::
 Peak-only ablation::
 
     q_c = q_peak
+
+Energy + peak fusion (``q_energy_peak``)::
+
+    q_c = (q_energy · q_peak)^(1/2)
 
 Fusion (doc §1.4)::
 
@@ -80,25 +91,28 @@ VARIABLE_PLOT_LABELS: Dict[str, str] = {
     "phases": "Total phase (unwrapped)",
 }
 
-# Part-2 默认对比的三种融合方法（不含 compact q，因幅值信号无独立相位 q_phi）
+# Part-2 默认对比的四种融合方法（不含 compact q，因幅值信号无独立相位 q_phi）
 FUSION_METHOD_KEYS: Tuple[str, ...] = (
     "fft_single_max_energy",
     "fft_uniform_fusion",
     "fft_q_peak_fusion",
+    "fft_q_energy_peak_fusion",
 )
 
 FUSION_METHOD_LABELS: Tuple[Tuple[str, str, str], ...] = (
     ("Single", "fft_single_max_energy", "steelblue"),
     ("Uniform", "fft_uniform_fusion", "seagreen"),
     ("FFT+q_peak", "fft_q_peak_fusion", "mediumpurple"),
+    ("FFT+q_energy_peak", "fft_q_energy_peak_fusion", "darkorange"),
 )
 
 # Supported q_c composition modes for weighted fusion.
-QWeightMode = Literal["compact", "peak_only"]
+QWeightMode = Literal["compact", "peak_only", "energy_peak"]
 
 Q_WEIGHT_MODE_LABELS: Dict[str, str] = {
     "compact": "q_c = (q_valid × q_peak × q_phi)^(1/3)",
     "peak_only": "q_c = q_peak",
+    "energy_peak": "q_c = (q_energy × q_peak)^(1/2)",
 }
 
 
@@ -123,6 +137,10 @@ class ChFusionConfig:
     # --- q_peak: ρ = peak/median mapped in log domain ---
     peak_snr_min: float = 1.5
     peak_snr_good: float = 6.0
+
+    # --- q_energy: breath/total band energy ratio (Single selector metric) ---
+    energy_ratio_min: float = 0.02
+    energy_ratio_good: float = 0.20
 
     # --- q_phi: unwrap phase jump penalty ---
     phase_jump_rad: float = 1.2
@@ -152,12 +170,19 @@ def print_q_score_documentation(cfg: Optional[ChFusionConfig] = None) -> None:
         f"ρ=max(P)/median(P), log map [{cfg.peak_snr_min}, {cfg.peak_snr_good}]"
     )
     print(
+        f"q_energy      | 呼吸/全频段能量比 (≈SNR)     | "
+        f"η=E_breath/E_total, linear map [{cfg.energy_ratio_min}, {cfg.energy_ratio_good}]"
+    )
+    print(
         f"q_phi         | 相位 unwrap 后平滑度         | "
         f"exp(-jump_rate/{cfg.jump_rate_good}), jump>{cfg.phase_jump_rad} rad"
     )
     print("-" * 72)
     print(f"compact q_c   | 默认融合权重                 | {Q_WEIGHT_MODE_LABELS['compact']}")
     print(f"peak-only q_c | 消融：仅谱峰质量             | {Q_WEIGHT_MODE_LABELS['peak_only']}")
+    print(
+        f"energy_peak   | 能量比 + 谱峰                | {Q_WEIGHT_MODE_LABELS['energy_peak']}"
+    )
     print(f"当前配置 q_weight_mode = '{cfg.q_weight_mode}'\n")
 
 
@@ -991,8 +1016,8 @@ def collect_window_signed_errors(
 #   _part2_matrix_stats                   → mean/std matrices for bars & heatmap
 #   plot_overview_matrix_bars             → grouped bar chart (leaderboard view)
 #   plot_overview_matrix_heatmap          → colour matrix of mean rel error
-#   plot_overview_violins_by_method       → Part 1 extended to 3 methods
-#   plot_overview_violins_by_variable     → Part 2 merged into one 2×2 figure
+#   plot_overview_violins_by_method       → Part 1 extended to 3 methods (N×1 stack)
+#   plot_overview_violins_by_variable     → Part 2 merged into one N×1 figure
 #
 # Called from plot_benchmark_violins() after Part 1/2 individual figures.
 # All benchmark figures are saved as vector PDF (CHFUSION_FIGURE_FORMAT).
@@ -1417,7 +1442,7 @@ def plot_overview_violins_by_method(
     show: bool = True,
     save: bool = True,
 ):
-    """1×3 violin panels: variable comparison under each fusion method.
+    """N×1 violin panels: variable comparison under each fusion method (vertical stack).
 
     Extends Part 1 (which only shows Single) to Uniform and FFT+q_peak.
     Each panel layout matches ``plot_part1_variable_violins`` (4 colours per segment).
@@ -1438,11 +1463,17 @@ def plot_overview_violins_by_method(
     var_colors = {v: PART1_VARIABLE_COLORS.get(v, "gray") for v in variables}
     var_legend_labels = {v: _variable_plot_label(v) for v in variables}
 
-    fig, axes = plt.subplots(1, 3, figsize=(max(18, len(segments) * 2.2 * 3), 5.5), sharey=True)
-    if len(FUSION_METHOD_LABELS) == 1:
-        axes = [axes]
+    n_methods = len(FUSION_METHOD_LABELS)
+    panel_h = 5.5
+    fig, axes = plt.subplots(
+        n_methods,
+        1,
+        figsize=(max(12, len(segments) * 2.2), panel_h * n_methods),
+        sharey=True,
+    )
+    axes_flat = np.atleast_1d(axes).flatten()
 
-    for ax, (method_label, _key, _color) in zip(axes, FUSION_METHOD_LABELS):
+    for ax, (method_label, _key, _color) in zip(axes_flat, FUSION_METHOD_LABELS):
         subset = [r for r in records if r["method"] == method_label]
         _draw_grouped_violins_on_ax(
             ax,
@@ -1453,7 +1484,7 @@ def plot_overview_violins_by_method(
             colors=var_colors,
             gt_by_seg=gt_by_seg,
             title=f"Method: {method_label}",
-            show_ylabel=(ax is axes[0]),
+            show_ylabel=(ax is axes_flat[0]),
         )
 
     legend_handles = _violin_legend_with_stats([
@@ -1468,16 +1499,16 @@ def plot_overview_violins_by_method(
     fig.legend(
         handles=legend_handles,
         loc="upper center",
-        bbox_to_anchor=(0.5, 0.02),
+        bbox_to_anchor=(0.5, 0.01),
         ncol=min(4, len(variables) + 3),
         fontsize=7,
     )
     fig.suptitle(
         "Overview: variable comparison per method (window-level signed BPM error)",
-        y=1.02,
+        y=0.995,
         fontsize=11,
     )
-    plt.tight_layout(rect=[0, 0.06, 1, 0.98])
+    plt.tight_layout(rect=[0, 0.04, 1, 0.98])
 
     if save and figures_dir is not None:
         fig_path = Path(figures_dir) / filename
@@ -1498,7 +1529,7 @@ def plot_overview_violins_by_variable(
     show: bool = True,
     save: bool = True,
 ):
-    """2×2 violin panels: method comparison for each CS observable.
+    """N×1 violin panels: method comparison for each CS observable (vertical stack).
 
     Merges the four Part-2 per-variable figures into one overview page.
     Each panel layout matches ``plot_bpm_error_violins`` (3 colours per segment).
@@ -1520,9 +1551,13 @@ def plot_overview_violins_by_variable(
     method_colors = {m[0]: m[2] for m in FUSION_METHOD_LABELS}
 
     n_var = len(variables)
-    n_cols = 2
-    n_rows = int(np.ceil(n_var / n_cols))
-    fig, axes = plt.subplots(n_rows, n_cols, figsize=(max(14, len(segments) * 2.2 * n_cols), 5.5 * n_rows), sharey=True)
+    panel_h = 5.5
+    fig, axes = plt.subplots(
+        n_var,
+        1,
+        figsize=(max(12, len(segments) * 2.2), panel_h * n_var),
+        sharey=True,
+    )
     axes_flat = np.atleast_1d(axes).flatten()
 
     for ax, variable in zip(axes_flat, variables):
@@ -1539,9 +1574,6 @@ def plot_overview_violins_by_variable(
             show_ylabel=(ax is axes_flat[0]),
         )
 
-    for ax in axes_flat[n_var:]:
-        ax.set_visible(False)
-
     legend_handles = _violin_legend_with_stats([
         plt.Line2D([0], [0], color=method_colors[m], lw=6, alpha=0.65, label=m)
         for m in method_labels
@@ -1549,16 +1581,16 @@ def plot_overview_violins_by_variable(
     fig.legend(
         handles=legend_handles,
         loc="upper center",
-        bbox_to_anchor=(0.5, 0.02),
+        bbox_to_anchor=(0.5, 0.01),
         ncol=len(method_labels) + 3,
         fontsize=7,
     )
     fig.suptitle(
         "Overview: method comparison per variable (window-level signed BPM error)",
-        y=1.01,
+        y=0.995,
         fontsize=11,
     )
-    plt.tight_layout(rect=[0, 0.05, 1, 0.98])
+    plt.tight_layout(rect=[0, 0.04, 1, 0.98])
 
     if save and figures_dir is not None:
         fig_path = Path(figures_dir) / filename
