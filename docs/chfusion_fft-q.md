@@ -887,3 +887,10 @@ spontaneous breathing:
 > **初版不要把算法做复杂，而要把“BLE CS 可以做呼吸感知”这件事证明扎实。**
 
 如果 FFT+$q$ 已经明显优于 single FFT 和 uniform FFT，那这篇文章的主线就已经成立了。
+
+# 其他验证
+
+> **q_energy + q_peak 融合**（含 Top-K 变体）已实现，详见 [`chfusion_q_energy_peak.md`](chfusion_q_energy_peak.md)。
+
+1. ~~top-K 验证，取前多少个高 q 的会不会效果更好~~ → 已实现 `FFT+q_ep_topK`（默认 K=20，可调 `ChFusionConfig.energy_peak_top_k`）
+2. 怎么融合幅值和相位？1）同一信道的 a,p 取 q 高的那个 2）幅值相位分别算，整体出来后再选边融合。

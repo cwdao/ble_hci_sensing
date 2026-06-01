@@ -32,19 +32,19 @@ Comparison design (two parts)
   then take the FFT peak BPM on that channel's bandpass signal.
 
 **Part 2 — Which fusion method is best (per variable)?**
-  Four variables x four methods:
-  - **Single**           max-energy-ratio single channel (same as Part 1)
-  - **Uniform**          equal-weight average of per-channel normalized FFT spectra
-  - **FFT+q_peak**       q_peak-weighted fusion (spectral peak SNR only; no q_phi)
-  - **FFT+q_energy_peak**  ``(q_energy × q_peak)^(1/2)`` where ``q_energy`` maps
-    breath/total band energy ratio (Single selector metric) to [0, 1]
+  Four variables x five methods (see ``docs/chfusion_q_energy_peak.md``):
+  - **Single**              max-energy-ratio single channel (same as Part 1)
+  - **Uniform**               equal-weight average of per-channel normalized FFT spectra
+  - **FFT+q_peak**            q_peak-weighted fusion
+  - **FFT+q_energy_peak**     ``(q_energy × q_peak)^(1/2)`` on all channels
+  - **FFT+q_ep_topK**         Top-K by q_energy (default K=20), then energy+peak fusion
 
-**Overview 4×4 — Full matrix across variables and methods**
+**Overview — Full matrix across variables and methods**
   Part 1 only compares variables under Single; Part 2 splits by variable.
-  The overview figures put all 16 (variable × method) combinations on one page:
+  The overview figures put all 20 (variable × method) combinations on one page:
 
   - Bar chart / heatmap: segment-level mean relative error (leaderboard metrics)
-  - Violins by method (4×1): extends Part 1 to all four methods
+  - Violins by method (5×1): extends Part 1 to all five methods
   - Violins by variable (4×1): merges Part 2 into one figure
 
   Use bars/heatmap for a quick ranking; use matrix violins for dispersion
@@ -53,16 +53,16 @@ Comparison design (two parts)
 Outputs
 -------
 - Console tables: Part 1 variable ranking, Part 2 method tables per variable,
-  overall leaderboard (16 combos sorted by mean relative BPM error).
+  overall leaderboard (20 combos sorted by mean relative BPM error).
 - ``outputs/reports/chfusion_benchmark_matrix.npy`` — full numeric results.
 - Figures (PDF vector format, English labels; y=0 dashed line = ground truth):
   - ``chfusion_part1_variable_violins.pdf`` — 4 variables x segments (Single only)
-  - ``chfusion_part2_<variable>_violins.pdf`` — 4 methods x segments per variable
-  - **4×4 overview** (all variables × all methods):
+  - ``chfusion_part2_<variable>_violins.pdf`` — 5 methods x segments per variable
+  - **Overview** (all variables × all methods):
     - ``chfusion_overview_4x3_mean_error_bars.pdf`` — grouped bar chart (mean ± std)
     - ``chfusion_overview_4x3_heatmap.pdf`` — mean error heatmap
-    - ``chfusion_overview_4x3_violins_by_method.pdf`` — 4×1 panels: per method, 4 variables
-    - ``chfusion_overview_4x3_violins_by_variable.pdf`` — 4×1 panels: per variable, 4 methods
+    - ``chfusion_overview_4x3_violins_by_method.pdf`` — 5×1 panels: per method, 4 variables
+    - ``chfusion_overview_4x3_violins_by_variable.pdf`` — 4×1 panels: per variable, 5 methods
   Violin markers: **black bar = mean**, **white bar = median** of window-level
   signed BPM errors (estimated - GT).
 
@@ -125,6 +125,7 @@ REPORTS_DIR = _env["REPORTS_DIR"]
 #
 # Edit ``filepath`` and ``segment_config`` for other recordings.
 # Filter: median=3, HP 0.05 Hz, BP 0.1-0.35 Hz; sliding window 20 s / step 1 s.
+# energy_peak_top_k: Top-K prefilter for FFT+q_ep_topK (see docs/chfusion_q_energy_peak.md).
 
 # %%
 from ble_analysis.chfusion import (
@@ -163,6 +164,7 @@ chfusion_config = ChFusionConfig(
     window_length_sec=metric_params.window_length_sec,
     step_length_sec=metric_params.step_length_sec,
     enable_consensus=False,
+    energy_peak_top_k=20,  # FFT+q_ep_topK: keep top 20 channels by q_energy; None = all
 )
 
 variables = [v[0] for v in CS_SIGNAL_VARIABLES]
@@ -216,10 +218,10 @@ print(f"Saved: {report_path}")
 # |--------|------------------|
 # | ``part1_variable_violins`` | 4 variables, Single only (Part 1) |
 # | ``part2_<var>_violins`` | 3 methods for one variable (Part 2, ×4 files) |
-# | ``overview_4x3_mean_error_bars`` | 16 combos: mean segment rel err ± std |
-# | ``overview_4x3_heatmap`` | Same 16 combos as colour matrix |
-# | ``overview_4x3_violins_by_method`` | 4×1 stack: 4 variables per method |
-# | ``overview_4x3_violins_by_variable`` | 4×1 stack: 4 methods per variable |
+# | ``overview_4x3_mean_error_bars`` | 20 combos: mean segment rel err ± std |
+# | ``overview_4x3_heatmap`` | Same 20 combos as colour matrix |
+# | ``overview_4x3_violins_by_method`` | 5×1 stack: 4 variables per method |
+# | ``overview_4x3_violins_by_variable`` | 4×1 stack: 5 methods per variable |
 #
 # Violin conventions: y = estimated BPM − GT; dashed y=0 = ground truth;
 # black bar = mean, white bar = median of window errors; 1-window segments → scatter.

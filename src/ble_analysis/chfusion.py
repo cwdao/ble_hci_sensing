@@ -13,8 +13,8 @@ Comparison methods
 - **fft_uniform_fusion**: equal-weight average of ``P̄_c(f)`` (FFT-uniform).
 - **fft_q_fusion**: compact q-weighted fusion (default ``q_weight_mode='compact'``).
 - **fft_q_peak_fusion**: use **only** ``q_peak`` as weight (ablation vs compact q).
-- **fft_q_energy_peak_fusion**: ``q_energy_peak`` = geometric mean of ``q_energy``
-  (breath/total band energy ratio, same metric as Single channel pick) and ``q_peak``.
+- **fft_q_energy_peak_fusion**: ``q_energy_peak`` = geometric mean of ``q_energy`` and ``q_peak`` (see ``docs/chfusion_q_energy_peak.md``).
+- **fft_q_energy_peak_topk_fusion**: Top-K channels by ``q_energy``, then ``q_energy_peak`` fusion on survivors only.
 
 Quality score (q_c)
 -----------------
@@ -91,12 +91,13 @@ VARIABLE_PLOT_LABELS: Dict[str, str] = {
     "phases": "Total phase (unwrapped)",
 }
 
-# Part-2 默认对比的四种融合方法（不含 compact q，因幅值信号无独立相位 q_phi）
+# Part-2 默认对比的融合方法（详见 docs/chfusion_q_energy_peak.md）
 FUSION_METHOD_KEYS: Tuple[str, ...] = (
     "fft_single_max_energy",
     "fft_uniform_fusion",
     "fft_q_peak_fusion",
     "fft_q_energy_peak_fusion",
+    "fft_q_energy_peak_topk_fusion",
 )
 
 FUSION_METHOD_LABELS: Tuple[Tuple[str, str, str], ...] = (
@@ -104,6 +105,7 @@ FUSION_METHOD_LABELS: Tuple[Tuple[str, str, str], ...] = (
     ("Uniform", "fft_uniform_fusion", "seagreen"),
     ("FFT+q_peak", "fft_q_peak_fusion", "mediumpurple"),
     ("FFT+q_energy_peak", "fft_q_energy_peak_fusion", "darkorange"),
+    ("FFT+q_ep_topK", "fft_q_energy_peak_topk_fusion", "crimson"),
 )
 
 # Supported q_c composition modes for weighted fusion.
@@ -141,6 +143,9 @@ class ChFusionConfig:
     # --- q_energy: breath/total band energy ratio (Single selector metric) ---
     energy_ratio_min: float = 0.02
     energy_ratio_good: float = 0.20
+
+    # --- q_energy + q_peak Top-K prefilter (see docs/chfusion_q_energy_peak.md §5) ---
+    energy_peak_top_k: Optional[int] = 20
 
     # --- q_phi: unwrap phase jump penalty ---
     phase_jump_rad: float = 1.2
@@ -183,6 +188,13 @@ def print_q_score_documentation(cfg: Optional[ChFusionConfig] = None) -> None:
     print(
         f"energy_peak   | 能量比 + 谱峰                | {Q_WEIGHT_MODE_LABELS['energy_peak']}"
     )
+    topk = cfg.energy_peak_top_k
+    topk_str = str(topk) if topk is not None and topk > 0 else "all channels"
+    print(
+        f"q_ep_topK     | 先 q_energy Top-{topk_str} 再 energy+peak | "
+        f"ChFusionConfig.energy_peak_top_k"
+    )
+    print(f"详细说明见 docs/chfusion_q_energy_peak.md")
     print(f"当前配置 q_weight_mode = '{cfg.q_weight_mode}'\n")
 
 
@@ -272,6 +284,26 @@ def _compose_q_weight(
         return float((q_energy * q_peak + eps) ** 0.5)
     # compact: geometric mean of three sub-scores (doc §1.3)
     return float((q_valid * q_peak * q_phi + eps) ** (1.0 / 3.0))
+
+
+def _mask_top_k_by_score(
+    weights: np.ndarray, scores: np.ndarray, top_k: Optional[int]
+) -> np.ndarray:
+    """Zero fusion weights for channels outside Top-K (ranked by ``scores`` descending).
+
+    Used by ``fft_q_energy_peak_topk_fusion``: prefilter on ``q_energy``, then fuse
+    with ``q_energy_peak`` weights on survivors. See ``docs/chfusion_q_energy_peak.md`` §5.
+    """
+    w = np.asarray(weights, dtype=float)
+    s = np.asarray(scores, dtype=float)
+    n = len(w)
+    if top_k is None or top_k <= 0 or n <= top_k:
+        return w
+    k = min(int(top_k), n)
+    top_idx = np.argsort(s)[-k:]
+    mask = np.zeros(n, dtype=bool)
+    mask[top_idx] = True
+    return np.where(mask, w, 0.0)
 
 
 def _parabolic_peak_freq(f_band: np.ndarray, power_band: np.ndarray, k: int, eps: float) -> float:
@@ -548,7 +580,9 @@ def estimate_segment_bpm_methods(
     variable: str = "amplitudes",
     config: Optional[ChFusionConfig] = None,
     metric_params: Optional[BreathMetricParams] = None,
-    methods: Sequence[str] = ("single", "uniform", "q_peak", "q_energy_peak", "q_compact"),
+    methods: Sequence[str] = (
+        "single", "uniform", "q_peak", "q_energy_peak", "q_energy_peak_topk", "q_compact"
+    ),
     verbose: bool = False,
 ) -> Dict[str, Optional[dict]]:
     """Per-segment BPM for selected fusion methods.
@@ -556,9 +590,9 @@ def estimate_segment_bpm_methods(
     Parameters
     ----------
     methods
-        Subset of ``single``, ``uniform``, ``q_peak``, ``q_energy_peak``, ``q_compact``.
-        Part-1 variable study typically uses ``("single",)`` only.
-        Part-2 method study uses ``("single", "uniform", "q_peak", "q_energy_peak")``.
+        Subset of ``single``, ``uniform``, ``q_peak``, ``q_energy_peak``,
+        ``q_energy_peak_topk``, ``q_compact``.
+        Part-2 benchmark uses all five fusion baselines; see ``docs/chfusion_q_energy_peak.md``.
     """
     cfg = config or ChFusionConfig()
     mp = metric_params or BreathMetricParams()
@@ -566,6 +600,7 @@ def estimate_segment_bpm_methods(
     want_uniform = "uniform" in methods
     want_q_peak = "q_peak" in methods
     want_q_energy_peak = "q_energy_peak" in methods
+    want_q_energy_peak_topk = "q_energy_peak_topk" in methods
     want_q_compact = "q_compact" in methods
     compute_q_phi = _is_phase_variable(variable)
     results: Dict[str, Optional[dict]] = {}
@@ -610,6 +645,7 @@ def estimate_segment_bpm_methods(
         q_compact_bpms: List[float] = []
         q_peak_bpms: List[float] = []
         q_energy_peak_bpms: List[float] = []
+        q_energy_peak_topk_bpms: List[float] = []
         selected_channels: List[Any] = []
         all_q_details: List[Dict[str, float]] = []
 
@@ -638,9 +674,22 @@ def estimate_segment_bpm_methods(
                     single_bpms.append(np.nan)
                     selected_channels.append(None)
 
-            need_fusion = want_uniform or want_q_peak or want_q_energy_peak or want_q_compact
+            need_fusion = (
+                want_uniform
+                or want_q_peak
+                or want_q_energy_peak
+                or want_q_energy_peak_topk
+                or want_q_compact
+            )
             if need_fusion:
-                spectra, q_compact, q_peak_only, q_energy_peak_only, peak_freqs = [], [], [], [], []
+                spectra, q_compact, q_peak_only, q_energy_peak_only, q_energies, peak_freqs = (
+                    [],
+                    [],
+                    [],
+                    [],
+                    [],
+                    [],
+                )
                 for ch in ch_list:
                     bp = ch_map[ch][variable]["bandpass_filtered"]
                     hp = ch_map[ch][variable]["highpass_filtered"]
@@ -650,6 +699,7 @@ def estimate_segment_bpm_methods(
                         q_compact.append(0.0)
                         q_peak_only.append(0.0)
                         q_energy_peak_only.append(0.0)
+                        q_energies.append(0.0)
                         peak_freqs.append(np.nan)
                         continue
 
@@ -692,6 +742,7 @@ def estimate_segment_bpm_methods(
                     q_compact.append(detail_c["q_c"])
                     q_peak_only.append(detail_c["q_peak"])
                     q_energy_peak_only.append(q_ep)
+                    q_energies.append(q_energy)
                     peak_freqs.append(f_peak)
                     all_q_details.append(detail_c)
                     spectra.append(p_norm)
@@ -731,6 +782,22 @@ def estimate_segment_bpm_methods(
                         )
                     )
 
+                if want_q_energy_peak_topk:
+                    topk_weights = _mask_top_k_by_score(
+                        np.asarray(q_energy_peak_only),
+                        np.asarray(q_energies),
+                        cfg.energy_peak_top_k,
+                    )
+                    q_energy_peak_topk_bpms.append(
+                        _fuse_weighted_spectrum(
+                            spectra_arr,
+                            topk_weights,
+                            band_freqs,
+                            cfg,
+                            peak_freqs,
+                        )
+                    )
+
         seg_out: dict = {
             "segment": seg_name,
             "bpm_gt": bpm_gt,
@@ -758,6 +825,10 @@ def estimate_segment_bpm_methods(
         if want_q_energy_peak:
             seg_out["fft_q_energy_peak_fusion"] = _seg_bpm_stats(
                 np.asarray(q_energy_peak_bpms), bpm_gt, len(starts)
+            )
+        if want_q_energy_peak_topk:
+            seg_out["fft_q_energy_peak_topk_fusion"] = _seg_bpm_stats(
+                np.asarray(q_energy_peak_topk_bpms), bpm_gt, len(starts)
             )
         results[seg_name] = seg_out
 
@@ -911,7 +982,8 @@ def run_chfusion_benchmark(
     """Two-part benchmark over all CS signal variables.
 
     Part 1 — variable comparison (Single / max-energy channel only).
-    Part 2 — method comparison (Single, Uniform, FFT+q_peak, FFT+q_energy_peak) per variable.
+    Part 2 — method comparison (Single, Uniform, FFT+q_peak, FFT+q_energy_peak,
+    FFT+q_ep_topK) per variable. See ``docs/chfusion_q_energy_peak.md``.
 
     Returns dict with ``part1``, ``part2``, ``leaderboard`` keys.
     """
@@ -935,7 +1007,7 @@ def run_chfusion_benchmark(
             variable=variable,
             config=cfg,
             metric_params=mp,
-            methods=("single", "uniform", "q_peak", "q_energy_peak"),
+            methods=("single", "uniform", "q_peak", "q_energy_peak", "q_energy_peak_topk"),
         )
         part1[variable] = {"results": r1, "sampling_rate": fs}
         part2[variable] = {"results": r2, "sampling_rate": fs}
@@ -996,8 +1068,11 @@ def print_part1_variable_table(part1: dict) -> None:
 
 
 def print_part2_method_tables(part2: dict) -> None:
-    """Part 2: per variable, compare Single / Uniform / FFT+q_peak / FFT+q_energy_peak."""
-    print("\n=== Part 2：同一变量下方法对比（Single / Uniform / FFT+q_peak / FFT+q_energy_peak）===")
+    """Part 2: per variable, compare Single / Uniform / FFT+q_peak / FFT+q_energy_peak / FFT+q_ep_topK."""
+    print(
+        "\n=== Part 2：同一变量下方法对比"
+        "（Single / Uniform / FFT+q_peak / FFT+q_energy_peak / FFT+q_ep_topK）==="
+    )
     for variable, block in part2.items():
         print(f"\n--- {_variable_display_name(variable)} ({variable}) ---")
         print(f"{'方法':<12} {'mean err%':>10} {'±std%':>8} {'n_seg':>6}")
@@ -1062,7 +1137,7 @@ def collect_window_signed_errors(
 
 
 # ---------------------------------------------------------------------------
-# Overview plotting: full 4 variables × 4 methods matrix
+# Overview plotting: full 4 variables × N methods matrix (see docs/chfusion_q_energy_peak.md)
 # ---------------------------------------------------------------------------
 # Part 1 violins compare variables (Single only); Part 2 violins compare methods
 # per variable (4 separate figures). The functions below add aggregate views:
@@ -1397,7 +1472,7 @@ def plot_overview_matrix_bars(
     n_var = len(variables)
     n_meth = len(FUSION_METHOD_LABELS)
     x = np.arange(n_var)
-    bar_width = 0.18
+    bar_width = 0.15
     offsets = (np.arange(n_meth) - (n_meth - 1) / 2) * bar_width
 
     fig, ax = plt.subplots(figsize=(max(10, n_var * 2.5), 5.5))
@@ -1417,7 +1492,7 @@ def plot_overview_matrix_bars(
     ax.set_xticks(x)
     ax.set_xticklabels(var_labels, rotation=15, ha="right")
     ax.set_ylabel("Mean relative BPM error (%)")
-    ax.set_title("Overview: 4 variables × 4 methods (segment mean ± window std)")
+    ax.set_title("Overview: 4 variables × 5 methods (segment mean ± window std)")
     ax.legend(loc="upper right", fontsize=8)
     ax.grid(True, axis="y", alpha=0.25)
     plt.tight_layout()
@@ -1466,7 +1541,7 @@ def plot_overview_matrix_heatmap(
     ax.set_yticks(np.arange(len(var_labels)))
     ax.set_xticklabels(meth_labels)
     ax.set_yticklabels(var_labels)
-    ax.set_title("Mean relative BPM error (%) — 4 variables × 4 methods")
+    ax.set_title("Mean relative BPM error (%) — 4 variables × 5 methods")
 
     for i in range(means.shape[0]):
         for j in range(means.shape[1]):
