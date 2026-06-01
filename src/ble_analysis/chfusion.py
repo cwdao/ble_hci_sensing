@@ -64,6 +64,35 @@ from ble_analysis.segments import (
     process_segments,
 )
 
+# CS 可融合的四种有效观测量（本地/远程单端相位无独立物理意义，不纳入）
+CS_SIGNAL_VARIABLES: Tuple[Tuple[str, str], ...] = (
+    ("amplitudes", "总幅值 amp"),
+    ("remote_amplitudes", "远程幅值 remote"),
+    ("local_amplitudes", "本地幅值 local"),
+    ("phases", "总相位 phase"),
+)
+
+# English labels for matplotlib titles/legends (avoid CJK font issues)
+VARIABLE_PLOT_LABELS: Dict[str, str] = {
+    "amplitudes": "Total amplitude",
+    "remote_amplitudes": "Remote amplitude",
+    "local_amplitudes": "Local amplitude",
+    "phases": "Total phase (unwrapped)",
+}
+
+# Part-2 默认对比的三种融合方法（不含 compact q，因幅值信号无独立相位 q_phi）
+FUSION_METHOD_KEYS: Tuple[str, ...] = (
+    "fft_single_max_energy",
+    "fft_uniform_fusion",
+    "fft_q_peak_fusion",
+)
+
+FUSION_METHOD_LABELS: Tuple[Tuple[str, str, str], ...] = (
+    ("Single", "fft_single_max_energy", "steelblue"),
+    ("Uniform", "fft_uniform_fusion", "seagreen"),
+    ("FFT+q_peak", "fft_q_peak_fusion", "mediumpurple"),
+)
+
 # Supported q_c composition modes for weighted fusion.
 QWeightMode = Literal["compact", "peak_only"]
 
@@ -130,6 +159,41 @@ def print_q_score_documentation(cfg: Optional[ChFusionConfig] = None) -> None:
     print(f"compact q_c   | 默认融合权重                 | {Q_WEIGHT_MODE_LABELS['compact']}")
     print(f"peak-only q_c | 消融：仅谱峰质量             | {Q_WEIGHT_MODE_LABELS['peak_only']}")
     print(f"当前配置 q_weight_mode = '{cfg.q_weight_mode}'\n")
+
+
+def _is_phase_variable(variable: str) -> bool:
+    """True for composite or per-end phase series that require unwrap before filtering."""
+    return variable == "phases" or variable.endswith("_phases")
+
+
+def _preprocess_raw_series(raw: np.ndarray, variable: str) -> np.ndarray:
+    """Apply variable-specific preprocessing before the filter chain.
+
+    Phase (total ``phases`` from local⊗remote product) must be unwrapped so that
+    highpass/bandpass see continuous incremental change, not 2π wraps.
+    Amplitude variables are passed through unchanged.
+    """
+    x = np.asarray(raw, dtype=float)
+    if not _is_phase_variable(variable):
+        return x
+    mask = np.isfinite(x)
+    if np.sum(mask) < 2:
+        return x
+    out = x.copy()
+    out[mask] = np.unwrap(x[mask])
+    return out
+
+
+def _variable_display_name(variable: str) -> str:
+    for key, label in CS_SIGNAL_VARIABLES:
+        if key == variable:
+            return label
+    return variable
+
+
+def _variable_plot_label(variable: str) -> str:
+    """English-only label for figure titles and legends."""
+    return VARIABLE_PLOT_LABELS.get(variable, variable.replace("_", " "))
 
 
 def _next_pow2(n: int) -> int:
@@ -204,14 +268,18 @@ def _channel_spectrum_and_q(
     hann: np.ndarray,
     *,
     q_weight_mode: QWeightMode = "compact",
+    compute_q_phi: bool = True,
 ) -> Tuple[np.ndarray, float, float, Dict[str, float]]:
     """FFT spectrum + q sub-scores for one channel/window.
+
+    For **amplitude** variables set ``compute_q_phi=False`` (q_phi=1).
+    For **phase** variables pass unwrapped phase as ``raw_phase_seg`` and
+    ``compute_q_phi=True``.
 
     Returns
     -------
     p_norm, q_c, f_peak, detail
-        ``detail`` always includes ``q_valid``, ``q_peak``, ``q_phi``, ``q_c``,
-        ``q_weight_mode``, and ``peak_snr`` (ρ).
+        ``detail`` includes ``q_valid``, ``q_peak``, ``q_phi``, ``q_c``, ``peak_snr``.
     """
     zero_spec = np.zeros_like(band_freqs)
     bad_detail: Dict[str, float] = {
@@ -250,13 +318,16 @@ def _channel_spectrum_and_q(
     k = int(np.argmax(p_band))
     f_peak = _parabolic_peak_freq(band_freqs, p_band, k, cfg.eps)
 
-    # q_phi: penalize large phase steps after unwrap
-    dphi = np.diff(np.unwrap(raw_phase_seg[np.isfinite(raw_phase_seg)]))
-    if len(dphi) == 0:
-        q_phi, jump_rate = 0.0, 1.0
+    # q_phi: phase smoothness (only meaningful for phase signals)
+    if compute_q_phi:
+        dphi = np.diff(np.unwrap(raw_phase_seg[np.isfinite(raw_phase_seg)]))
+        if len(dphi) == 0:
+            q_phi, jump_rate = 0.0, 1.0
+        else:
+            jump_rate = float(np.mean(np.abs(dphi) > cfg.phase_jump_rad))
+            q_phi = float(np.exp(-jump_rate / (cfg.jump_rate_good + cfg.eps)))
     else:
-        jump_rate = float(np.mean(np.abs(dphi) > cfg.phase_jump_rad))
-        q_phi = float(np.exp(-jump_rate / (cfg.jump_rate_good + cfg.eps)))
+        q_phi, jump_rate = 1.0, 0.0
 
     q_c = _compose_q_weight(q_valid, q_peak, q_phi, q_weight_mode, cfg.eps)
     p_norm = p_band / (np.sum(p_band) + cfg.eps)
@@ -322,13 +393,16 @@ def _fuse_weighted_spectrum(
 def run_multichannel_segment_filtering(
     frames,
     segment_config: Dict[str, dict],
-    variable: str = "remote_amplitudes",
-    phase_variable: str = "remote_phases",
+    variable: str = "amplitudes",
     *,
     filter_params: Optional[FilterParams] = None,
     verbose: bool = True,
 ) -> Tuple[Dict[str, Optional[dict]], float]:
-    """Extract and filter **all channels** for each script segment."""
+    """Extract and filter **all channels** for one signal variable per segment.
+
+    For ``phases``, raw series are **unwrapped** before median/highpass/bandpass.
+    Only the requested ``variable`` is extracted (no separate remote/local phase).
+    """
     fs = estimate_sampling_rate_from_frames(frames)
     fp = filter_params or FilterParams()
     min_points = max(fp.median_window, 20)
@@ -343,18 +417,21 @@ def run_multichannel_segment_filtering(
                 frames,
                 {seg_name: segment_config[seg_name]},
                 ch,
-                [variable, phase_variable],
+                [variable],
                 estimated_fs=fs,
                 verbose=False,
             )
             seg_raw = seg_data.get(seg_name)
             if seg_raw is None or seg_raw.get("n_points", 0) < min_points:
                 continue
+            # Unwrap phase (if needed) then filter
+            seg_raw = dict(seg_raw)
+            seg_raw[variable] = _preprocess_raw_series(seg_raw[variable], variable)
             try:
                 seg_proc = process_segments(
                     {seg_name: seg_raw},
                     fs,
-                    [variable, phase_variable],
+                    [variable],
                     fp,
                     verbose=False,
                 )
@@ -370,11 +447,20 @@ def run_multichannel_segment_filtering(
         if not ch_map:
             out[seg_name] = None
             continue
-        out[seg_name] = {"metadata": metadata, "channels": ch_map, "variable": variable}
+        out[seg_name] = {
+            "metadata": metadata,
+            "channels": ch_map,
+            "variable": variable,
+            "is_phase": _is_phase_variable(variable),
+        }
 
     if verbose:
         n_ok = sum(1 for v in out.values() if v is not None)
-        print(f"✓ 多信道分段滤波 {n_ok}/{len(segment_config)} 段 | {len(channels)} 信道 | fs≈{fs:.2f} Hz")
+        tag = _variable_display_name(variable)
+        print(
+            f"✓ [{tag}] 多信道滤波 {n_ok}/{len(segment_config)} 段 | "
+            f"{len(channels)} 信道 | fs≈{fs:.2f} Hz"
+        )
     return out, fs
 
 
@@ -422,15 +508,28 @@ def _aggregate_q_details(q_details: List[Dict[str, float]]) -> dict:
 def estimate_segment_bpm_methods(
     multichannel_segments: Dict[str, Optional[dict]],
     *,
-    variable: str = "remote_amplitudes",
-    phase_variable: str = "remote_phases",
+    variable: str = "amplitudes",
     config: Optional[ChFusionConfig] = None,
     metric_params: Optional[BreathMetricParams] = None,
+    methods: Sequence[str] = ("single", "uniform", "q_peak", "q_compact"),
     verbose: bool = False,
 ) -> Dict[str, Optional[dict]]:
-    """Per-segment BPM for Single / Uniform / FFT+q (compact) / FFT+q_peak."""
+    """Per-segment BPM for selected fusion methods.
+
+    Parameters
+    ----------
+    methods
+        Subset of ``single``, ``uniform``, ``q_peak``, ``q_compact``.
+        Part-1 variable study typically uses ``("single",)`` only.
+        Part-2 method study uses ``("single", "uniform", "q_peak")``.
+    """
     cfg = config or ChFusionConfig()
     mp = metric_params or BreathMetricParams()
+    want_single = "single" in methods
+    want_uniform = "uniform" in methods
+    want_q_peak = "q_peak" in methods
+    want_q_compact = "q_compact" in methods
+    compute_q_phi = _is_phase_variable(variable)
     results: Dict[str, Optional[dict]] = {}
 
     for seg_name in sorted(multichannel_segments.keys()):
@@ -478,88 +577,109 @@ def estimate_segment_bpm_methods(
         for st in starts:
             end = st + win_len
 
-            # --- Baseline A: max energy-ratio single channel ---
-            best_ch, best_er = None, -1.0
-            for ch in ch_list:
-                hp = ch_map[ch][variable]["highpass_filtered"]
-                if len(hp) < end:
-                    continue
-                er = _energy_ratio(hp[st:end], fs, cfg)
-                if er > best_er:
-                    best_er, best_ch = er, ch
+            # --- Single: max energy-ratio channel + FFT peak ---
+            if want_single:
+                best_ch, best_er = None, -1.0
+                for ch in ch_list:
+                    hp = ch_map[ch][variable]["highpass_filtered"]
+                    if len(hp) < end:
+                        continue
+                    er = _energy_ratio(hp[st:end], fs, cfg)
+                    if er > best_er:
+                        best_er, best_ch = er, ch
 
-            if best_ch is not None:
-                bp_slice = ch_map[best_ch][variable]["bandpass_filtered"][st:end]
-                f_hz = _estimate_breathing_freq_hz(
-                    bp_slice, fs, cfg.breath_freq_low, cfg.breath_freq_high
-                )
-                single_bpms.append(f_hz * 60.0 if np.isfinite(f_hz) else np.nan)
-                selected_channels.append(best_ch)
-            else:
-                single_bpms.append(np.nan)
-                selected_channels.append(None)
+                if best_ch is not None:
+                    bp_slice = ch_map[best_ch][variable]["bandpass_filtered"][st:end]
+                    f_hz = _estimate_breathing_freq_hz(
+                        bp_slice, fs, cfg.breath_freq_low, cfg.breath_freq_high
+                    )
+                    single_bpms.append(f_hz * 60.0 if np.isfinite(f_hz) else np.nan)
+                    selected_channels.append(best_ch)
+                else:
+                    single_bpms.append(np.nan)
+                    selected_channels.append(None)
 
-            # --- Per-channel spectra + q sub-scores (shared by fusion variants) ---
-            spectra, q_compact, q_peak_only, peak_freqs = [], [], [], []
-            for ch in ch_list:
-                bp = ch_map[ch][variable]["bandpass_filtered"]
-                ph = ch_map[ch].get(phase_variable, {}).get("original", bp)
-                if len(bp) < end:
-                    spectra.append(np.zeros_like(band_freqs))
-                    q_compact.append(0.0)
-                    q_peak_only.append(0.0)
-                    peak_freqs.append(np.nan)
-                    continue
+            need_fusion = want_uniform or want_q_peak or want_q_compact
+            if need_fusion:
+                spectra, q_compact, q_peak_only, peak_freqs = [], [], [], []
+                for ch in ch_list:
+                    bp = ch_map[ch][variable]["bandpass_filtered"]
+                    raw = ch_map[ch][variable]["original"]
+                    if len(bp) < end:
+                        spectra.append(np.zeros_like(band_freqs))
+                        q_compact.append(0.0)
+                        q_peak_only.append(0.0)
+                        peak_freqs.append(np.nan)
+                        continue
 
-                phase_slice = ph[st:end] if hasattr(ph, "__len__") and len(ph) >= end else bp[st:end]
+                    ref_slice = raw[st:end] if len(raw) >= end else bp[st:end]
+                    p_norm, _qc, f_peak, detail_c = _channel_spectrum_and_q(
+                        bp[st:end],
+                        ref_slice,
+                        fs,
+                        cfg,
+                        nfft,
+                        band_mask,
+                        band_freqs,
+                        hann,
+                        q_weight_mode="compact",
+                        compute_q_phi=compute_q_phi,
+                    )
+                    q_compact.append(detail_c["q_c"])
+                    q_peak_only.append(detail_c["q_peak"])
+                    peak_freqs.append(f_peak)
+                    all_q_details.append(detail_c)
+                    spectra.append(p_norm)
 
-                p_norm, _qc, f_peak, detail_c = _channel_spectrum_and_q(
-                    bp[st:end], phase_slice, fs, cfg, nfft, band_mask, band_freqs, hann,
-                    q_weight_mode="compact",
-                )
-                q_compact.append(detail_c["q_c"])
-                q_peak_only.append(detail_c["q_peak"])
-                peak_freqs.append(f_peak)
-                all_q_details.append(detail_c)
-                spectra.append(p_norm)
+                spectra_arr = np.vstack(spectra)
 
-            spectra_arr = np.vstack(spectra)
+                if want_uniform:
+                    valid_rows = np.sum(spectra_arr, axis=1) > cfg.eps
+                    if np.any(valid_rows):
+                        uniform_fused = np.mean(spectra_arr[valid_rows], axis=0)
+                    else:
+                        uniform_fused = np.zeros_like(band_freqs)
+                    uniform_bpms.append(_bpm_from_fused_spectrum(uniform_fused, band_freqs, cfg))
 
-            # --- Baseline B: uniform fusion ---
-            valid_rows = np.sum(spectra_arr, axis=1) > cfg.eps
-            if np.any(valid_rows):
-                uniform_fused = np.mean(spectra_arr[valid_rows], axis=0)
-            else:
-                uniform_fused = np.zeros_like(band_freqs)
-            uniform_bpms.append(_bpm_from_fused_spectrum(uniform_fused, band_freqs, cfg))
+                if want_q_compact:
+                    q_compact_bpms.append(
+                        _fuse_weighted_spectrum(
+                            spectra_arr, np.asarray(q_compact), band_freqs, cfg, peak_freqs
+                        )
+                    )
 
-            # --- FFT+q compact: w_c ∝ (q_valid·q_peak·q_phi)^(1/3) ---
-            q_compact_bpms.append(
-                _fuse_weighted_spectrum(
-                    spectra_arr, np.asarray(q_compact), band_freqs, cfg, peak_freqs
-                )
-            )
+                if want_q_peak:
+                    q_peak_bpms.append(
+                        _fuse_weighted_spectrum(
+                            spectra_arr, np.asarray(q_peak_only), band_freqs, cfg, peak_freqs
+                        )
+                    )
 
-            # --- Ablation: FFT+q_peak only ---
-            q_peak_bpms.append(
-                _fuse_weighted_spectrum(
-                    spectra_arr, np.asarray(q_peak_only), band_freqs, cfg, peak_freqs
-                )
-            )
-
-        results[seg_name] = {
+        seg_out: dict = {
             "segment": seg_name,
             "bpm_gt": bpm_gt,
+            "variable": variable,
             "metadata": metadata,
             "q_summary": _aggregate_q_details(all_q_details),
-            "fft_single_max_energy": {
+        }
+        if want_single:
+            seg_out["fft_single_max_energy"] = {
                 **_seg_bpm_stats(np.asarray(single_bpms), bpm_gt, len(starts)),
                 "selected_channels": selected_channels,
-            },
-            "fft_uniform_fusion": _seg_bpm_stats(np.asarray(uniform_bpms), bpm_gt, len(starts)),
-            "fft_q_fusion": _seg_bpm_stats(np.asarray(q_compact_bpms), bpm_gt, len(starts)),
-            "fft_q_peak_fusion": _seg_bpm_stats(np.asarray(q_peak_bpms), bpm_gt, len(starts)),
-        }
+            }
+        if want_uniform:
+            seg_out["fft_uniform_fusion"] = _seg_bpm_stats(
+                np.asarray(uniform_bpms), bpm_gt, len(starts)
+            )
+        if want_q_compact:
+            seg_out["fft_q_fusion"] = _seg_bpm_stats(
+                np.asarray(q_compact_bpms), bpm_gt, len(starts)
+            )
+        if want_q_peak:
+            seg_out["fft_q_peak_fusion"] = _seg_bpm_stats(
+                np.asarray(q_peak_bpms), bpm_gt, len(starts)
+            )
+        results[seg_name] = seg_out
 
     return results
 
@@ -676,7 +796,166 @@ def print_bpm_comparison_table(rows: List[dict], overall: dict) -> None:
     )
 
 
-def collect_window_signed_errors(method_results: Dict[str, Optional[dict]]) -> List[dict]:
+def _overall_rel_error(method_results: Dict[str, Optional[dict]], method_key: str) -> dict:
+    """Mean segment-level relative BPM error (%) for one method key."""
+    errs = []
+    for row in method_results.values():
+        if row is None or row.get("bpm_gt") is None:
+            continue
+        block = row.get(method_key)
+        if block is None:
+            continue
+        e = block.get("bpm_rel_err")
+        if e is not None and np.isfinite(e):
+            errs.append(float(e))
+    if not errs:
+        return {"mean_rel_err_pct": np.nan, "std_rel_err_pct": np.nan, "n_segments": 0}
+    a = np.asarray(errs, dtype=float)
+    return {
+        "mean_rel_err_pct": float(np.mean(a) * 100),
+        "std_rel_err_pct": float(np.std(a, ddof=1) * 100) if len(a) > 1 else 0.0,
+        "n_segments": len(a),
+    }
+
+
+def run_chfusion_benchmark(
+    frames,
+    segment_config: Dict[str, dict],
+    *,
+    variables: Optional[Sequence[str]] = None,
+    filter_params: Optional[FilterParams] = None,
+    metric_params: Optional[BreathMetricParams] = None,
+    config: Optional[ChFusionConfig] = None,
+    verbose: bool = True,
+) -> dict:
+    """Two-part benchmark over all CS signal variables.
+
+    Part 1 — variable comparison (Single / max-energy channel only).
+    Part 2 — method comparison (Single, Uniform, FFT+q_peak) per variable.
+
+    Returns dict with ``part1``, ``part2``, ``leaderboard`` keys.
+    """
+    cfg = config or ChFusionConfig()
+    mp = metric_params or BreathMetricParams()
+    fp = filter_params or FilterParams()
+    var_list = list(variables or [v[0] for v in CS_SIGNAL_VARIABLES])
+
+    part1: Dict[str, dict] = {}
+    part2: Dict[str, dict] = {}
+
+    for variable in var_list:
+        mc, fs = run_multichannel_segment_filtering(
+            frames, segment_config, variable=variable, filter_params=fp, verbose=verbose
+        )
+        r1 = estimate_segment_bpm_methods(
+            mc, variable=variable, config=cfg, metric_params=mp, methods=("single",)
+        )
+        r2 = estimate_segment_bpm_methods(
+            mc,
+            variable=variable,
+            config=cfg,
+            metric_params=mp,
+            methods=("single", "uniform", "q_peak"),
+        )
+        part1[variable] = {"results": r1, "sampling_rate": fs}
+        part2[variable] = {"results": r2, "sampling_rate": fs}
+
+    leaderboard = build_benchmark_leaderboard(part1, part2)
+    return {
+        "variables": var_list,
+        "part1": part1,
+        "part2": part2,
+        "leaderboard": leaderboard,
+        "segment_config": segment_config,
+    }
+
+
+def build_benchmark_leaderboard(part1: dict, part2: dict) -> List[dict]:
+    """Rank all (variable × method) combos from Part 2 by mean relative BPM error."""
+    rows: List[dict] = []
+
+    for variable, block in part2.items():
+        for label, key, _ in FUSION_METHOD_LABELS:
+            stats = _overall_rel_error(block["results"], key)
+            rows.append(
+                {
+                    "part": 2,
+                    "variable": variable,
+                    "variable_label": _variable_display_name(variable),
+                    "method": label,
+                    "method_key": key,
+                    **stats,
+                }
+            )
+
+    rows = [r for r in rows if np.isfinite(r["mean_rel_err_pct"])]
+    rows.sort(key=lambda r: r["mean_rel_err_pct"])
+    for rank, row in enumerate(rows, start=1):
+        row["rank"] = rank
+    return rows
+
+
+def print_part1_variable_table(part1: dict) -> None:
+    """Part 1: compare four variables using Single (max-energy) FFT only."""
+    print("\n=== Part 1：变量对比（Single / 最大能量比单信道 FFT）===")
+    print(f"{'变量':<22} {'mean err%':>10} {'±std%':>8} {'n_seg':>6}")
+    print("-" * 50)
+    rows = []
+    for variable, block in part1.items():
+        stats = _overall_rel_error(block["results"], "fft_single_max_energy")
+        rows.append((variable, stats))
+    rows.sort(key=lambda x: x[1]["mean_rel_err_pct"])
+    for variable, stats in rows:
+        print(
+            f"{_variable_display_name(variable):<22} "
+            f"{stats['mean_rel_err_pct']:10.2f} "
+            f"{stats['std_rel_err_pct']:8.2f} "
+            f"{stats['n_segments']:6d}"
+        )
+    print("（误差为各 breath 段相对 BPM 误差的均值；phase 变量滤波前已 unwrap）\n")
+
+
+def print_part2_method_tables(part2: dict) -> None:
+    """Part 2: per variable, compare Single / Uniform / FFT+q_peak."""
+    print("\n=== Part 2：同一变量下方法对比（Single / Uniform / FFT+q_peak）===")
+    for variable, block in part2.items():
+        print(f"\n--- {_variable_display_name(variable)} ({variable}) ---")
+        print(f"{'方法':<12} {'mean err%':>10} {'±std%':>8} {'n_seg':>6}")
+        print("-" * 40)
+        for label, key, _ in FUSION_METHOD_LABELS:
+            stats = _overall_rel_error(block["results"], key)
+            print(
+                f"{label:<12} {stats['mean_rel_err_pct']:10.2f} "
+                f"{stats['std_rel_err_pct']:8.2f} {stats['n_segments']:6d}"
+            )
+    print()
+
+
+def print_benchmark_leaderboard(leaderboard: List[dict], top_n: Optional[int] = None) -> None:
+    """Print ranked table of all variable×method combinations (Part 2 matrix)."""
+    ranked = sorted(leaderboard, key=lambda r: r.get("rank", 9999))
+    if top_n is not None:
+        ranked = ranked[:top_n]
+    print("\n=== 总排行榜：变量 × 方法 BPM 估计性能（按 mean err% 升序）===")
+    print(f"{'#':>3} {'变量':<18} {'方法':<12} {'err%':>8} {'±std%':>8}")
+    print("-" * 54)
+    for r in ranked:
+        print(
+            f"{r['rank']:3d} {r['variable_label']:<18} "
+            f"{r['method']:<12} {r['mean_rel_err_pct']:8.2f} {r['std_rel_err_pct']:8.2f}"
+        )
+    if ranked:
+        best = ranked[0]
+        print(
+            f"\n★ 当前最优：{best['variable_label']} + {best['method']} "
+            f"→ mean err {best['mean_rel_err_pct']:.2f}%\n"
+        )
+
+
+def collect_window_signed_errors(
+    method_results: Dict[str, Optional[dict]],
+    method_labels: Sequence[Tuple[str, str, str]] = FUSION_METHOD_LABELS,
+) -> List[dict]:
     """Collect per-window signed BPM errors (estimated − GT) for violin plots."""
     records: List[dict] = []
     for seg_name in sorted(method_results.keys()):
@@ -684,10 +963,13 @@ def collect_window_signed_errors(method_results: Dict[str, Optional[dict]]) -> L
         if row is None or row.get("bpm_gt") is None:
             continue
         bpm_gt = float(row["bpm_gt"])
-        for label, key, _color in METHOD_LABELS:
-            signed = row[key].get("bpm_signed_err_per_window")
+        for label, key, _color in method_labels:
+            if key not in row:
+                continue
+            block = row[key]
+            signed = block.get("bpm_signed_err_per_window")
             if signed is None:
-                bpm_wins = row[key]["bpm_per_window"]
+                bpm_wins = block["bpm_per_window"]
                 signed = np.array(
                     [b - bpm_gt if np.isfinite(b) else np.nan for b in bpm_wins], dtype=float
                 )
@@ -699,26 +981,65 @@ def collect_window_signed_errors(method_results: Dict[str, Optional[dict]]) -> L
     return records
 
 
+def collect_part1_variable_errors(part1: dict) -> List[dict]:
+    """Part-1: signed errors per segment × variable (Single method only)."""
+    records: List[dict] = []
+    for variable, block in part1.items():
+        results = block["results"]
+        var_label = _variable_display_name(variable)
+        for seg_name in sorted(results.keys()):
+            row = results[seg_name]
+            if row is None or row.get("bpm_gt") is None:
+                continue
+            bpm_gt = float(row["bpm_gt"])
+            single = row.get("fft_single_max_energy")
+            if single is None:
+                continue
+            signed = single.get("bpm_signed_err_per_window")
+            if signed is None:
+                signed = np.array(
+                    [
+                        b - bpm_gt if np.isfinite(b) else np.nan
+                        for b in single["bpm_per_window"]
+                    ],
+                    dtype=float,
+                )
+            signed = np.asarray(signed, dtype=float)
+            signed = signed[np.isfinite(signed)]
+            records.append(
+                {
+                    "segment": seg_name,
+                    "variable": variable,
+                    "variable_label": var_label,
+                    "bpm_gt": bpm_gt,
+                    "signed_errors": signed,
+                }
+            )
+    return records
+
+
 def plot_bpm_error_violins(
     method_results: Dict[str, Optional[dict]],
     *,
+    method_labels: Sequence[Tuple[str, str, str]] = FUSION_METHOD_LABELS,
     figures_dir=None,
     filename: str = "chfusion_fft_q_bpm_error_violins.png",
+    title: Optional[str] = None,
     show: bool = True,
     save: bool = True,
 ):
     """Violin plot of signed window-level BPM error; y=0 is ground truth."""
     import matplotlib.pyplot as plt
 
-    records = collect_window_signed_errors(method_results)
+    records = collect_window_signed_errors(method_results, method_labels)
     if not records:
         print("⚠️  无可用误差数据，跳过小提琴图")
         return None
 
     segments = sorted({r["segment"] for r in records})
     gt_by_seg = {r["segment"]: r["bpm_gt"] for r in records}
-    methods = [m[0] for m in METHOD_LABELS]
-    colors = {m[0]: m[2] for m in METHOD_LABELS}
+    methods = [m[0] for m in method_labels]
+    colors = {m[0]: m[2] for m in method_labels}
 
     n_seg = len(segments)
     n_methods = len(methods)
@@ -731,7 +1052,12 @@ def plot_bpm_error_violins(
     for i, seg in enumerate(segments):
         group_center = i * group_gap
         for j, method in enumerate(methods):
-            rec = next(r for r in records if r["segment"] == seg and r["method"] == method)
+            rec = next(
+                (r for r in records if r["segment"] == seg and r["method"] == method),
+                None,
+            )
+            if rec is None:
+                continue
             errors = rec["signed_errors"]
             pos = group_center + (j - (n_methods - 1) / 2) * violin_width
             color = colors[method]
@@ -759,14 +1085,14 @@ def plot_bpm_error_violins(
     ax.axhline(0.0, color="black", linestyle="--", linewidth=1.2, alpha=0.75)
     ax.set_xticks([i * group_gap for i in range(n_seg)])
     ax.set_xticklabels([f"{seg}\nGT={gt_by_seg[seg]:.2f}" for seg in segments])
-    ax.set_ylabel("BPM error (estimated − GT)")
-    ax.set_title("Window-level BPM error by segment (violin)")
+    ax.set_ylabel("BPM error (estimated - GT)")
+    ax.set_title(title or "Window-level BPM error by segment")
     ax.grid(True, axis="y", alpha=0.25)
 
-    legend_handles = [
+    legend_handles = _violin_legend_with_stats([
         plt.Line2D([0], [0], color=colors[m], lw=6, alpha=0.65, label=m) for m in methods
-    ]
-    ax.legend(handles=legend_handles, loc="upper right", fontsize=8)
+    ])
+    ax.legend(handles=legend_handles, loc="upper right", fontsize=7)
     plt.tight_layout()
 
     fig_path = None
@@ -779,3 +1105,153 @@ def plot_bpm_error_violins(
     else:
         plt.close(fig)
     return fig
+
+
+# Variable colors for Part-1 violin (same order as CS_SIGNAL_VARIABLES)
+PART1_VARIABLE_COLORS = {
+    "amplitudes": "coral",
+    "remote_amplitudes": "steelblue",
+    "local_amplitudes": "seagreen",
+    "phases": "mediumpurple",
+}
+
+
+def _violin_legend_with_stats(method_handles: List) -> List:
+    """Append mean / median / GT reference entries to a violin plot legend."""
+    import matplotlib.pyplot as plt
+
+    stat_handles = [
+        plt.Line2D([0], [0], color="black", lw=1.5, label="Mean (window BPM error)"),
+        plt.Line2D(
+            [0], [0], color="white", lw=2, markeredgecolor="black",
+            markeredgewidth=0.8, label="Median (window BPM error)",
+        ),
+        plt.Line2D([0], [0], color="black", lw=1.2, ls="--", label="Ground truth (y=0)"),
+    ]
+    return list(method_handles) + stat_handles
+
+
+def plot_part1_variable_violins(
+    part1: dict,
+    *,
+    figures_dir=None,
+    filename: str = "chfusion_part1_variable_violins.png",
+    show: bool = True,
+    save: bool = True,
+):
+    """Part-1 violin: per segment, compare four variables (Single method). y=0 is GT."""
+    import matplotlib.pyplot as plt
+
+    records = collect_part1_variable_errors(part1)
+    if not records:
+        print("⚠️  Part-1 无可用误差数据，跳过小提琴图")
+        return None
+
+    segments = sorted({r["segment"] for r in records})
+    gt_by_seg = {r["segment"]: r["bpm_gt"] for r in records}
+    variables = [v[0] for v in CS_SIGNAL_VARIABLES if any(r["variable"] == v[0] for r in records)]
+
+    n_seg = len(segments)
+    n_var = len(variables)
+    group_gap = 1.0
+    group_width = 0.85
+    violin_width = group_width / max(n_var, 1)
+
+    fig, ax = plt.subplots(figsize=(max(12, n_seg * 2.0), 5.5))
+
+    for i, seg in enumerate(segments):
+        group_center = i * group_gap
+        for j, variable in enumerate(variables):
+            rec = next(
+                (r for r in records if r["segment"] == seg and r["variable"] == variable),
+                None,
+            )
+            if rec is None:
+                continue
+            errors = rec["signed_errors"]
+            pos = group_center + (j - (n_var - 1) / 2) * violin_width
+            color = PART1_VARIABLE_COLORS.get(variable, "gray")
+
+            if len(errors) >= 2:
+                parts = ax.violinplot(
+                    [errors],
+                    positions=[pos],
+                    widths=violin_width * 0.85,
+                    showmeans=True,
+                    showmedians=True,
+                    showextrema=False,
+                )
+                for body in parts["bodies"]:
+                    body.set_facecolor(color)
+                    body.set_edgecolor("black")
+                    body.set_alpha(0.65)
+                parts["cmeans"].set_color("black")
+                parts["cmedians"].set_color("white")
+            elif len(errors) == 1:
+                ax.scatter([pos], errors, color=color, edgecolors="black", s=40, zorder=4)
+
+    ax.axhline(0.0, color="black", linestyle="--", linewidth=1.2, alpha=0.75)
+    ax.set_xticks([i * group_gap for i in range(n_seg)])
+    ax.set_xticklabels([f"{seg}\nGT={gt_by_seg[seg]:.2f}" for seg in segments])
+    ax.set_ylabel("BPM error (estimated - GT)")
+    ax.set_title("Part 1: variable comparison (Single / max-energy channel)")
+    ax.grid(True, axis="y", alpha=0.25)
+
+    legend_handles = _violin_legend_with_stats([
+        plt.Line2D(
+            [0], [0],
+            color=PART1_VARIABLE_COLORS.get(v, "gray"),
+            lw=6, alpha=0.65,
+            label=_variable_plot_label(v),
+        )
+        for v in variables
+    ])
+    ax.legend(handles=legend_handles, loc="upper right", fontsize=7)
+    plt.tight_layout()
+
+    fig_path = None
+    if save and figures_dir is not None:
+        fig_path = Path(figures_dir) / filename
+        fig.savefig(fig_path, dpi=150)
+        print(f"✓ Part-1 小提琴图已保存: {fig_path}")
+    if show:
+        plt.show()
+    else:
+        plt.close(fig)
+    return fig
+
+
+def plot_benchmark_violins(
+    benchmark: dict,
+    *,
+    figures_dir=None,
+    show: bool = True,
+    save: bool = True,
+) -> List[Path]:
+    """Draw Part-1 (variable) and Part-2 (method×variable) violin plots."""
+    saved: List[Path] = []
+
+    plot_part1_variable_violins(
+        benchmark["part1"],
+        figures_dir=figures_dir,
+        show=show,
+        save=save,
+    )
+    if save and figures_dir is not None:
+        saved.append(Path(figures_dir) / "chfusion_part1_variable_violins.png")
+
+    for variable, block in benchmark["part2"].items():
+        slug = variable.replace("_", "-")
+        fig = plot_bpm_error_violins(
+            block["results"],
+            method_labels=FUSION_METHOD_LABELS,
+            figures_dir=figures_dir,
+            filename=f"chfusion_part2_{slug}_violins.png",
+            title=f"Part 2: {_variable_plot_label(variable)} - Single / Uniform / FFT+q_peak",
+            show=show,
+            save=save,
+        )
+        if save and figures_dir is not None:
+            saved.append(Path(figures_dir) / f"chfusion_part2_{slug}_violins.png")
+
+    return saved

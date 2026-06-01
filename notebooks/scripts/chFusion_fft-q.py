@@ -1,34 +1,81 @@
-"""CS 金属板脚本段：多信道 FFT 融合 BPM 对比实验。
+"""chFusion FFT+q — CS metal-plate segment BPM benchmark script.
 
-基于 ``glb_cs_segment_breath_analysis`` 的分段滤波 pipeline，在 bandpass 之后
-按 ``docs/chfusion_fft-q.md`` 实现 FFT+q 及多种 baseline / 消融。
+Overview
+========
+End-to-end experiment script for BLE Channel Sounding (CS) respiration-rate (BPM)
+estimation on scripted metal-plate segments. Implements the method design in
+``docs/chfusion_fft-q.md`` and reuses the segment filter pipeline from
+``glb_cs_segment_breath_analysis`` (median -> highpass -> bandpass).
 
-对比方法（4 种）：
-  1. Single      — 每窗选呼吸能量比最大的单信道，FFT 峰值
-  2. Uniform     — 多信道归一化频谱等权平均
-  3. FFT+q       — q_c = (q_valid·q_peak·q_phi)^(1/3) 加权融合
-  4. FFT+q_peak  — 消融：仅 q_peak 作为融合权重
+Background: valid CS observables
+--------------------------------
+After local/remote vector composition, only four scalar series per channel are
+physically meaningful for fusion (single-ended phases are not used alone):
 
-运行：VS Code 逐 cell 执行，或 ``python notebooks/scripts/chFusion_fft-q.py``
+  - ``amplitudes``          total amplitude
+  - ``remote_amplitudes``   remote-reported amplitude
+  - ``local_amplitudes``    local-measured amplitude
+  - ``phases``              total phase (**np.unwrap** before filtering)
+
+Pipeline per variable x channel x segment
+-----------------------------------------
+1. Load CS frames (``load_ble_frames``).
+2. Extract each script segment by frame index (``segment_config``).
+3. For all available channels: preprocess (unwrap if phase) -> filter ->
+   sliding-window FFT BPM estimation.
+
+Comparison design (two parts)
+-----------------------------
+**Part 1 — Which variable is best?**
+  Four variables, one method only:
+  **Single** = per window, pick the channel with largest breath-band energy ratio,
+  then take the FFT peak BPM on that channel's bandpass signal.
+
+**Part 2 — Which fusion method is best (per variable)?**
+  Four variables x three methods:
+  - **Single**      max-energy-ratio single channel (same as Part 1)
+  - **Uniform**     equal-weight average of per-channel normalized FFT spectra
+  - **FFT+q_peak**  q_peak-weighted fusion (spectral peak SNR only; no q_phi)
+
+Outputs
+-------
+- Console tables: Part 1 variable ranking, Part 2 method tables per variable,
+  overall leaderboard (12 combos sorted by mean relative BPM error).
+- ``outputs/reports/chfusion_benchmark_matrix.npy`` — full numeric results.
+- Violin plots (English labels only; y=0 dashed line = ground truth):
+  - ``chfusion_part1_variable_violins.png`` — 4 variables x segments (Single)
+  - ``chfusion_part2_<variable>_violins.png`` — 3 methods x segments per variable
+  Violin markers: **black bar = mean**, **white bar = median** of window-level
+  signed BPM errors (estimated - GT).
+
+Key modules
+-----------
+- ``src/ble_analysis/chfusion.py`` — algorithms, tables, plotting
+- ``src/ble_analysis/segments.py``  — segment extract + filter chain
+
+Run
+---
+  python notebooks/scripts/chFusion_fft-q.py
+
+Or execute ``# %%`` cells in VS Code Python Interactive.
 """
 
 # %% [markdown]
-# # chFusion FFT+q — 金属板 CS 分段 BPM 对比
+# # chFusion — multi-variable x multi-method BPM benchmark
 #
-# | 步骤 | 内容 |
-# |------|------|
-# | 0 | 打印 q 分数公式说明 |
-# | 1 | 加载 CS 帧 → 多信道分段滤波 |
-# | 2 | 四种方法 BPM 估计 + q 子项统计 |
-# | 3 | 数值对比表 + 保存 `.npy` |
-# | 4 | 窗级有符号误差小提琴图（GT = y0） |
+# | Step | Content |
+# |------|---------|
+# | 0 | Bootstrap + parameters |
+# | 1 | Run full benchmark (Part 1 + Part 2) |
+# | 2 | Part 1 table — variable comparison (Single only) |
+# | 3 | Part 2 tables — method comparison per variable |
+# | 4 | Leaderboard + save `.npy` |
+# | 5 | Violin plots (signed window error; GT at y=0) |
 #
-# 方法细节见 ``docs/chfusion_fft-q.md``。
+# See module docstring above for full workflow description.
 
 # %% [markdown]
-# ## 0. 环境初始化
-#
-# 向上查找含 ``src/`` 的项目根，加入 ``sys.path``，创建 ``outputs/`` 子目录。
+# ## 0. Environment bootstrap
 
 # %%
 import sys
@@ -42,7 +89,7 @@ project_root = next(
     None,
 )
 if project_root is None:
-    raise FileNotFoundError("未找到项目根目录（缺少 src/ 目录）")
+    raise FileNotFoundError("Project root not found (missing src/ directory)")
 
 _src = project_root / "src"
 if str(_src) not in sys.path:
@@ -53,41 +100,31 @@ from ble_analysis.bootstrap import init_notebook
 _env = init_notebook(project_root)
 project_root = _env["project_root"]
 FIGURES_DIR = _env["FIGURES_DIR"]
-PROCESSED_DIR = _env["PROCESSED_DIR"]
 REPORTS_DIR = _env["REPORTS_DIR"]
 
 # %% [markdown]
-# ## 0b. 参数与 q 分数说明
+# ## 0b. Parameters
 #
-# **q 三子项**（doc §1.3）：
-# - ``q_valid``：窗内有效相位采样比例（阈值 ``min_valid_frac=0.7``）
-# - ``q_peak``：呼吸频带谱峰 SNR ρ=max/median，log 映射到 [0,1]
-# - ``q_phi``：unwrap 相位大跳比例惩罚
-#
-# **compact q_c**（默认 FFT+q）：三者几何平均，三者权重相等。
-# **peak-only 消融**（FFT+q_peak）：仅 ``q_peak`` 参与加权，用于验证谱峰质量是否主导。
+# Edit ``filepath`` and ``segment_config`` for other recordings.
+# Filter: median=3, HP 0.05 Hz, BP 0.1-0.35 Hz; sliding window 20 s / step 1 s.
 
 # %%
 from ble_analysis.chfusion import (
+    CS_SIGNAL_VARIABLES,
     ChFusionConfig,
-    collect_window_signed_errors,
-    estimate_segment_bpm_methods,
-    plot_bpm_error_violins,
-    print_bpm_comparison_table,
-    print_q_component_summary,
+    plot_benchmark_violins,
+    print_benchmark_leaderboard,
+    print_part1_variable_table,
+    print_part2_method_tables,
     print_q_score_documentation,
-    run_multichannel_segment_filtering,
-    summarize_bpm_comparison,
+    run_chfusion_benchmark,
 )
 from ble_analysis.data import load_ble_frames
 from ble_analysis.segments import BreathMetricParams, FilterParams
 
-# === 数据路径（可改）===
 filepath = project_root / "sampleData" / "CS_frames_all_20260113_091339.jsonl"
-signal_variable = "remote_amplitudes"   # 融合 FFT 使用的 bandpass 信号
-phase_variable = "remote_phases"      # 仅用于 q_valid / q_phi 计算
 
-# === 金属板脚本段 GT（与 glb_cs_segment_breath_analysis 一致）===
+# Metal-plate script segments with BPM ground truth (breath) or apnea labels
 segment_config = {
     "1a": {"start": 131, "end": 244, "type": "breath", "ie_gt": 0.985, "bpm_gt": 8.675},
     "1b": {"start": 244, "end": 361, "type": "breath", "ie_gt": 1.451, "bpm_gt": 8.675},
@@ -100,8 +137,8 @@ segment_config = {
     "4b": {"start": 666, "end": 702, "type": "breath", "ie_gt": 1.081, "bpm_gt": 16.17},
 }
 
-filter_params = FilterParams()       # median=3, HP 0.05 Hz, BP 0.1–0.35 Hz
-metric_params = BreathMetricParams() # 20 s 窗, 1 s 步
+filter_params = FilterParams()
+metric_params = BreathMetricParams()
 chfusion_config = ChFusionConfig(
     breath_freq_low=metric_params.breath_freq_low,
     breath_freq_high=metric_params.breath_freq_high,
@@ -110,93 +147,59 @@ chfusion_config = ChFusionConfig(
     enable_consensus=False,
 )
 
+variables = [v[0] for v in CS_SIGNAL_VARIABLES]
+print("Variables:", ", ".join(f"{k} ({lbl})" for k, lbl in CS_SIGNAL_VARIABLES))
 print_q_score_documentation(chfusion_config)
 
 # %% [markdown]
-# ## 1. 加载数据 & 多信道分段滤波
-#
-# 对每个脚本段、每个可用信道独立执行：
-# ``extract_segment_data`` → ``process_segments``（median / highpass / bandpass）。
+# ## 1. Run benchmark (all variables; Part 1 + Part 2)
 
 # %%
 data, frames = load_ble_frames(filepath, verbose=False)
 
-multichannel_segments, sampling_rate = run_multichannel_segment_filtering(
+benchmark = run_chfusion_benchmark(
     frames,
     segment_config,
-    variable=signal_variable,
-    phase_variable=phase_variable,
+    variables=variables,
     filter_params=filter_params,
+    metric_params=metric_params,
+    config=chfusion_config,
     verbose=True,
 )
 
 # %% [markdown]
-# ## 2. 四种方法 BPM 估计
-#
-# | 键名 | 方法 |
-# |------|------|
-# | ``fft_single_max_energy`` | 最大能量比单信道 FFT |
-# | ``fft_uniform_fusion`` | 频谱等权平均 |
-# | ``fft_q_fusion`` | compact q 加权（几何平均三子项） |
-# | ``fft_q_peak_fusion`` | **消融**：权重 = q_peak only |
+# ## 2. Part 1 — variable comparison (Single / max-energy channel)
 
 # %%
-method_results = estimate_segment_bpm_methods(
-    multichannel_segments,
-    variable=signal_variable,
-    phase_variable=phase_variable,
-    config=chfusion_config,
-    metric_params=metric_params,
-)
-
-# 各段 q 子项均值（帮助判断 q_peak 是否主导 compact q_c）
-print_q_component_summary(method_results)
+print_part1_variable_table(benchmark["part1"])
 
 # %% [markdown]
-# ## 3. BPM 误差对比表 & 保存结果
-#
-# 输出相对误差（%）及窗级 ±std；apnea 段自动跳过。
+# ## 3. Part 2 — method comparison per variable
 
 # %%
-comparison_rows, comparison_overall = summarize_bpm_comparison(method_results)
-print_bpm_comparison_table(comparison_rows, comparison_overall)
-signed_error_records = collect_window_signed_errors(method_results)
-
-report_path = REPORTS_DIR / "chfusion_fft_q_bpm_comparison.npy"
-np.save(
-    report_path,
-    {
-        "method_results": method_results,
-        "comparison_rows": comparison_rows,
-        "comparison_overall": comparison_overall,
-        "signed_error_records": signed_error_records,
-        "q_formula": {
-            "compact": "q_c = (q_valid * q_peak * q_phi)^(1/3)",
-            "peak_only": "q_c = q_peak",
-        },
-        "config": {
-            "filepath": str(filepath),
-            "signal_variable": signal_variable,
-            "phase_variable": phase_variable,
-            "sampling_rate": sampling_rate,
-            "chfusion_config": chfusion_config,
-        },
-    },
-    allow_pickle=True,
-)
-print(f"✓ 结果已保存: {report_path}")
+print_part2_method_tables(benchmark["part2"])
 
 # %% [markdown]
-# ## 4. 窗级 BPM 有符号误差小提琴图
-#
-# - 纵轴：``估计 BPM − GT``（可正可负）
-# - **y = 0** 虚线 = Ground Truth
-# - 每段 4 根小提琴：Single / Uniform / FFT+q / FFT+q_peak
-# - 仅 1 个滑窗的短段（如 2b、4b）用散点代替
+# ## 4. Leaderboard and save results
 
 # %%
-plot_bpm_error_violins(
-    method_results,
+print_benchmark_leaderboard(benchmark["leaderboard"])
+
+report_path = REPORTS_DIR / "chfusion_benchmark_matrix.npy"
+np.save(report_path, benchmark, allow_pickle=True)
+print(f"Saved: {report_path}")
+
+# %% [markdown]
+# ## 5. Violin plots (signed BPM error; GT at y=0)
+#
+# - Part 1: one figure, 4 variables per segment (Single method)
+# - Part 2: one figure per variable, 3 methods per segment
+# - Black bar inside violin = **mean**; white bar = **median** of window errors
+# - Segments with only one window shown as scatter points
+
+# %%
+plot_benchmark_violins(
+    benchmark,
     figures_dir=FIGURES_DIR,
     show=True,
     save=True,
