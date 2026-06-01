@@ -892,5 +892,5 @@ spontaneous breathing:
 
 > **q_energy + q_peak 融合**（含 Top-K 变体）已实现，详见 [`chfusion_q_energy_peak.md`](chfusion_q_energy_peak.md)。
 
-1. ~~top-K 验证，取前多少个高 q 的会不会效果更好~~ → 已实现 `FFT+q_ep_topK`（默认 K=20，可调 `ChFusionConfig.energy_peak_top_k`）
+1. ~~top-K 验证，取前多少个高 q 的会不会效果更好~~ → 已实现 `FFT+q_ep_topK`（默认 K=5，可调 `ChFusionConfig.energy_peak_top_k`）
 2. 怎么融合幅值和相位？1）同一信道的 a,p 取 q 高的那个 2）幅值相位分别算，整体出来后再选边融合。

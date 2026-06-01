@@ -37,7 +37,7 @@ Comparison design (two parts)
   - **Uniform**               equal-weight average of per-channel normalized FFT spectra
   - **FFT+q_peak**            q_peak-weighted fusion
   - **FFT+q_energy_peak**     ``(q_energy × q_peak)^(1/2)`` on all channels
-  - **FFT+q_ep_topK**         Top-K by q_energy (default K=20), then energy+peak fusion
+  - **FFT+q_ep_topK**         Top-K by q_energy (default K=5), then energy+peak fusion
 
 **Overview — Full matrix across variables and methods**
   Part 1 only compares variables under Single; Part 2 splits by variable.
@@ -164,7 +164,7 @@ chfusion_config = ChFusionConfig(
     window_length_sec=metric_params.window_length_sec,
     step_length_sec=metric_params.step_length_sec,
     enable_consensus=False,
-    energy_peak_top_k=20,  # FFT+q_ep_topK: keep top 20 channels by q_energy; None = all
+    energy_peak_top_k=5,  # FFT+q_ep_topK: keep top 5 channels by q_energy; None = all
 )
 
 variables = [v[0] for v in CS_SIGNAL_VARIABLES]

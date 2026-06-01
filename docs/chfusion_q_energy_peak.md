@@ -80,7 +80,7 @@ $$q_c^{\ep} = \sqrt{q_{\text{energy},c} \cdot q_{\text{peak},c}}$$
 **流程**（每个滑窗独立）：
 
 1. 对所有信道计算 $q_{\text{energy},c}$（及对应的 $\bar P_c$、$q_{\text{peak},c}$）
-2. 按 $q_{\text{energy},c}$ **降序**取 Top-K（默认 K=20）
+2. 按 $q_{\text{energy},c}$ **降序**取 Top-K（默认 K=5）
 3. 不在 Top-K 内的信道：融合权重置 **0**
 4. 在 Top-K 内信道：仍用 $q_c^{\ep} = \sqrt{q_{\text{energy},c} \cdot q_{\text{peak},c}}$ 做加权融合（步骤同 §4）
 
@@ -88,7 +88,7 @@ $$q_c^{\ep} = \sqrt{q_{\text{energy},c} \cdot q_{\text{peak},c}}$$
 
 | 参数 | 默认 | 说明 |
 |------|------|------|
-| `ChFusionConfig.energy_peak_top_k` | `20` | Top-K 信道数；`None` 或 `≤0` 表示不截断（等同全信道） |
+| `ChFusionConfig.energy_peak_top_k` | `5` | Top-K 信道数；`None` 或 `≤0` 表示不截断（等同全信道） |
 
 **方法键**：`fft_q_energy_peak_topk_fusion`（benchmark 标签 `FFT+q_ep_topK`）
 
@@ -104,13 +104,13 @@ $$q_c^{\ep} = \sqrt{q_{\text{energy},c} \cdot q_{\text{peak},c}}$$
 | `total_freq_low` / `total_freq_high` | 0.05 / 0.8 Hz | q_energy 分母带 |
 | `energy_ratio_min` / `energy_ratio_good` | 0.02 / 0.20 | q_energy 线性映射 |
 | `peak_snr_min` / `peak_snr_good` | 1.5 / 6.0 | q_peak 对数映射 |
-| `energy_peak_top_k` | 20 | Top-K 变体专用 |
+| `energy_peak_top_k` | 5 | Top-K 变体专用 |
 
 在脚本中调试示例：
 
 ```python
 chfusion_config = ChFusionConfig(
-    energy_peak_top_k=20,  # 改为 10、30 或 None 对比
+    energy_peak_top_k=5,  # 改为 10、20 或 None 对比
     ...
 )
 ```
@@ -134,6 +134,7 @@ Part 2 默认对比（4 变量 × 5 方法）：
 | 日期 | 变更 |
 |------|------|
 | 2026-06-01 | 初版：q_energy + q_peak 几何平均；全信道软融合 |
-| 2026-06-01 | 新增 Top-K 变体 `FFT+q_ep_topK`；`energy_peak_top_k` 可配置（默认 20） |
+| 2026-06-01 | 新增 Top-K 变体 `FFT+q_ep_topK`；`energy_peak_top_k` 可配置（默认 5） |
+| 2026-06-01 | 默认 Top-K 从 20 调整为 5（待 metal-plate 数据验证） |
 
 *后续若调整公式、默认阈值或 Top-K 策略，请在本表追加一行并更新对应章节。*

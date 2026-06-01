@@ -145,7 +145,7 @@ class ChFusionConfig:
     energy_ratio_good: float = 0.20
 
     # --- q_energy + q_peak Top-K prefilter (see docs/chfusion_q_energy_peak.md §5) ---
-    energy_peak_top_k: Optional[int] = 20
+    energy_peak_top_k: Optional[int] = 5
 
     # --- q_phi: unwrap phase jump penalty ---
     phase_jump_rad: float = 1.2
