@@ -770,6 +770,23 @@ _FIXED_MODAL_WEIGHTS: Dict[str, float] = {
     "local_amplitudes": 0.25,
 }
 
+# Plan 2 §A: complementarity waveform inspection reference variables
+COMPLEMENTARITY_REFERENCE_VARIABLES: Tuple[str, ...] = (
+    "phases",
+    "remote_amplitudes",
+    "local_amplitudes",
+)
+
+
+def _complementarity_filename_slug(variable: str) -> str:
+    """Filesystem-safe slug for complementarity figure prefixes."""
+    return {
+        "phases": "phase",
+        "remote_amplitudes": "remote",
+        "local_amplitudes": "local",
+        "amplitudes": "total-amp",
+    }.get(variable, variable.replace("_", "-"))
+
 
 @dataclass
 class Plan2Config:
@@ -922,11 +939,13 @@ def collect_single_max_energy_window_records(
             )
 
             channel_scores: Dict[str, Dict[str, float]] = {}
+            bpm_estimates: Dict[str, float] = {}
             waveforms: Dict[str, Optional[np.ndarray]] = {}
             for var in all_vars:
                 var_seg = multichannel_by_var.get(var, {}).get(seg_name)
                 if var_seg is None or best_ch not in var_seg["channels"]:
                     channel_scores[var] = {"energy_ratio": np.nan, "peak": np.nan}
+                    bpm_estimates[var] = np.nan
                     waveforms[var] = None
                     continue
                 hp = var_seg["channels"][best_ch][var]["highpass_filtered"][st:end]
@@ -935,6 +954,10 @@ def collect_single_max_energy_window_records(
                     "energy_ratio": _energy_ratio(hp, fs, cfg),
                     "peak": _peak_prominence(bp, fs, cfg),
                 }
+                f_hz_var = _estimate_breathing_freq_hz(
+                    bp, fs, cfg.breath_freq_low, cfg.breath_freq_high
+                )
+                bpm_estimates[var] = float(f_hz_var * 60.0) if np.isfinite(f_hz_var) else np.nan
                 waveforms[var] = bp
 
             records.append(
@@ -952,6 +975,7 @@ def collect_single_max_energy_window_records(
                     "channel_metric": metric,
                     "ref_channel_score": ref_score,
                     "channel_scores": channel_scores,
+                    "bpm_estimates": bpm_estimates,
                     "energy_ratios": {v: channel_scores[v]["energy_ratio"] for v in all_vars},
                     "waveforms": waveforms,
                 }
@@ -973,6 +997,21 @@ def select_complementarity_windows(records: List[dict]) -> Dict[str, Optional[di
     }
 
 
+def _complementarity_trace_label(
+    variable: str,
+    record: dict,
+    metric: Plan2ChannelMetric,
+) -> str:
+    """Legend text: variable name + selector score + per-variable BPM estimate."""
+    sym = _plan2_metric_symbol(metric)
+    scores = record.get("channel_scores", {}).get(variable, {})
+    val = scores.get(metric, record.get("energy_ratios", {}).get(variable, np.nan))
+    score_str = f"{sym}={val:.2f}" if np.isfinite(val) else f"{sym}=N/A"
+    bpm = record.get("bpm_estimates", {}).get(variable, np.nan)
+    bpm_str = f"{bpm:.1f} BPM" if np.isfinite(bpm) else "BPM N/A"
+    return f"{_variable_plot_label(variable)} ({score_str}, {bpm_str})"
+
+
 def plot_complementarity_waveforms(
     selected: Dict[str, Optional[dict]],
     *,
@@ -984,7 +1023,7 @@ def plot_complementarity_waveforms(
 ) -> List[Path]:
     """Plot normalized bandpass waveforms for four variables at reference-best channel.
 
-    Annotates each trace with the active ``channel_metric`` (η or ρ) from the record.
+    Legend shows selector metric (η or ρ) and Single FFT BPM per variable on that channel.
     """
     import matplotlib.pyplot as plt
 
@@ -997,7 +1036,6 @@ def plot_complementarity_waveforms(
             continue
 
         metric: Plan2ChannelMetric = record.get("channel_metric", "peak")
-        sym = _plan2_metric_symbol(metric)
         fs = record["fs"]
         t = np.arange(record["end"] - record["start"]) / fs
         fig, ax = plt.subplots(figsize=(10, 4.5))
@@ -1006,13 +1044,10 @@ def plot_complementarity_waveforms(
             wf = record["waveforms"].get(var)
             if wf is None or len(wf) == 0:
                 continue
-            scores = record.get("channel_scores", {}).get(var, {})
-            val = scores.get(metric, record.get("energy_ratios", {}).get(var, np.nan))
-            val_str = f"{sym}={val:.3f}" if np.isfinite(val) else f"{sym}=N/A"
             ax.plot(
                 t,
                 _normalize_waveform(wf),
-                label=f"{_variable_plot_label(var)} ({val_str})",
+                label=_complementarity_trace_label(var, record, metric),
                 color=PART1_VARIABLE_COLORS.get(var, "gray"),
                 linewidth=1.2,
                 alpha=0.9,
@@ -1042,6 +1077,86 @@ def plot_complementarity_waveforms(
         else:
             plt.close(fig)
 
+    return saved
+
+
+def collect_complementarity_by_reference(
+    multichannel_by_var: Dict[str, Dict[str, Optional[dict]]],
+    *,
+    reference_variables: Sequence[str] = COMPLEMENTARITY_REFERENCE_VARIABLES,
+    config: Optional[ChFusionConfig] = None,
+    metric_params: Optional[BreathMetricParams] = None,
+    plan2_config: Optional[Plan2Config] = None,
+) -> Dict[str, dict]:
+    """Collect best / worst / median BPM windows for each reference variable."""
+    out: Dict[str, dict] = {}
+    for ref_var in reference_variables:
+        records = collect_single_max_energy_window_records(
+            multichannel_by_var,
+            reference_variable=ref_var,
+            config=config,
+            metric_params=metric_params,
+            plan2_config=plan2_config,
+        )
+        out[ref_var] = {
+            "reference_variable": ref_var,
+            "window_records": records,
+            "complementarity_windows": select_complementarity_windows(records),
+        }
+    return out
+
+
+def print_complementarity_window_summary(
+    complementarity_by_reference: Dict[str, dict],
+    *,
+    reference_variables: Optional[Sequence[str]] = None,
+) -> None:
+    """Print best / worst / median window picks per reference variable."""
+    refs = reference_variables or complementarity_by_reference.keys()
+    print("\n=== 互补性窗口摘要（各参考变量 Single BPM best / worst / median）===")
+    for ref_var in refs:
+        block = complementarity_by_reference.get(ref_var)
+        if block is None:
+            continue
+        label = _variable_display_name(ref_var)
+        n = len(block.get("window_records", []))
+        print(f"\n--- {label} ({ref_var}) | {n} windows ---")
+        for tag, rec in block.get("complementarity_windows", {}).items():
+            if rec is None:
+                print(f"  [{tag}] — no window")
+                continue
+            print(
+                f"  [{tag}] seg={rec['segment']} win={rec['window_idx']} ch={rec['best_channel']} "
+                f"| est={rec['bpm_est']:.2f} GT={rec['bpm_gt']:.2f} | rel err={rec['rel_err']*100:.1f}%"
+            )
+
+
+def plot_complementarity_waveforms_all(
+    complementarity_by_reference: Dict[str, dict],
+    *,
+    reference_variables: Optional[Sequence[str]] = None,
+    figures_dir=None,
+    filename_prefix: str = "plan2_complementarity",
+    show: bool = True,
+    save: bool = True,
+) -> List[Path]:
+    """Plot complementarity figures for each reference variable (3 tags × N refs)."""
+    saved: List[Path] = []
+    refs = list(reference_variables or complementarity_by_reference.keys())
+    for ref_var in refs:
+        block = complementarity_by_reference.get(ref_var)
+        if block is None:
+            continue
+        slug = _complementarity_filename_slug(ref_var)
+        paths = plot_complementarity_waveforms(
+            block["complementarity_windows"],
+            figures_dir=figures_dir,
+            filename_prefix=f"{filename_prefix}_{slug}",
+            reference_variable=ref_var,
+            show=show,
+            save=save,
+        )
+        saved.extend(paths)
     return saved
 
 
@@ -1307,6 +1422,332 @@ def build_plan2_violin_results(plan2: dict) -> Dict[str, Optional[dict]]:
     return merged
 
 
+PLAN2_CATEGORY_COLORS: Dict[str, str] = {
+    "Single": "steelblue",
+    "Uniform": "seagreen",
+    "Modal": "coral",
+}
+
+
+def _plan2_method_specs() -> List[dict]:
+    """Registry of all Plan 2 comparison methods (baselines + modal fusion)."""
+    specs: List[dict] = []
+    short_var = {
+        "amplitudes": "amp",
+        "remote_amplitudes": "rem",
+        "local_amplitudes": "loc",
+        "phases": "pha",
+    }
+    for var, _lbl in CS_SIGNAL_VARIABLES:
+        vlabel = _variable_plot_label(var)
+        sv = short_var.get(var, var[:3])
+        specs.append(
+            {
+                "category": "Single",
+                "label": f"Single {vlabel}",
+                "short_label": f"S {sv}",
+                "result_key": "fft_single_max_energy",
+                "storage_key": _baseline_single_key(var),
+                "baseline_var": var,
+                "color": PART1_VARIABLE_COLORS[var],
+            }
+        )
+        specs.append(
+            {
+                "category": "Uniform",
+                "label": f"Uniform {vlabel}",
+                "short_label": f"U {sv}",
+                "result_key": "fft_uniform_fusion",
+                "storage_key": _baseline_uniform_key(var),
+                "baseline_var": var,
+                "color": PART1_VARIABLE_COLORS[var],
+            }
+        )
+    modal_short = {
+        "modal_equal_fusion": "M eq",
+        "modal_energy_ratio_fusion": "M η",
+        "modal_fixed_fusion": "M 0.5",
+        "modal_top2_equal_fusion": "M t2=",
+        "modal_top2_peak_fusion": "M t2ρ",
+    }
+    for label, key, color in MODAL_FUSION_METHOD_LABELS:
+        specs.append(
+            {
+                "category": "Modal",
+                "label": label,
+                "short_label": modal_short.get(key, label[:6]),
+                "result_key": key,
+                "storage_key": key,
+                "baseline_var": None,
+                "color": color,
+            }
+        )
+    return specs
+
+
+def _plan2_results_for_spec(plan2: dict, spec: dict) -> Dict[str, Optional[dict]]:
+    if spec["baseline_var"] is not None:
+        return plan2["variable_baselines"][spec["baseline_var"]]
+    return plan2["modal_benchmark"]["results"]
+
+
+def build_plan2_leaderboard_rows(plan2: dict) -> List[dict]:
+    """Overall mean relative BPM error per method, sorted ascending (best first)."""
+    rows: List[dict] = []
+    for spec in _plan2_method_specs():
+        stats = _overall_rel_error(
+            _plan2_results_for_spec(plan2, spec), spec["result_key"]
+        )
+        if not np.isfinite(stats["mean_rel_err_pct"]):
+            continue
+        rows.append({**spec, **stats})
+    rows.sort(key=lambda r: r["mean_rel_err_pct"])
+    for rank, row in enumerate(rows, start=1):
+        row["rank"] = rank
+    return rows
+
+
+def build_plan2_segment_error_matrix(
+    plan2: dict,
+) -> Tuple[List[str], List[str], np.ndarray, List[dict]]:
+    """Segment × method matrix of segment-mean relative BPM error (%)."""
+    specs = _plan2_method_specs()
+    violin_results = build_plan2_violin_results(plan2)
+    segments = [
+        s
+        for s in sorted(violin_results.keys())
+        if violin_results[s] is not None and violin_results[s].get("bpm_gt") is not None
+    ]
+    n_seg, n_meth = len(segments), len(specs)
+    matrix = np.full((n_seg, n_meth), np.nan)
+    for j, spec in enumerate(specs):
+        results = _plan2_results_for_spec(plan2, spec)
+        for i, seg in enumerate(segments):
+            row = results.get(seg)
+            if row is None:
+                continue
+            block = row.get(spec["result_key"])
+            if block is None:
+                continue
+            err = block.get("bpm_rel_err")
+            if err is not None and np.isfinite(err):
+                matrix[i, j] = float(err) * 100.0
+    short_labels = [s["short_label"] for s in specs]
+    return segments, short_labels, matrix, specs
+
+
+def _plan2_category_method_labels(category: str) -> Tuple[Tuple[str, str, str], ...]:
+    return tuple(
+        (s["label"], s["storage_key"], s["color"])
+        for s in _plan2_method_specs()
+        if s["category"] == category
+    )
+
+
+def plot_plan2_leaderboard_bars(
+    plan2: dict,
+    *,
+    figures_dir=None,
+    filename: str = "",
+    show: bool = True,
+    save: bool = True,
+):
+    """Horizontal bar chart: overall mean rel. BPM error (%) for all Plan 2 methods."""
+    import matplotlib.pyplot as plt
+
+    if not filename:
+        filename = _chfusion_figure_name("plan2_leaderboard_bars")
+
+    rows = build_plan2_leaderboard_rows(plan2)
+    if not rows:
+        print("⚠️  Plan 2 排行榜：无可用数据")
+        return None
+
+    labels = [r["label"] for r in rows]
+    means = np.asarray([r["mean_rel_err_pct"] for r in rows], dtype=float)
+    colors = [PLAN2_CATEGORY_COLORS.get(r["category"], "gray") for r in rows]
+
+    fig_h = max(5.0, 0.38 * len(rows) + 1.5)
+    fig, ax = plt.subplots(figsize=(9.0, fig_h))
+    y = np.arange(len(rows))
+    ax.barh(y, means, color=colors, edgecolor="black", alpha=0.85, height=0.72)
+    ax.set_yticks(y)
+    ax.set_yticklabels(labels, fontsize=9)
+    ax.invert_yaxis()
+    ax.set_xlabel("Mean relative BPM error (%)")
+    ax.set_title("Plan 2 method leaderboard (segment mean, lower is better)")
+    ax.grid(True, axis="x", alpha=0.25)
+
+    for i, (m, r) in enumerate(zip(means, rows)):
+        ax.text(m + 0.3, i, f"{m:.1f}%", va="center", fontsize=8)
+
+    legend_handles = [
+        plt.Rectangle((0, 0), 1, 1, color=c, ec="black", alpha=0.85, label=cat)
+        for cat, c in PLAN2_CATEGORY_COLORS.items()
+    ]
+    ax.legend(handles=legend_handles, loc="lower right", fontsize=8)
+    plt.tight_layout()
+
+    if save and figures_dir is not None:
+        fig_path = Path(figures_dir) / filename
+        _save_chfusion_figure(fig, fig_path)
+        print(f"✓ Plan 2 排行榜柱状图: {fig_path}")
+    if show:
+        plt.show()
+    else:
+        plt.close(fig)
+    return fig
+
+
+def plot_plan2_segment_method_heatmap(
+    plan2: dict,
+    *,
+    figures_dir=None,
+    filename: str = "",
+    show: bool = True,
+    save: bool = True,
+):
+    """Heatmap: script segment × method, cell = segment mean rel. BPM error (%)."""
+    import matplotlib.pyplot as plt
+
+    if not filename:
+        filename = _chfusion_figure_name("plan2_segment_method_heatmap")
+
+    segments, meth_labels, matrix, _specs = build_plan2_segment_error_matrix(plan2)
+    if not segments or matrix.size == 0:
+        print("⚠️  Plan 2 热力图：无可用数据")
+        return None
+
+    gt_by_seg = {}
+    vr = build_plan2_violin_results(plan2)
+    for s in segments:
+        row = vr.get(s)
+        if row is not None and row.get("bpm_gt") is not None:
+            gt_by_seg[s] = float(row["bpm_gt"])
+    row_labels = [f"{seg}\nGT={gt_by_seg.get(seg, float('nan')):.1f}" for seg in segments]
+
+    fig_w = max(10.0, 0.55 * len(meth_labels) + 3.0)
+    fig, ax = plt.subplots(figsize=(fig_w, max(4.5, 0.55 * len(segments) + 2.0)))
+    vmax = float(np.nanpercentile(matrix, 95)) if np.any(np.isfinite(matrix)) else 30.0
+    im = ax.imshow(matrix, aspect="auto", cmap="YlOrRd", vmin=0.0, vmax=max(vmax, 1.0))
+    ax.set_xticks(np.arange(len(meth_labels)))
+    ax.set_yticks(np.arange(len(segments)))
+    ax.set_xticklabels(meth_labels, rotation=45, ha="right", fontsize=8)
+    ax.set_yticklabels(row_labels, fontsize=9)
+    ax.set_title("Plan 2: segment × method mean rel. BPM error (%)")
+
+    for i in range(matrix.shape[0]):
+        for j in range(matrix.shape[1]):
+            val = matrix[i, j]
+            if np.isfinite(val):
+                ax.text(j, i, f"{val:.1f}", ha="center", va="center", fontsize=7, color="black")
+
+    cbar = fig.colorbar(im, ax=ax, fraction=0.03, pad=0.02)
+    cbar.set_label("Rel. error (%)")
+    plt.tight_layout()
+
+    if save and figures_dir is not None:
+        fig_path = Path(figures_dir) / filename
+        _save_chfusion_figure(fig, fig_path, bbox_inches="tight")
+        print(f"✓ Plan 2 段×方法热力图: {fig_path}")
+    if show:
+        plt.show()
+    else:
+        plt.close(fig)
+    return fig
+
+
+def plot_plan2_violins_by_category(
+    plan2: dict,
+    *,
+    figures_dir=None,
+    filename: str = "",
+    show: bool = True,
+    save: bool = True,
+):
+    """3-panel violins: Single (4) / Uniform (4) / Modal (5) window-level signed errors."""
+    import matplotlib.pyplot as plt
+
+    if not filename:
+        filename = _chfusion_figure_name("plan2_violins_by_category")
+
+    violin_results = build_plan2_violin_results(plan2)
+    categories = ("Single", "Uniform", "Modal")
+    panel_specs = [(cat, _plan2_category_method_labels(cat)) for cat in categories]
+
+    all_records: List[dict] = []
+    for _cat, labels in panel_specs:
+        all_records.extend(collect_window_signed_errors(violin_results, labels))
+    if not all_records:
+        print("⚠️  Plan 2 分类小提琴图：无可用数据")
+        return None
+
+    segments = sorted({r["segment"] for r in all_records})
+    gt_by_seg = {r["segment"]: r["bpm_gt"] for r in all_records}
+
+    panel_h = 5.0
+    fig, axes = plt.subplots(
+        len(categories),
+        1,
+        figsize=(max(12, len(segments) * 2.2), panel_h * len(categories)),
+        sharey=True,
+    )
+    axes_flat = np.atleast_1d(axes).flatten()
+
+    for ax, (cat, labels) in zip(axes_flat, panel_specs):
+        subset = [r for r in all_records if r["method"] in [m[0] for m in labels]]
+        colors = {m[0]: m[2] for m in labels}
+        _draw_grouped_violins_on_ax(
+            ax,
+            subset,
+            segments=segments,
+            group_ids=[m[0] for m in labels],
+            group_field="method",
+            colors=colors,
+            gt_by_seg=gt_by_seg,
+            title=f"{cat} baselines" if cat != "Modal" else "Modal fusion",
+            show_ylabel=(ax is axes_flat[0]),
+        )
+
+    fig.suptitle(
+        "Plan 2: window-level signed BPM error by category (y=0 is GT)",
+        y=0.995,
+        fontsize=11,
+    )
+    plt.tight_layout(rect=[0, 0, 1, 0.98])
+
+    if save and figures_dir is not None:
+        fig_path = Path(figures_dir) / filename
+        _save_chfusion_figure(fig, fig_path, bbox_inches="tight")
+        print(f"✓ Plan 2 分类小提琴图: {fig_path}")
+    if show:
+        plt.show()
+    else:
+        plt.close(fig)
+    return fig
+
+
+def plot_plan2_comparison_figures(
+    plan2: dict,
+    *,
+    figures_dir=None,
+    show: bool = True,
+    save: bool = True,
+) -> List[Path]:
+    """Generate Plan 2 overview figures: leaderboard bars, heatmap, category violins."""
+    saved: List[Path] = []
+    specs = [
+        ("plan2_leaderboard_bars.pdf", plot_plan2_leaderboard_bars),
+        ("plan2_segment_method_heatmap.pdf", plot_plan2_segment_method_heatmap),
+        ("plan2_violins_by_category.pdf", plot_plan2_violins_by_category),
+    ]
+    for fname, plot_fn in specs:
+        plot_fn(plan2, figures_dir=figures_dir, filename=fname, show=show, save=save)
+        if save and figures_dir is not None:
+            saved.append(Path(figures_dir) / fname)
+    return saved
+
+
 def print_plan2_comparison_table(plan2: dict) -> None:
     """Print four-variable Single/Uniform baselines alongside modal fusion methods."""
     variable_baselines = plan2["variable_baselines"]
@@ -1397,6 +1838,7 @@ def run_plan2_validation(
     config: Optional[ChFusionConfig] = None,
     plan2_config: Optional[Plan2Config] = None,
     reference_variable: str = "phases",
+    complementarity_variables: Optional[Sequence[str]] = None,
     verbose: bool = True,
 ) -> dict:
     """Plan 2 end-to-end: complementarity windows + modal fusion benchmark."""
@@ -1405,6 +1847,7 @@ def run_plan2_validation(
     mp = metric_params or BreathMetricParams()
     p2 = plan2_config or Plan2Config()
     variables = [v[0] for v in CS_SIGNAL_VARIABLES]
+    comp_vars = list(complementarity_variables or COMPLEMENTARITY_REFERENCE_VARIABLES)
 
     multichannel_by_var: Dict[str, Dict[str, Optional[dict]]] = {}
     fs = None
@@ -1414,14 +1857,20 @@ def run_plan2_validation(
         )
         multichannel_by_var[variable] = mc
 
-    window_records = collect_single_max_energy_window_records(
+    complementarity_by_reference = collect_complementarity_by_reference(
         multichannel_by_var,
-        reference_variable=reference_variable,
+        reference_variables=comp_vars,
         config=cfg,
         metric_params=mp,
         plan2_config=p2,
     )
-    complementarity_windows = select_complementarity_windows(window_records)
+
+    primary = reference_variable
+    if primary not in complementarity_by_reference and comp_vars:
+        primary = comp_vars[0]
+    primary_block = complementarity_by_reference.get(primary, {})
+    window_records = primary_block.get("window_records", [])
+    complementarity_windows = primary_block.get("complementarity_windows", {})
 
     variable_baselines: Dict[str, Dict[str, Optional[dict]]] = {}
     for variable in variables:
@@ -1449,12 +1898,14 @@ def run_plan2_validation(
 
     return {
         "multichannel_by_var": multichannel_by_var,
+        "complementarity_by_reference": complementarity_by_reference,
+        "complementarity_variables": comp_vars,
         "window_records": window_records,
         "complementarity_windows": complementarity_windows,
         "variable_baselines": variable_baselines,
         "modal_benchmark": modal_benchmark,
         "plan2_config": p2,
-        "reference_variable": reference_variable,
+        "reference_variable": primary,
         "sampling_rate": fs,
         "segment_config": segment_config,
     }

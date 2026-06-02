@@ -4,9 +4,9 @@ Implements **改进方案2** from ``docs/CS呼吸算法验证整体进度.md``:
 
 Part A — 幅值相位互补性（波形对比）
 ------------------------------------
-On **total phase** Single (max-η channel) windows, pick best / worst / median
-accuracy windows across all breath segments. At each window's phase-best channel,
-plot normalized **bandpass** waveforms for all four CS variables with η annotations.
+For **phase / remote / local** Single best-channel windows, pick best / worst / median
+accuracy windows across all breath segments. At each window's reference-best channel,
+plot normalized **bandpass** waveforms for all four CS variables.
 
 Part B — 只联合最好的信道 × 最好的变量
 ---------------------------------------
@@ -29,9 +29,9 @@ Run: ``python notebooks/scripts/chFusion_plan2.py``
 # |------|---------|
 # | 0 | Bootstrap + parameters |
 # | 1 | Run Plan 2 validation (filter 4 vars, collect windows, modal fusion) |
-# | 2 | Complementarity waveform figures (best / worst / median phase windows) |
+# | 2 | Complementarity waveform figures (phase + remote + local, 3×3 PDFs) |
 # | 3 | Modal fusion BPM tables |
-# | 4 | Save results + optional violin plots |
+# | 4 | Overview figures: leaderboard bars, segment×method heatmap, 3-panel violins |
 
 # %% [markdown]
 # ## 0. Environment bootstrap
@@ -66,13 +66,14 @@ REPORTS_DIR = _env["REPORTS_DIR"]
 
 # %%
 from ble_analysis.chfusion import (
+    COMPLEMENTARITY_REFERENCE_VARIABLES,
     CS_SIGNAL_VARIABLES,
     ChFusionConfig,
     Plan2Config,
     build_plan2_comparison_method_labels,
-    build_plan2_violin_results,
-    plot_bpm_error_violins,
-    plot_complementarity_waveforms,
+    plot_complementarity_waveforms_all,
+    plot_plan2_comparison_figures,
+    print_complementarity_window_summary,
     print_plan2_comparison_table,
     run_plan2_validation,
 )
@@ -104,11 +105,13 @@ chfusion_config = ChFusionConfig(
 )
 
 REFERENCE_VARIABLE = "phases"
+COMPLEMENTARITY_VARS = list(COMPLEMENTARITY_REFERENCE_VARIABLES)
 
-# 信道选择指标：peak（峰度 ρ，默认）或 energy_ratio（能量比 η）
-plan2_config = Plan2Config(channel_metric="peak")
+# 信道选择指标：peak（峰度 ρ）或 energy_ratio（能量比 η）
+plan2_config = Plan2Config(channel_metric="energy_ratio")
 
-print("Plan 2 reference variable:", REFERENCE_VARIABLE)
+print("Plan 2 primary reference:", REFERENCE_VARIABLE)
+print("Complementarity refs:", ", ".join(COMPLEMENTARITY_VARS))
 print("Plan 2 channel metric:", plan2_config.channel_metric)
 print("CS variables:", ", ".join(f"{k} ({lbl})" for k, lbl in CS_SIGNAL_VARIABLES))
 print("Comparison methods:", len(build_plan2_comparison_method_labels()), "total (4×Single + 4×Uniform + 5×modal)")
@@ -116,8 +119,8 @@ print("Comparison methods:", len(build_plan2_comparison_method_labels()), "total
 # %% [markdown]
 # ## 1. Run Plan 2 validation
 #
-# Filters all four variables on all channels, collects per-window phase Single
-# records, and runs three modal-fusion weight strategies.
+# Filters all four variables on all channels, collects per-window Single records
+# for phase / remote / local reference variables, and runs modal-fusion strategies.
 
 # %%
 data, frames = load_ble_frames(filepath, verbose=False)
@@ -130,32 +133,23 @@ plan2 = run_plan2_validation(
     config=chfusion_config,
     plan2_config=plan2_config,
     reference_variable=REFERENCE_VARIABLE,
+    complementarity_variables=COMPLEMENTARITY_VARS,
     verbose=True,
 )
 
-n_windows = len(plan2["window_records"])
-print(f"\nCollected {n_windows} phase Single windows across breath segments")
-
-for tag, rec in plan2["complementarity_windows"].items():
-    if rec is None:
-        print(f"  [{tag}] — no window")
-        continue
-    print(
-        f"  [{tag}] seg={rec['segment']} win={rec['window_idx']} ch={rec['best_channel']} "
-        f"| est={rec['bpm_est']:.2f} GT={rec['bpm_gt']:.2f} | rel err={rec['rel_err']*100:.1f}%"
-    )
+print_complementarity_window_summary(plan2["complementarity_by_reference"])
 
 # %% [markdown]
 # ## 2. Complementarity waveform figures
 #
-# Three PDFs: phase BPM best / worst / median window; four normalized bandpass
-# waveforms on the phase-best channel, each annotated with selector metric (ρ or η).
+# Nine PDFs (3 refs × best/worst/median): four normalized bandpass waveforms on
+# each reference variable's best channel, annotated with selector metric + BPM per variable.
 
 # %%
-complementarity_paths = plot_complementarity_waveforms(
-    plan2["complementarity_windows"],
+complementarity_paths = plot_complementarity_waveforms_all(
+    plan2["complementarity_by_reference"],
+    reference_variables=COMPLEMENTARITY_VARS,
     figures_dir=FIGURES_DIR,
-    reference_variable=REFERENCE_VARIABLE,
     show=True,
     save=True,
 )
@@ -168,22 +162,19 @@ print(f"Saved {len(complementarity_paths)} complementarity figure(s)")
 print_plan2_comparison_table(plan2)
 
 # %% [markdown]
-# ## 4. Save results + violin plots (baselines + modal fusion)
+# ## 4. Save results + comparison figures (leaderboard / heatmap / violins)
 
 # %%
 report_path = REPORTS_DIR / "chfusion_plan2_validation.npy"
 np.save(report_path, plan2, allow_pickle=True)
 print(f"Saved: {report_path}")
 
-comparison_labels = build_plan2_comparison_method_labels()
-violin_results = build_plan2_violin_results(plan2)
-plot_bpm_error_violins(
-    violin_results,
-    method_labels=comparison_labels,
+overview_paths = plot_plan2_comparison_figures(
+    plan2,
     figures_dir=FIGURES_DIR,
-    filename="chfusion_plan2_comparison_violins.pdf",
-    title="Plan 2: 4×Single + 4×Uniform baselines + modal fusion",
     show=True,
     save=True,
 )
-print(f"Violin plot: {FIGURES_DIR / 'chfusion_plan2_comparison_violins.pdf'}")
+print(f"Saved {len(overview_paths)} Plan 2 overview figure(s)")
+for p in overview_paths:
+    print(f"  {p}")
