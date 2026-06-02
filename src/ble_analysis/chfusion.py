@@ -1588,14 +1588,10 @@ def plot_plan2_leaderboard_bars(
     ax.legend(handles=legend_handles, loc="lower right", fontsize=8)
     plt.tight_layout()
 
-    if save and figures_dir is not None:
-        fig_path = Path(figures_dir) / filename
-        _save_chfusion_figure(fig, fig_path)
+    fig_path = Path(figures_dir) / filename if save and figures_dir is not None else None
+    _finalize_chfusion_figure(fig, show=show, save_path=fig_path)
+    if fig_path is not None:
         print(f"✓ Plan 2 排行榜柱状图: {fig_path}")
-    if show:
-        plt.show()
-    else:
-        plt.close(fig)
     return fig
 
 
@@ -1646,14 +1642,10 @@ def plot_plan2_segment_method_heatmap(
     cbar.set_label("Rel. error (%)")
     plt.tight_layout()
 
-    if save and figures_dir is not None:
-        fig_path = Path(figures_dir) / filename
-        _save_chfusion_figure(fig, fig_path, bbox_inches="tight")
+    fig_path = Path(figures_dir) / filename if save and figures_dir is not None else None
+    _finalize_chfusion_figure(fig, show=show, save_path=fig_path, bbox_inches="tight")
+    if fig_path is not None:
         print(f"✓ Plan 2 段×方法热力图: {fig_path}")
-    if show:
-        plt.show()
-    else:
-        plt.close(fig)
     return fig
 
 
@@ -1732,14 +1724,153 @@ def plot_plan2_violins_by_category(
     )
     plt.tight_layout(rect=[0, 0, 1, 0.98])
 
-    if save and figures_dir is not None:
-        fig_path = Path(figures_dir) / filename
-        _save_chfusion_figure(fig, fig_path, bbox_inches="tight")
+    fig_path = Path(figures_dir) / filename if save and figures_dir is not None else None
+    _finalize_chfusion_figure(fig, show=show, save_path=fig_path, bbox_inches="tight")
+    if fig_path is not None:
         print(f"✓ Plan 2 分类小提琴图: {fig_path}")
-    if show:
-        plt.show()
-    else:
-        plt.close(fig)
+    return fig
+
+
+def build_plan2_cross_domain_aggregate_rows(
+    results_by_tag: Dict[str, dict],
+    *,
+    domain_order: Optional[Sequence[str]] = None,
+) -> Tuple[List[str], List[dict]]:
+    """Per-method mean ± std of segment-mean rel. BPM error (%) across domains.
+
+    Each domain contributes one scalar (that domain's overall mean for the method);
+    ``mean_across_domains`` / ``std_across_domains`` summarize those scalars.
+    """
+    tags = list(domain_order) if domain_order is not None else sorted(results_by_tag.keys())
+    rows: List[dict] = []
+    for spec in _plan2_method_specs():
+        domain_errs = np.full(len(tags), np.nan, dtype=float)
+        for i, tag in enumerate(tags):
+            lb = {r["label"]: r for r in build_plan2_leaderboard_rows(results_by_tag[tag])}
+            val = lb.get(spec["label"], {}).get("mean_rel_err_pct", np.nan)
+            if np.isfinite(val):
+                domain_errs[i] = float(val)
+        finite = domain_errs[np.isfinite(domain_errs)]
+        if len(finite) == 0:
+            continue
+        rows.append(
+            {
+                **spec,
+                "domain_errs": domain_errs,
+                "mean_across_domains": float(np.mean(finite)),
+                "std_across_domains": (
+                    float(np.std(finite, ddof=1)) if len(finite) > 1 else 0.0
+                ),
+                "n_domains": int(len(finite)),
+            }
+        )
+    rows.sort(key=lambda r: r["mean_across_domains"])
+    for rank, row in enumerate(rows, start=1):
+        row["rank"] = rank
+    return tags, rows
+
+
+def print_plan2_cross_domain_aggregate_table(
+    results_by_tag: Dict[str, dict],
+    *,
+    domain_order: Optional[Sequence[str]] = None,
+) -> List[dict]:
+    """Print per-method errors per domain plus cross-domain mean ± std."""
+    tags, rows = build_plan2_cross_domain_aggregate_rows(
+        results_by_tag, domain_order=domain_order
+    )
+    if not rows:
+        print("⚠️  跨场景聚合：无可用数据")
+        return rows
+
+    col_w = 9
+    header = f"{'方法':<32}" + "".join(f"{t:>{col_w}}" for t in tags) + f"{'mean':>8}{'±std':>7}"
+    print(f"\n=== Plan 2 跨场景聚合（各域 segment-mean err% → mean±std）===")
+    print(f"Domains ({len(tags)}): {' / '.join(tags)}")
+    print(header)
+    print("-" * (32 + col_w * len(tags) + 15))
+    for row in rows:
+        line = f"{row['label']:<32}"
+        for val in row["domain_errs"]:
+            line += f"{val:>{col_w}.2f}" if np.isfinite(val) else f"{'—':>{col_w}}"
+        line += f"{row['mean_across_domains']:8.2f}{row['std_across_domains']:7.2f}"
+        print(line)
+    best = rows[0]
+    print(
+        f"\n★ 跨场景平均最优：{best['label']} → "
+        f"{best['mean_across_domains']:.2f}% ± {best['std_across_domains']:.2f}% "
+        f"(n={best['n_domains']} domains)\n"
+    )
+    return rows
+
+
+def plot_plan2_cross_domain_aggregate_bars(
+    results_by_tag: Dict[str, dict],
+    *,
+    domain_order: Optional[Sequence[str]] = None,
+    figures_dir=None,
+    filename: str = "",
+    show: bool = True,
+    save: bool = True,
+):
+    """Bar chart: cross-domain mean rel. BPM error with ±1 std across domains."""
+    import matplotlib.pyplot as plt
+
+    if not filename:
+        filename = _chfusion_figure_name("plan2_cross_domain_aggregate_bars")
+
+    tags, rows = build_plan2_cross_domain_aggregate_rows(
+        results_by_tag, domain_order=domain_order
+    )
+    if not rows:
+        print("⚠️  跨场景聚合柱状图：无可用数据")
+        return None
+
+    labels = [r["label"] for r in rows]
+    means = np.asarray([r["mean_across_domains"] for r in rows], dtype=float)
+    stds = np.asarray([r["std_across_domains"] for r in rows], dtype=float)
+    colors = [PLAN2_CATEGORY_COLORS.get(r["category"], "gray") for r in rows]
+
+    fig_h = max(5.0, 0.38 * len(rows) + 1.5)
+    fig, ax = plt.subplots(figsize=(9.5, fig_h))
+    y = np.arange(len(rows))
+    ax.barh(
+        y,
+        means,
+        xerr=stds,
+        color=colors,
+        edgecolor="black",
+        alpha=0.85,
+        height=0.72,
+        capsize=3,
+        error_kw={"elinewidth": 1.2, "ecolor": "black", "capthick": 1.2},
+    )
+    ax.set_yticks(y)
+    ax.set_yticklabels(labels, fontsize=9)
+    ax.invert_yaxis()
+    ax.set_xlabel("Mean relative BPM error across domains (%)")
+    ax.set_title(
+        f"Plan 2 cross-domain aggregate (mean ± std over {len(tags)} domains: "
+        + " / ".join(tags)
+        + ")",
+        fontsize=10,
+    )
+    ax.grid(True, axis="x", alpha=0.25)
+
+    for i, (m, s) in enumerate(zip(means, stds)):
+        ax.text(m + s + 0.35, i, f"{m:.1f}±{s:.1f}%", va="center", fontsize=8)
+
+    legend_handles = [
+        plt.Rectangle((0, 0), 1, 1, color=c, ec="black", alpha=0.85, label=cat)
+        for cat, c in PLAN2_CATEGORY_COLORS.items()
+    ]
+    ax.legend(handles=legend_handles, loc="lower right", fontsize=8)
+    plt.tight_layout()
+
+    fig_path = Path(figures_dir) / filename if save and figures_dir is not None else None
+    _finalize_chfusion_figure(fig, show=show, save_path=fig_path)
+    if fig_path is not None:
+        print(f"✓ Plan 2 跨场景聚合柱状图: {fig_path}")
     return fig
 
 
@@ -2250,6 +2381,37 @@ def _save_chfusion_figure(fig, path: Path, *, bbox_inches: Optional[str] = None)
         kwargs["bbox_inches"] = bbox_inches
     fig.savefig(path, **kwargs)
     return path
+
+
+def _running_in_ipython() -> bool:
+    try:
+        from IPython import get_ipython
+
+        return get_ipython() is not None
+    except ImportError:
+        return False
+
+
+def _finalize_chfusion_figure(
+    fig,
+    *,
+    show: bool,
+    save_path: Optional[Path] = None,
+    bbox_inches: Optional[str] = None,
+) -> None:
+    """Save and/or show once, then close (avoid duplicate display in Interactive)."""
+    import matplotlib.pyplot as plt
+
+    saved = False
+    if save_path is not None:
+        _save_chfusion_figure(fig, save_path, bbox_inches=bbox_inches)
+        saved = True
+    if show:
+        # VS Code / Jupyter Interactive often embeds a preview on savefig; skip the
+        # redundant plt.show() that makes the same figure appear twice.
+        if not (saved and _running_in_ipython()):
+            plt.show()
+    plt.close(fig)
 
 
 def _signed_errors_from_method_block(block: dict, bpm_gt: float) -> np.ndarray:
