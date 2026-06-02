@@ -10,12 +10,14 @@ plot normalized **bandpass** waveforms for all four CS variables with η annotat
 
 Part B — 只联合最好的信道 × 最好的变量
 ---------------------------------------
-Per sliding window, each variable picks its own max-η channel; fuse spectra of
-phase + remote amplitude + local amplitude (total amplitude excluded):
+Per sliding window, each variable picks its own best channel (``Plan2Config.channel_metric``,
+default **peak** ρ); fuse spectra of phase + remote amplitude + local amplitude:
 
 - **Modal equal**           — equal weights (1/3 each)
 - **Modal η-weight**        — weights ∝ breath-band energy ratio η
 - **Modal 0.5/0.25/0.25**   — phase 0.5, remote/local 0.25
+- **Modal top2 equal**      — top-2 variables by selector metric, equal 0.5 each
+- **Modal top2 ρ-weight**   — top-2 variables by selector metric, weights ∝ ρ
 
 Run: ``python notebooks/scripts/chFusion_plan2.py``
 """
@@ -66,6 +68,7 @@ REPORTS_DIR = _env["REPORTS_DIR"]
 from ble_analysis.chfusion import (
     CS_SIGNAL_VARIABLES,
     ChFusionConfig,
+    Plan2Config,
     build_plan2_comparison_method_labels,
     build_plan2_violin_results,
     plot_bpm_error_violins,
@@ -101,9 +104,14 @@ chfusion_config = ChFusionConfig(
 )
 
 REFERENCE_VARIABLE = "phases"
+
+# 信道选择指标：peak（峰度 ρ，默认）或 energy_ratio（能量比 η）
+plan2_config = Plan2Config(channel_metric="peak")
+
 print("Plan 2 reference variable:", REFERENCE_VARIABLE)
+print("Plan 2 channel metric:", plan2_config.channel_metric)
 print("CS variables:", ", ".join(f"{k} ({lbl})" for k, lbl in CS_SIGNAL_VARIABLES))
-print("Comparison methods:", len(build_plan2_comparison_method_labels()), "total (4×Single + 4×Uniform + 3×modal)")
+print("Comparison methods:", len(build_plan2_comparison_method_labels()), "total (4×Single + 4×Uniform + 5×modal)")
 
 # %% [markdown]
 # ## 1. Run Plan 2 validation
@@ -120,6 +128,7 @@ plan2 = run_plan2_validation(
     filter_params=filter_params,
     metric_params=metric_params,
     config=chfusion_config,
+    plan2_config=plan2_config,
     reference_variable=REFERENCE_VARIABLE,
     verbose=True,
 )
@@ -140,7 +149,7 @@ for tag, rec in plan2["complementarity_windows"].items():
 # ## 2. Complementarity waveform figures
 #
 # Three PDFs: phase BPM best / worst / median window; four normalized bandpass
-# waveforms on the phase-best channel, each annotated with η (from highpass).
+# waveforms on the phase-best channel, each annotated with selector metric (ρ or η).
 
 # %%
 complementarity_paths = plot_complementarity_waveforms(

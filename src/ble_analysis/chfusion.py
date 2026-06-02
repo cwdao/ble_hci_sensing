@@ -534,6 +534,7 @@ def estimate_segment_bpm_methods(
     config: Optional[ChFusionConfig] = None,
     metric_params: Optional[BreathMetricParams] = None,
     methods: Sequence[str] = ("single", "uniform", "q_energy", "q_peak", "q_energy_peak"),
+    single_channel_metric: Plan2ChannelMetric = "energy_ratio",
     verbose: bool = False,
 ) -> Dict[str, Optional[dict]]:
     """Per-segment BPM for Single / Uniform / q-weighted fusion (see docs/chfusion_q_energy_peak.md)."""
@@ -594,14 +595,9 @@ def estimate_segment_bpm_methods(
             end = st + win_len
 
             if want_single:
-                best_ch, best_er = None, -1.0
-                for ch in ch_list:
-                    hp = ch_map[ch][variable]["highpass_filtered"]
-                    if len(hp) < end:
-                        continue
-                    er = _energy_ratio(hp[st:end], fs, cfg)
-                    if er > best_er:
-                        best_er, best_ch = er, ch
+                best_ch, _best_score = _find_best_channel(
+                    ch_map, variable, st, end, fs, cfg, metric=single_channel_metric
+                )
                 if best_ch is not None:
                     bp_slice = ch_map[best_ch][variable]["bandpass_filtered"][st:end]
                     f_hz = _estimate_breathing_freq_hz(
@@ -748,18 +744,24 @@ MODAL_FUSION_VARIABLES: Tuple[Tuple[str, str], ...] = (
     ("local_amplitudes", "本地幅值 local"),
 )
 
-ModalFusionWeightMode = Literal["equal", "energy_ratio", "fixed"]
+Plan2ChannelMetric = Literal["energy_ratio", "peak"]
+
+ModalFusionWeightMode = Literal["equal", "energy_ratio", "fixed", "top2_equal", "top2_peak"]
 
 MODAL_FUSION_METHOD_LABELS: Tuple[Tuple[str, str, str], ...] = (
     ("Modal equal", "modal_equal_fusion", "mediumpurple"),
     ("Modal η-weight", "modal_energy_ratio_fusion", "darkorange"),
     ("Modal 0.5/0.25/0.25", "modal_fixed_fusion", "seagreen"),
+    ("Modal top2 equal", "modal_top2_equal_fusion", "steelblue"),
+    ("Modal top2 ρ-weight", "modal_top2_peak_fusion", "coral"),
 )
 
 _MODAL_FUSION_WEIGHT_MODES: Dict[str, ModalFusionWeightMode] = {
     "modal_equal_fusion": "equal",
     "modal_energy_ratio_fusion": "energy_ratio",
     "modal_fixed_fusion": "fixed",
+    "modal_top2_equal_fusion": "top2_equal",
+    "modal_top2_peak_fusion": "top2_peak",
 }
 
 _FIXED_MODAL_WEIGHTS: Dict[str, float] = {
@@ -767,6 +769,74 @@ _FIXED_MODAL_WEIGHTS: Dict[str, float] = {
     "remote_amplitudes": 0.25,
     "local_amplitudes": 0.25,
 }
+
+
+@dataclass
+class Plan2Config:
+    """Plan 2 channel selector and annotation settings.
+
+    ``channel_metric``
+        ``energy_ratio`` — η = E_breath / E_total on highpass (legacy Single selector).
+        ``peak`` — ρ = max(P) / median(P) in breath band on bandpass (峰度 / peak prominence).
+    """
+
+    channel_metric: Plan2ChannelMetric = "peak"
+
+
+def _plan2_metric_symbol(metric: Plan2ChannelMetric) -> str:
+    return "η" if metric == "energy_ratio" else "ρ"
+
+
+def _peak_prominence(signal_seg: np.ndarray, fs: float, cfg: ChFusionConfig) -> float:
+    """Breath-band spectral peak prominence ρ = max(P) / (median(P) + ε) on bandpass."""
+    if len(signal_seg) < 4 or not np.all(np.isfinite(signal_seg)):
+        return 0.0
+    windowed = (signal_seg - np.mean(signal_seg)) * np.hanning(len(signal_seg))
+    fft_power = np.abs(np.fft.rfft(windowed)) ** 2
+    fft_freq = np.fft.rfftfreq(len(windowed), 1.0 / fs)
+    breath_mask = (fft_freq >= cfg.breath_freq_low) & (fft_freq <= cfg.breath_freq_high)
+    p_band = fft_power[breath_mask]
+    if len(p_band) == 0:
+        return 0.0
+    return float(np.max(p_band) / (np.median(p_band) + cfg.eps))
+
+
+def _channel_selector_score(
+    ch_map: Dict[Any, dict],
+    variable: str,
+    ch: Any,
+    st: int,
+    end: int,
+    fs: float,
+    cfg: ChFusionConfig,
+    metric: Plan2ChannelMetric,
+) -> float:
+    """Per-channel score for Single / best-channel selection (Plan 2 configurable)."""
+    hp = ch_map[ch][variable]["highpass_filtered"]
+    bp = ch_map[ch][variable]["bandpass_filtered"]
+    if len(hp) < end or len(bp) < end:
+        return -1.0
+    if metric == "energy_ratio":
+        return _energy_ratio(hp[st:end], fs, cfg)
+    return _peak_prominence(bp[st:end], fs, cfg)
+
+
+def _find_best_channel(
+    ch_map: Dict[Any, dict],
+    variable: str,
+    st: int,
+    end: int,
+    fs: float,
+    cfg: ChFusionConfig,
+    metric: Plan2ChannelMetric = "peak",
+) -> Tuple[Optional[Any], float]:
+    """Return (channel, score) with highest selector metric in [st, end)."""
+    best_ch, best_score = None, -1.0
+    for ch in ch_map:
+        score = _channel_selector_score(ch_map, variable, ch, st, end, fs, cfg, metric)
+        if score > best_score:
+            best_score, best_ch = score, ch
+    return best_ch, best_score if best_ch is not None else 0.0
 
 
 def _find_best_energy_channel(
@@ -777,16 +847,8 @@ def _find_best_energy_channel(
     fs: float,
     cfg: ChFusionConfig,
 ) -> Tuple[Optional[Any], float]:
-    """Return (channel, η) with highest breath/total energy ratio in [st, end)."""
-    best_ch, best_er = None, -1.0
-    for ch in ch_map:
-        hp = ch_map[ch][variable]["highpass_filtered"]
-        if len(hp) < end:
-            continue
-        er = _energy_ratio(hp[st:end], fs, cfg)
-        if er > best_er:
-            best_er, best_ch = er, ch
-    return best_ch, best_er if best_ch is not None else 0.0
+    """Backward-compatible wrapper: max-η channel selection."""
+    return _find_best_channel(ch_map, variable, st, end, fs, cfg, metric="energy_ratio")
 
 
 def _normalize_waveform(x: np.ndarray, eps: float = 1e-12) -> np.ndarray:
@@ -804,15 +866,17 @@ def collect_single_max_energy_window_records(
     reference_variable: str = "phases",
     config: Optional[ChFusionConfig] = None,
     metric_params: Optional[BreathMetricParams] = None,
+    plan2_config: Optional[Plan2Config] = None,
 ) -> List[dict]:
-    """Per-window records for Single (max-η channel) on one reference variable.
+    """Per-window records for Single (best-channel) on one reference variable.
 
-    Each record includes BPM, relative error, the reference-variable best channel,
-    bandpass waveforms and energy ratios (η from highpass) for all four CS variables
-    on that channel. Used by complementarity waveform plots (Plan 2 §A).
+    Channel selection uses ``plan2_config.channel_metric`` (η or ρ).
+    Each record includes bandpass waveforms plus both η and ρ for all four variables.
     """
     cfg = config or ChFusionConfig()
     mp = metric_params or BreathMetricParams()
+    p2 = plan2_config or Plan2Config()
+    metric = p2.channel_metric
     all_vars = [v[0] for v in CS_SIGNAL_VARIABLES]
     ref_mc = multichannel_by_var[reference_variable]
     records: List[dict] = []
@@ -840,8 +904,8 @@ def collect_single_max_energy_window_records(
         starts = _sliding_window_indices(ref_len, win_len, step_len)
         for wi, st in enumerate(starts):
             end = st + win_len
-            best_ch, ref_er = _find_best_energy_channel(
-                ref_ch_map, reference_variable, st, end, fs, cfg
+            best_ch, ref_score = _find_best_channel(
+                ref_ch_map, reference_variable, st, end, fs, cfg, metric=metric
             )
             if best_ch is None:
                 continue
@@ -857,17 +921,20 @@ def collect_single_max_energy_window_records(
                 else np.nan
             )
 
-            energy_ratios: Dict[str, float] = {}
+            channel_scores: Dict[str, Dict[str, float]] = {}
             waveforms: Dict[str, Optional[np.ndarray]] = {}
             for var in all_vars:
                 var_seg = multichannel_by_var.get(var, {}).get(seg_name)
                 if var_seg is None or best_ch not in var_seg["channels"]:
-                    energy_ratios[var] = np.nan
+                    channel_scores[var] = {"energy_ratio": np.nan, "peak": np.nan}
                     waveforms[var] = None
                     continue
                 hp = var_seg["channels"][best_ch][var]["highpass_filtered"][st:end]
                 bp = var_seg["channels"][best_ch][var]["bandpass_filtered"][st:end]
-                energy_ratios[var] = _energy_ratio(hp, fs, cfg)
+                channel_scores[var] = {
+                    "energy_ratio": _energy_ratio(hp, fs, cfg),
+                    "peak": _peak_prominence(bp, fs, cfg),
+                }
                 waveforms[var] = bp
 
             records.append(
@@ -882,8 +949,10 @@ def collect_single_max_energy_window_records(
                     "rel_err": rel_err,
                     "reference_variable": reference_variable,
                     "best_channel": best_ch,
-                    "ref_energy_ratio": ref_er,
-                    "energy_ratios": energy_ratios,
+                    "channel_metric": metric,
+                    "ref_channel_score": ref_score,
+                    "channel_scores": channel_scores,
+                    "energy_ratios": {v: channel_scores[v]["energy_ratio"] for v in all_vars},
                     "waveforms": waveforms,
                 }
             )
@@ -913,10 +982,9 @@ def plot_complementarity_waveforms(
     show: bool = True,
     save: bool = True,
 ) -> List[Path]:
-    """Plot normalized bandpass waveforms for four variables at phase-best channel.
+    """Plot normalized bandpass waveforms for four variables at reference-best channel.
 
-    One figure per entry in ``selected`` (best / worst / median accuracy windows).
-    Energy ratio η is computed from highpass (same selector as Single baseline).
+    Annotates each trace with the active ``channel_metric`` (η or ρ) from the record.
     """
     import matplotlib.pyplot as plt
 
@@ -928,6 +996,8 @@ def plot_complementarity_waveforms(
             print(f"⚠️  互补性图 [{tag}]：无可用窗口，跳过")
             continue
 
+        metric: Plan2ChannelMetric = record.get("channel_metric", "peak")
+        sym = _plan2_metric_symbol(metric)
         fs = record["fs"]
         t = np.arange(record["end"] - record["start"]) / fs
         fig, ax = plt.subplots(figsize=(10, 4.5))
@@ -936,12 +1006,13 @@ def plot_complementarity_waveforms(
             wf = record["waveforms"].get(var)
             if wf is None or len(wf) == 0:
                 continue
-            eta = record["energy_ratios"].get(var, np.nan)
-            eta_str = f"η={eta:.3f}" if np.isfinite(eta) else "η=N/A"
+            scores = record.get("channel_scores", {}).get(var, {})
+            val = scores.get(metric, record.get("energy_ratios", {}).get(var, np.nan))
+            val_str = f"{sym}={val:.3f}" if np.isfinite(val) else f"{sym}=N/A"
             ax.plot(
                 t,
                 _normalize_waveform(wf),
-                label=f"{_variable_plot_label(var)} ({eta_str})",
+                label=f"{_variable_plot_label(var)} ({val_str})",
                 color=PART1_VARIABLE_COLORS.get(var, "gray"),
                 linewidth=1.2,
                 alpha=0.9,
@@ -954,7 +1025,8 @@ def plot_complementarity_waveforms(
         ax.set_ylabel("Normalized bandpass amplitude")
         ax.set_title(
             f"{ref_label} — {tag} BPM window | seg={record['segment']} win={record['window_idx']} "
-            f"ch={ch} | est={bpm_est:.2f} GT={bpm_gt:.2f} BPM | rel err={record['rel_err']*100:.1f}%"
+            f"ch={ch} | selector={metric} | est={bpm_est:.2f} GT={bpm_gt:.2f} BPM | "
+            f"rel err={record['rel_err']*100:.1f}%"
         )
         ax.legend(loc="upper right", fontsize=8)
         ax.grid(True, alpha=0.25)
@@ -979,15 +1051,18 @@ def estimate_modal_best_channel_fusion(
     weight_mode: ModalFusionWeightMode = "equal",
     config: Optional[ChFusionConfig] = None,
     metric_params: Optional[BreathMetricParams] = None,
+    plan2_config: Optional[Plan2Config] = None,
     verbose: bool = False,
 ) -> Dict[str, Optional[dict]]:
     """Per-window modal fusion: best channel per variable, fuse phase/remote/local spectra.
 
-    Total amplitude is excluded (remote/local product). See Plan 2 §B in
-    ``docs/CS呼吸算法验证整体进度.md``.
+    Channel selection follows ``plan2_config.channel_metric``. Weight modes ``top2_equal``
+    and ``top2_peak`` keep only the two highest-scoring variables (equal 0.5 or ρ-weighted).
     """
     cfg = config or ChFusionConfig()
     mp = metric_params or BreathMetricParams()
+    p2 = plan2_config or Plan2Config()
+    channel_metric = p2.channel_metric
     modal_vars = [v[0] for v in MODAL_FUSION_VARIABLES]
     results: Dict[str, Optional[dict]] = {}
 
@@ -1040,22 +1115,20 @@ def estimate_modal_best_channel_fusion(
         bpms: List[float] = []
         for st in starts:
             end = st + win_len
-            spectra: List[np.ndarray] = []
-            weights: List[float] = []
+            var_entries: List[Tuple[str, np.ndarray, float, float, float]] = []
 
             for var in modal_vars:
                 ch_map = seg_maps[var]
-                best_ch, er = _find_best_energy_channel(ch_map, var, st, end, fs, cfg)
+                best_ch, selector_score = _find_best_channel(
+                    ch_map, var, st, end, fs, cfg, metric=channel_metric
+                )
                 if best_ch is None:
-                    spectra.append(np.zeros_like(band_freqs))
-                    weights.append(0.0)
                     continue
 
                 bp = ch_map[best_ch][var]["bandpass_filtered"]
+                hp = ch_map[best_ch][var]["highpass_filtered"]
                 raw = ch_map[best_ch][var]["original"]
                 if len(bp) < end:
-                    spectra.append(np.zeros_like(band_freqs))
-                    weights.append(0.0)
                     continue
 
                 ref_slice = raw[st:end] if len(raw) >= end else bp[st:end]
@@ -1071,12 +1144,37 @@ def estimate_modal_best_channel_fusion(
                     q_weight_mode="compact",
                     compute_q_phi=_is_phase_variable(var),
                 )
-                spectra.append(p_norm)
+                peak_score = _peak_prominence(bp[st:end], fs, cfg)
+                eta = _energy_ratio(hp[st:end], fs, cfg) if len(hp) >= end else 0.0
+                var_entries.append((var, p_norm, selector_score, peak_score, eta))
 
+            if not var_entries:
+                bpms.append(np.nan)
+                continue
+
+            if weight_mode in ("top2_equal", "top2_peak"):
+                ranked = sorted(var_entries, key=lambda e: e[2], reverse=True)
+                use = ranked[:2]
+                if weight_mode == "top2_equal":
+                    w_arr = np.ones(len(use), dtype=float)
+                else:
+                    w_arr = np.asarray([max(e[3], cfg.eps) for e in use], dtype=float)
+                if np.sum(w_arr) <= cfg.eps:
+                    bpms.append(np.nan)
+                    continue
+                w_arr = w_arr / np.sum(w_arr)
+                fused = np.sum(w_arr[:, None] * np.vstack([e[1] for e in use]), axis=0)
+                bpms.append(_bpm_from_fused_spectrum(fused, band_freqs, cfg))
+                continue
+
+            spectra: List[np.ndarray] = []
+            weights: List[float] = []
+            for var, p_norm, _selector_score, _peak_score, eta in var_entries:
+                spectra.append(p_norm)
                 if weight_mode == "equal":
                     weights.append(1.0)
                 elif weight_mode == "energy_ratio":
-                    weights.append(max(er, cfg.eps))
+                    weights.append(max(eta, cfg.eps))
                 else:
                     weights.append(_FIXED_MODAL_WEIGHTS[var])
 
@@ -1092,6 +1190,8 @@ def estimate_modal_best_channel_fusion(
             "equal": "modal_equal_fusion",
             "energy_ratio": "modal_energy_ratio_fusion",
             "fixed": "modal_fixed_fusion",
+            "top2_equal": "modal_top2_equal_fusion",
+            "top2_peak": "modal_top2_peak_fusion",
         }[weight_mode]
         results[seg_name] = {
             "segment": seg_name,
@@ -1109,11 +1209,13 @@ def run_modal_fusion_benchmark(
     *,
     config: Optional[ChFusionConfig] = None,
     metric_params: Optional[BreathMetricParams] = None,
+    plan2_config: Optional[Plan2Config] = None,
     verbose: bool = True,
 ) -> Dict[str, dict]:
-    """Run all three Plan-2 modal fusion weight strategies."""
+    """Run all Plan-2 modal fusion weight strategies (5 methods)."""
     cfg = config or ChFusionConfig()
     mp = metric_params or BreathMetricParams()
+    p2 = plan2_config or Plan2Config()
     merged: Dict[str, Optional[dict]] = {}
 
     for label, key, _color in MODAL_FUSION_METHOD_LABELS:
@@ -1123,6 +1225,7 @@ def run_modal_fusion_benchmark(
             weight_mode=mode,
             config=cfg,
             metric_params=mp,
+            plan2_config=p2,
             verbose=verbose,
         )
         for seg_name, row in partial.items():
@@ -1155,7 +1258,7 @@ def _baseline_uniform_key(variable: str) -> str:
 
 
 def build_plan2_comparison_method_labels() -> Tuple[Tuple[str, str, str], ...]:
-    """Method registry for Plan 2 violins: 4×Single, 4×Uniform, 3×modal fusion."""
+    """Method registry for Plan 2 violins: 4×Single, 4×Uniform, 5×modal fusion."""
     labels: List[Tuple[str, str, str]] = []
     for var, _lbl in CS_SIGNAL_VARIABLES:
         color = PART1_VARIABLE_COLORS[var]
@@ -1225,7 +1328,10 @@ def print_plan2_comparison_table(plan2: dict) -> None:
         baseline_rows.append((f"Single {lbl}", stats_s["mean_rel_err_pct"]))
         baseline_rows.append((f"Uniform {lbl}", stats_u["mean_rel_err_pct"]))
 
-    print_modal_fusion_table(plan2["modal_benchmark"])
+    print_modal_fusion_table(
+        plan2["modal_benchmark"],
+        channel_metric=plan2.get("plan2_config", Plan2Config()).channel_metric,
+    )
 
     print("=== Plan 2：总体 mean err% 排行（基线 + 模态融合）===")
     print(f"{'#':>3} {'方法':<28} {'err%':>8} {'±std%':>8}")
@@ -1248,10 +1354,11 @@ def print_plan2_comparison_table(plan2: dict) -> None:
         print(f"\n★ 当前最优：{best[0]} → mean err {best[1]['mean_rel_err_pct']:.2f}%\n")
 
 
-def print_modal_fusion_table(modal_benchmark: dict) -> None:
-    """Print per-segment BPM relative error for the three modal fusion methods."""
+def print_modal_fusion_table(modal_benchmark: dict, *, channel_metric: Plan2ChannelMetric = "peak") -> None:
+    """Print per-segment BPM relative error for modal fusion methods."""
     results = modal_benchmark["results"]
-    print("\n=== 改进方案2：模态融合（各变量最佳信道）BPM 相对误差 ===")
+    sym = _plan2_metric_symbol(channel_metric)
+    print(f"\n=== 改进方案2：模态融合（各变量最佳信道，selector={channel_metric}）BPM 相对误差 ===")
     hdr = f"{'段':<5} {'GT':>6}"
     for label, _key, _ in MODAL_FUSION_METHOD_LABELS:
         hdr += f" | {label[:14]:>14} {'err%':>6}"
@@ -1278,7 +1385,7 @@ def print_modal_fusion_table(modal_benchmark: dict) -> None:
         stats = _overall_rel_error(results, key)
         line += f" | {'—':>14} {stats['mean_rel_err_pct']:6.2f}"
     print(line)
-    print("（总幅值未参与融合；每变量独立选最大 η 信道后加权融合频谱）\n")
+    print(f"（总幅值未参与融合；信道选择={channel_metric} ({sym})；top2 策略按 {sym} 排序取前二变量）\n")
 
 
 def run_plan2_validation(
@@ -1288,6 +1395,7 @@ def run_plan2_validation(
     filter_params: Optional[FilterParams] = None,
     metric_params: Optional[BreathMetricParams] = None,
     config: Optional[ChFusionConfig] = None,
+    plan2_config: Optional[Plan2Config] = None,
     reference_variable: str = "phases",
     verbose: bool = True,
 ) -> dict:
@@ -1295,6 +1403,7 @@ def run_plan2_validation(
     cfg = config or ChFusionConfig()
     fp = filter_params or FilterParams()
     mp = metric_params or BreathMetricParams()
+    p2 = plan2_config or Plan2Config()
     variables = [v[0] for v in CS_SIGNAL_VARIABLES]
 
     multichannel_by_var: Dict[str, Dict[str, Optional[dict]]] = {}
@@ -1310,6 +1419,7 @@ def run_plan2_validation(
         reference_variable=reference_variable,
         config=cfg,
         metric_params=mp,
+        plan2_config=p2,
     )
     complementarity_windows = select_complementarity_windows(window_records)
 
@@ -1321,6 +1431,7 @@ def run_plan2_validation(
             config=cfg,
             metric_params=mp,
             methods=("single", "uniform"),
+            single_channel_metric=p2.channel_metric,
             verbose=False,
         )
         if verbose:
@@ -1328,11 +1439,12 @@ def run_plan2_validation(
             stats_u = _overall_rel_error(variable_baselines[variable], "fft_uniform_fusion")
             print(
                 f"✓ [{_variable_display_name(variable)}] Single err {stats_s['mean_rel_err_pct']:.2f}% "
-                f"| Uniform err {stats_u['mean_rel_err_pct']:.2f}%"
+                f"| Uniform err {stats_u['mean_rel_err_pct']:.2f}% "
+                f"(selector={p2.channel_metric})"
             )
 
     modal_benchmark = run_modal_fusion_benchmark(
-        multichannel_by_var, config=cfg, metric_params=mp, verbose=verbose
+        multichannel_by_var, config=cfg, metric_params=mp, plan2_config=p2, verbose=verbose
     )
 
     return {
@@ -1341,6 +1453,7 @@ def run_plan2_validation(
         "complementarity_windows": complementarity_windows,
         "variable_baselines": variable_baselines,
         "modal_benchmark": modal_benchmark,
+        "plan2_config": p2,
         "reference_variable": reference_variable,
         "sampling_rate": fs,
         "segment_config": segment_config,
