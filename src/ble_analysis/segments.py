@@ -6,6 +6,9 @@
 段落配置 ``segment_config`` 示例::
 
     {"1a": {"start": 131, "end": 244, "type": "breath", "bpm_gt": 8.6, "ie_gt": 1.0}}
+
+录制好的场景（数据路径 + 分段）见 ``config/scenarios/*.json``，
+通过 ``ble_analysis.scenarios.load_scenario`` 加载。
 """
 
 from __future__ import annotations

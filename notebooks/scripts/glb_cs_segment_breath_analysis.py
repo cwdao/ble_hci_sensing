@@ -41,87 +41,18 @@ REPORTS_DIR = _env["REPORTS_DIR"]
 
 # %%
 from ble_analysis.data import load_ble_frames
-from ble_analysis.segments import run_segment_breath_analysis
 from ble_analysis.metrics import run_error_analysis
+from ble_analysis.scenarios import load_scenario, print_scenario_summary
+from ble_analysis.segments import run_segment_breath_analysis
 
-# === 数据与分段参数 ===
-filepath = project_root / "sampleData" / "CS_frames_all_20260113_091339.jsonl"
-segment_channel = 2
+# === 数据与分段参数（切换场景时只改 SCENARIO_ID）===
+SCENARIO_ID = "cs_091339"
+scenario = load_scenario(SCENARIO_ID, project_root=project_root)
+filepath = scenario.resolve_data_path(project_root)
+segment_config = scenario.segment_config
+segment_channel = scenario.default_channel or 2
 segment_variables = ["remote_amplitudes"]
-
-# ===== 段落配置：定义9个段落的起止点和类型 =====
-# 基于原始帧序号（index），如10-746
-# 格式：{段落名: {'start': 起始index, 'end': 结束index, 'type': 'breath'或'apnea',
-#                'ie_gt': 真实IE比(可选), 'bpm_gt': 真实BPM(可选), 'apnea_gt_sec': 真实apnea时长(可选)}}
-
-# 默认配置（请根据实际数据修改）
-# 注意：如果知道真实值，可以添加 'ie_gt', 'bpm_gt', 'apnea_gt_sec' 字段用于计算相对误差
-segment_config = {
-    "1a": {
-        "start": 131,
-        "end": 244,
-        "type": "breath",
-        "ie_gt": 0.985,
-        "bpm_gt": 8.675,
-    },  # 示例：第1段，正常呼吸
-    "1b": {
-        "start": 244,
-        "end": 361,
-        "type": "breath",
-        "ie_gt": 1.451,
-        "bpm_gt": 8.675,
-    },  # 示例：第2段，正常呼吸
-    "2a": {
-        "start": 361,
-        "end": 419,
-        "type": "breath",
-        "ie_gt": 1.419,
-        "bpm_gt": 11.49,
-    },  # 示例：第3段，正常呼吸
-    "p1": {
-        "start": 419,
-        "end": 437,
-        "type": "apnea",
-        "apnea_gt_sec": 10.0,
-    },  # 示例：第4段，正常呼吸
-    "2b": {
-        "start": 437,
-        "end": 473,
-        "type": "breath",
-        "ie_gt": 1.419,
-        "bpm_gt": 11.49,
-    },  # 示例：第5段，正常呼吸
-    "3": {
-        "start": 473,
-        "end": 586,
-        "type": "breath",
-        "ie_gt": 1.229,
-        "bpm_gt": 14.04,
-    },  # 示例：第6段，正常呼吸
-    "4a": {
-        "start": 586,
-        "end": 648,
-        "type": "breath",
-        "ie_gt": 1.081,
-        "bpm_gt": 16.17,
-    },  # 示例：第7段，呼吸暂停（前后会自动加10秒）
-    "p2": {
-        "start": 648,
-        "end": 666,
-        "type": "apnea",
-        "apnea_gt_sec": 10.0,
-    },  # 示例：第8段，正常呼吸
-    "4b": {
-        "start": 666,
-        "end": 702,
-        "type": "breath",
-        "ie_gt": 1.081,
-        "bpm_gt": 16.17,
-    },  # 示例：第9段，正常呼吸
-    # 示例：如果知道真实值，可以这样添加：
-    # '1a': {'start': 131, 'end': 244, 'type': 'breath', 'ie_gt': 1.2, 'bpm_gt': 12.5},
-    # 'p1': {'start': 419, 'end': 437, 'type': 'apnea', 'apnea_gt_sec': 10.0},
-}
+print_scenario_summary(scenario)
 
 # %%
 data, frames = load_ble_frames(filepath, verbose=False)

@@ -1708,6 +1708,22 @@ def plot_plan2_violins_by_category(
             title=f"{cat} baselines" if cat != "Modal" else "Modal fusion",
             show_ylabel=(ax is axes_flat[0]),
         )
+        method_handles = [
+            plt.Line2D(
+                [0], [0],
+                color=m[2],
+                lw=6,
+                alpha=0.65,
+                label=m[0],
+            )
+            for m in labels
+        ]
+        ax.legend(
+            handles=_violin_legend_with_stats(method_handles),
+            loc="upper right",
+            fontsize=6,
+            framealpha=0.92,
+        )
 
     fig.suptitle(
         "Plan 2: window-level signed BPM error by category (y=0 is GT)",

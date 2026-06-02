@@ -78,21 +78,14 @@ from ble_analysis.chfusion import (
     run_plan2_validation,
 )
 from ble_analysis.data import load_ble_frames
+from ble_analysis.scenarios import load_scenario, print_scenario_summary
 from ble_analysis.segments import BreathMetricParams, FilterParams
 
-filepath = project_root / "sampleData" / "CS_frames_all_20260113_091339.jsonl"
-
-segment_config = {
-    "1a": {"start": 131, "end": 244, "type": "breath", "ie_gt": 0.985, "bpm_gt": 8.675},
-    "1b": {"start": 244, "end": 361, "type": "breath", "ie_gt": 1.451, "bpm_gt": 8.675},
-    "2a": {"start": 361, "end": 419, "type": "breath", "ie_gt": 1.419, "bpm_gt": 11.49},
-    "p1": {"start": 419, "end": 437, "type": "apnea", "apnea_gt_sec": 10.0},
-    "2b": {"start": 437, "end": 473, "type": "breath", "ie_gt": 1.419, "bpm_gt": 11.49},
-    "3": {"start": 473, "end": 586, "type": "breath", "ie_gt": 1.229, "bpm_gt": 14.04},
-    "4a": {"start": 586, "end": 648, "type": "breath", "ie_gt": 1.081, "bpm_gt": 16.17},
-    "p2": {"start": 648, "end": 666, "type": "apnea", "apnea_gt_sec": 10.0},
-    "4b": {"start": 666, "end": 702, "type": "breath", "ie_gt": 1.081, "bpm_gt": 16.17},
-}
+SCENARIO_ID = "cs_091339"
+scenario = load_scenario(SCENARIO_ID, project_root=project_root)
+filepath = scenario.resolve_data_path(project_root)
+segment_config = scenario.segment_config
+print_scenario_summary(scenario)
 
 filter_params = FilterParams()
 metric_params = BreathMetricParams()

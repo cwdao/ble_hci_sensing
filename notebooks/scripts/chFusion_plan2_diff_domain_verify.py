@@ -71,26 +71,20 @@ from ble_analysis.chfusion import (
     run_plan2_validation,
 )
 from ble_analysis.data import load_ble_frames
+from ble_analysis.scenarios import load_scenario, print_scenario_summary
 from ble_analysis.segments import BreathMetricParams, FilterParams
 
-DOMAIN_ID = "095806"
-REF_DOMAIN_ID = "091339"
+SCENARIO_ID = "cs_095806"
+REF_SCENARIO_ID = "cs_091339"
 
-filepath = project_root / "sampleData" / "CS_frames_all_20260116_095806.jsonl"
+scenario = load_scenario(SCENARIO_ID, project_root=project_root)
+ref_scenario = load_scenario(REF_SCENARIO_ID, project_root=project_root)
+filepath = scenario.resolve_data_path(project_root)
+segment_config = scenario.segment_config
+print_scenario_summary(scenario)
 
-# Segment config from notebooks/show_analysis_cs_frames_095806.ipynb
-# (same script / BPM GT as 091339 metal-plate protocol, different frame indices)
-segment_config = {
-    "1a": {"start": 73, "end": 183, "type": "breath", "ie_gt": 0.985, "bpm_gt": 8.675},
-    "1b": {"start": 183, "end": 300, "type": "breath", "ie_gt": 1.451, "bpm_gt": 8.675},
-    "2a": {"start": 300, "end": 354, "type": "breath", "ie_gt": 1.419, "bpm_gt": 11.49},
-    "p1": {"start": 354, "end": 372, "type": "apnea", "apnea_gt_sec": 10.0},
-    "2b": {"start": 372, "end": 409, "type": "breath", "ie_gt": 1.419, "bpm_gt": 11.49},
-    "3": {"start": 409, "end": 516, "type": "breath", "ie_gt": 1.229, "bpm_gt": 14.04},
-    "4a": {"start": 516, "end": 577, "type": "breath", "ie_gt": 1.081, "bpm_gt": 16.17},
-    "p2": {"start": 577, "end": 594, "type": "apnea", "apnea_gt_sec": 10.0},
-    "4b": {"start": 594, "end": 628, "type": "breath", "ie_gt": 1.081, "bpm_gt": 16.17},
-}
+DOMAIN_ID = scenario.tag
+REF_DOMAIN_ID = ref_scenario.tag
 
 filter_params = FilterParams()
 metric_params = BreathMetricParams()
