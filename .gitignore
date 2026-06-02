@@ -23,6 +23,7 @@ logs/
 data_exp/
 outputs/
 *.npy
+docs/assets/
 
 # Build artifacts (legacy)
 build/
