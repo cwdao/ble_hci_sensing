@@ -97,6 +97,7 @@ from ble_analysis.pca_svd import (
     run_pca_complex_fusion,
     run_pca_complex_modal_fusion,
     run_pca_modal_fusion,
+    run_pca_topk_bpm,
 )
 from ble_analysis.scenarios import load_scenario, print_scenario_summary
 from ble_analysis.segments import BreathMetricParams, FilterParams
@@ -226,20 +227,66 @@ PCA_COMPLEX_INTEGRATION_EXPERIMENTS = {
     },
 }
 
+PCA_TOPK_EXPERIMENTS = {
+    "PCA-HP Remote top8/ch-η": {
+        "runner": "variable",
+        "variable": "remote_amplitudes",
+        "top_k": 8,
+        "channel_weight": "energy_ratio",
+    },
+    "PCA-HP Remote top16/ch-η": {
+        "runner": "variable",
+        "variable": "remote_amplitudes",
+        "top_k": 16,
+        "channel_weight": "energy_ratio",
+    },
+    "PCA-Modal3 top8/ch-η": {
+        "runner": "modal",
+        "modal_variables": MODAL_PCA_VARIABLES,
+        "channel_weight": "energy_ratio",
+        "modal_weight": "energy_ratio",
+        "top_k_channels": 8,
+    },
+    "PCA-Modal3 top16/ch-η": {
+        "runner": "modal",
+        "modal_variables": MODAL_PCA_VARIABLES,
+        "channel_weight": "energy_ratio",
+        "modal_weight": "energy_ratio",
+        "top_k_channels": 16,
+    },
+    "PCA-Cmplx Total top8/ch-η": {
+        "runner": "complex",
+        "amp_var": "amplitudes",
+        "channel_weight": "energy_ratio",
+        "top_k_channels": 8,
+    },
+}
+
 CROSS_DOMAIN_COMPARE_LABELS = (
     "Modal η-weight",
     "Modal top2 equal",
     "PCA-Modal3 top2/ch-η",
+    "PCA-Modal3 top8/ch-η",
+    "PCA-Modal3 top16/ch-η",
     "PCA-Cmplx-Modal rem+loc top2",
     "PCA-Cmplx Total ch-η",
+    "PCA-Cmplx Total top8/ch-η",
     "PCA-Cmplx η-blend ch-η",
     "PCA-Cmplx-Modal rem+loc η",
     "PCA-Modal3 η/ch-η",
-    "PCA-Modal amp+pha η",
+    "PCA-HP Remote top8/ch-η",
     "PCA-HP Remote ch-η",
     "PCA Total Amp",
     "Uniform Remote amplitude",
     "Single Remote amplitude",
+)
+
+REQUIRED_PCA_V2_CACHE_KEYS = (
+    "PCA-Modal3 top2/ch-η",
+    "PCA-Cmplx-Modal rem+loc top2",
+    "PCA-Cmplx η-blend ch-η",
+    "PCA-Modal3 top8/ch-η",
+    "PCA-HP Remote top8/ch-η",
 )
 scenario = load_scenario(SCENARIO_ID, project_root=project_root)
 filepath = scenario.resolve_data_path(project_root)
@@ -601,11 +648,17 @@ def run_pca_v2_suite(
             modal_variables=exp_cfg["modal_variables"],
             channel_weight=exp_cfg["channel_weight"],
             modal_weight=exp_cfg["modal_weight"],
+            top_k_channels=exp_cfg.get("top_k_channels"),
             metric_params=metric_params,
             pca_svd_config=cfg,
             verbose=verbose,
         )
-        mkey = f"pca_modal_{exp_cfg['modal_weight']}_ch_{exp_cfg['channel_weight']}"
+        top_suffix = (
+            f"_top{exp_cfg['top_k_channels']}" if exp_cfg.get("top_k_channels") else ""
+        )
+        mkey = (
+            f"pca_modal_{exp_cfg['modal_weight']}_ch_{exp_cfg['channel_weight']}{top_suffix}"
+        )
         pca_v2[exp_name] = _modal_to_per_seg(raw, mkey)
     for exp_name, exp_cfg in PCA_COMPLEX_EXPERIMENTS.items():
         cfg = replace(pca_hp_cfg, channel_weight=exp_cfg["channel_weight"])
@@ -613,11 +666,17 @@ def run_pca_v2_suite(
             multichannel_by_var,
             amp_var=exp_cfg["amp_var"],
             channel_weight=exp_cfg["channel_weight"],
+            top_k_channels=exp_cfg.get("top_k_channels"),
             metric_params=metric_params,
             pca_svd_config=cfg,
             verbose=verbose,
         )
-        ckey = f"pca_complex_{exp_cfg['amp_var']}_ch_{exp_cfg['channel_weight']}"
+        top_suffix = (
+            f"_top{exp_cfg['top_k_channels']}" if exp_cfg.get("top_k_channels") else ""
+        )
+        ckey = (
+            f"pca_complex_{exp_cfg['amp_var']}_ch_{exp_cfg['channel_weight']}{top_suffix}"
+        )
         pca_v2[exp_name] = _modal_to_per_seg(raw, ckey)
     for exp_name, exp_cfg in PCA_COMPLEX_INTEGRATION_EXPERIMENTS.items():
         cfg = replace(pca_hp_cfg, channel_weight=exp_cfg.get("channel_weight", "uniform"))
@@ -656,6 +715,55 @@ def run_pca_v2_suite(
                 f"pca_complex_modal_{exp_cfg['modal_weight']}_ch_{exp_cfg['channel_weight']}"
             )
         pca_v2[exp_name] = _modal_to_per_seg(raw, ikey)
+    for exp_name, exp_cfg in PCA_TOPK_EXPERIMENTS.items():
+        cfg = replace(pca_hp_cfg, channel_weight=exp_cfg.get("channel_weight", "energy_ratio"))
+        runner = exp_cfg["runner"]
+        if verbose:
+            print(f"\n--- PCA top-K: {exp_name} ---")
+        if runner == "variable":
+            raw = run_pca_topk_bpm(
+                multichannel_by_var,
+                variable=exp_cfg["variable"],
+                top_k=exp_cfg["top_k"],
+                channel_weight=exp_cfg["channel_weight"],
+                metric_params=metric_params,
+                pca_svd_config=cfg,
+                verbose=verbose,
+            )
+            tkey = (
+                f"pca_topk_{exp_cfg['variable']}_k{exp_cfg['top_k']}"
+                f"_ch_{exp_cfg['channel_weight']}"
+            )
+        elif runner == "modal":
+            raw = run_pca_modal_fusion(
+                multichannel_by_var,
+                modal_variables=exp_cfg["modal_variables"],
+                channel_weight=exp_cfg["channel_weight"],
+                modal_weight=exp_cfg["modal_weight"],
+                top_k_channels=exp_cfg["top_k_channels"],
+                metric_params=metric_params,
+                pca_svd_config=cfg,
+                verbose=verbose,
+            )
+            tkey = (
+                f"pca_modal_{exp_cfg['modal_weight']}_ch_{exp_cfg['channel_weight']}"
+                f"_top{exp_cfg['top_k_channels']}"
+            )
+        else:
+            raw = run_pca_complex_fusion(
+                multichannel_by_var,
+                amp_var=exp_cfg["amp_var"],
+                channel_weight=exp_cfg["channel_weight"],
+                top_k_channels=exp_cfg["top_k_channels"],
+                metric_params=metric_params,
+                pca_svd_config=cfg,
+                verbose=verbose,
+            )
+            tkey = (
+                f"pca_complex_{exp_cfg['amp_var']}_ch_{exp_cfg['channel_weight']}"
+                f"_top{exp_cfg['top_k_channels']}"
+            )
+        pca_v2[exp_name] = _modal_to_per_seg(raw, tkey)
     return pca_v2
 
 
@@ -1163,13 +1271,7 @@ def ensure_scenario_report(scenario_id: str, *, verbose: bool = False) -> dict:
     if path.is_file():
         cached = np.load(path, allow_pickle=True).item()
         pca_res = cached.get("pca_svd_results", {})
-        _required_pca_v2 = (
-            "PCA-Modal3 η/ch-η",
-            "PCA-Modal3 top2/ch-η",
-            "PCA-Cmplx-Modal rem+loc top2",
-            "PCA-Cmplx η-blend ch-η",
-        )
-        if all(k in pca_res for k in _required_pca_v2):
+        if all(k in pca_res for k in REQUIRED_PCA_V2_CACHE_KEYS):
             print(f"Loaded cached report: {path.name}")
             return cached
         print(f"Stale cache (missing PCA integration): {path.name}")
@@ -1329,3 +1431,78 @@ np.save(
     allow_pickle=True,
 )
 print(f"\n  Saved: chfusion_pca_svd_{diag_tag}_harmonic_diag.npy")
+
+# %% [markdown]
+# ## 10. cs_091339 最差段 PC1 呼吸带谱 vs GT（P1 波形级对照）
+
+# %%
+
+from ble_analysis.pca_svd import extract_integration_pc1_spectrum
+
+PLOT_INTEGRATIONS = (
+    ("η-blend ch-η", "eta_blend"),
+    ("Dual-Amp ch-η", "dual_amp"),
+    ("Total ch-η", "total_complex"),
+)
+
+worst_seg = None
+worst_err = -1.0
+for seg_name, row in sorted(
+    diagnose_complex_integration_harmonics(
+        diag_mc,
+        integration="eta_blend",
+        channel_weight="energy_ratio",
+        metric_params=metric_params,
+        pca_svd_config=pca_hp_config,
+    ).items()
+):
+    if row is None:
+        continue
+    err = row.get("mean_rel_err_pct", np.nan)
+    if np.isfinite(err) and err > worst_err:
+        worst_err = float(err)
+        worst_seg = seg_name
+
+if worst_seg:
+    fig, axes = plt.subplots(1, len(PLOT_INTEGRATIONS), figsize=(4.2 * len(PLOT_INTEGRATIONS), 3.8))
+    if len(PLOT_INTEGRATIONS) == 1:
+        axes = [axes]
+    mid_win = 0
+    for ax, (label, integration) in zip(axes, PLOT_INTEGRATIONS):
+        snap = extract_integration_pc1_spectrum(
+            diag_mc,
+            worst_seg,
+            integration=integration,
+            window_index=mid_win,
+            channel_weight="energy_ratio",
+            metric_params=metric_params,
+            pca_svd_config=pca_hp_config,
+        )
+        if snap is None:
+            ax.set_title(f"{label}\n(no data)")
+            continue
+        freqs_hz = snap["band_freqs"]
+        spec = snap["spectrum"]
+        ax.plot(freqs_hz * 60.0, spec, color="#2E6F9E", lw=1.5, label="PC1 norm. spec")
+        if np.isfinite(snap["gt_hz"]):
+            ax.axvline(snap["gt_hz"] * 60.0, color="#C44E52", ls="--", lw=1.2, label="GT BPM")
+        if np.isfinite(snap["peak_hz"]):
+            ax.axvline(
+                snap["peak_hz"] * 60.0, color="#55A868", ls=":", lw=1.2, label="PC1 peak BPM"
+            )
+        ax.set_xlabel("BPM")
+        ax.set_ylabel("Norm. power")
+        ax.set_title(f"{label}\n{worst_seg} win={mid_win}")
+        ax.legend(fontsize=7)
+        ax.grid(True, alpha=0.25)
+    fig.suptitle(
+        f"091339 worst segment PC1 breath-band spectrum ({worst_seg}, err≈{worst_err:.1f}%)",
+        fontsize=10,
+    )
+    plt.tight_layout()
+    spec_path = FIGURES_DIR / f"pca_svd_{diag_tag}_worst_seg_pc1_spectrum.pdf"
+    fig.savefig(spec_path, dpi=150, bbox_inches="tight")
+    print(f"\n  Fig 5: Worst-seg PC1 spectrum  ->  {spec_path.name}")
+    plt.close(fig)
+else:
+    print("\n  Skip PC1 spectrum plot: no valid worst segment")
