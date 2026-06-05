@@ -85,7 +85,7 @@ from ble_analysis.data import load_ble_frames
 from ble_analysis.scenarios import load_scenario, print_scenario_summary
 from ble_analysis.segments import BreathMetricParams, FilterParams
 
-SCENARIO_ID = "cs_091339"
+SCENARIO_ID = "cs_102621"
 scenario = load_scenario(SCENARIO_ID, project_root=project_root)
 filepath = scenario.resolve_data_path(project_root)
 segment_config = scenario.segment_config
@@ -101,6 +101,7 @@ chfusion_config = ChFusionConfig(
     enable_consensus=False,
 )
 
+# 从 (key, label) 元组中提取变量名（如 amplitudes, phases 等）
 variables = [v[0] for v in CS_SIGNAL_VARIABLES]
 print("Variables:", ", ".join(f"{k} ({lbl})" for k, lbl in CS_SIGNAL_VARIABLES))
 print_q_score_documentation(chfusion_config)
@@ -109,6 +110,7 @@ print_q_score_documentation(chfusion_config)
 # ## 1. Run benchmark (4 variables × 5 methods)
 
 # %%
+# data 为原始 DataFrame，仅 frames 参与后续处理
 data, frames = load_ble_frames(filepath, verbose=False)
 
 benchmark = run_chfusion_benchmark(

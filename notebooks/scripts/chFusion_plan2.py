@@ -81,7 +81,7 @@ from ble_analysis.data import load_ble_frames
 from ble_analysis.scenarios import load_scenario, print_scenario_summary
 from ble_analysis.segments import BreathMetricParams, FilterParams
 
-SCENARIO_ID = "cs_091339"
+SCENARIO_ID = "cs_095806"
 scenario = load_scenario(SCENARIO_ID, project_root=project_root)
 filepath = scenario.resolve_data_path(project_root)
 segment_config = scenario.segment_config
@@ -97,10 +97,12 @@ chfusion_config = ChFusionConfig(
     enable_consensus=False,
 )
 
+# 以 phase 作为基准参考变量，评估幅值变量的互补性
 REFERENCE_VARIABLE = "phases"
+# 拷贝一份避免外部修改影响常量定义
 COMPLEMENTARITY_VARS = list(COMPLEMENTARITY_REFERENCE_VARIABLES)
 
-# 信道选择指标：peak（峰度 ρ）或 energy_ratio（能量比 η）
+# 信道选择指标：energy_ratio 侧重呼吸频带能量占比，峰值则用 peak
 plan2_config = Plan2Config(channel_metric="energy_ratio")
 
 print("Plan 2 primary reference:", REFERENCE_VARIABLE)
@@ -116,6 +118,7 @@ print("Comparison methods:", len(build_plan2_comparison_method_labels()), "total
 # for phase / remote / local reference variables, and runs modal-fusion strategies.
 
 # %%
+# data 为原始 DataFrame，仅 frames 参与后续处理
 data, frames = load_ble_frames(filepath, verbose=False)
 
 plan2 = run_plan2_validation(
