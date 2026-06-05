@@ -27,7 +27,7 @@ NormalizeMethod = Literal["none", "zscore", "minmax"]
 ChannelWeightMode = Literal["uniform", "energy_ratio"]
 """信道间加权：uniform=仅 z-score；energy_ratio=按呼吸能量比 η 加权列。"""
 SignalKey = Literal["highpass_filtered", "bandpass_filtered"]
-ModalWeightMode = Literal["equal", "energy_ratio"]
+ModalWeightMode = Literal["equal", "energy_ratio", "top2_equal"]
 """标准化策略:
 - none:   不标准化（注意：幅值大的信道会主导结果）
 - zscore: 按列 (x - μ) / σ（推荐，消除信道间幅值差异）
@@ -258,6 +258,32 @@ def waveform_normalized_spectrum(
     x = np.fft.rfft(seg * hann, n=nfft)
     p_band = (np.abs(x) ** 2)[band_mask]
     return p_band / (float(np.sum(p_band)) + eps)
+
+
+def _fuse_modal_spectra(
+    entries: List[Tuple[np.ndarray, float]],
+    modal_weight: ModalWeightMode,
+    band_freqs: np.ndarray,
+    eps: float,
+) -> float:
+    """多模态归一化谱融合 → BPM（支持 equal / η / top2 equal）。"""
+    if not entries:
+        return np.nan
+    if modal_weight == "top2_equal":
+        ranked = sorted(entries, key=lambda e: e[1], reverse=True)
+        use = ranked[: min(2, len(ranked))]
+        w_arr = np.ones(len(use), dtype=float)
+    else:
+        use = entries
+        if modal_weight == "energy_ratio":
+            w_arr = np.asarray([max(e[1], eps) for e in use], dtype=float)
+        else:
+            w_arr = np.ones(len(use), dtype=float)
+    if np.sum(w_arr) <= eps:
+        return np.nan
+    w_arr = w_arr / np.sum(w_arr)
+    fused = np.sum(w_arr[:, None] * np.vstack([e[0] for e in use]), axis=0)
+    return _bpm_from_spectrum(fused, band_freqs, eps)
 
 
 def _bpm_from_spectrum(fused: np.ndarray, band_freqs: np.ndarray, eps: float) -> float:
@@ -722,8 +748,7 @@ def run_pca_modal_fusion(
 
         for st in starts:
             end = st + win_len
-            spectra: List[np.ndarray] = []
-            mod_weights: List[float] = []
+            modal_entries: List[Tuple[np.ndarray, float]] = []
 
             for var in modal_vars:
                 ch_map = seg_maps[var]
@@ -735,19 +760,15 @@ def run_pca_modal_fusion(
                     continue
 
                 ch_w = None
-                var_eta = 0.0
                 if channel_weight == "energy_ratio":
                     ch_w = compute_channel_energy_weights(
                         ch_map, var, used_ch, st, end, fs, cfg
                     )
-                    finite = ch_w[np.isfinite(ch_w) & (ch_w > 0)]
-                    var_eta = float(np.mean(finite)) if finite.size else 0.0
-                else:
-                    eta_all = compute_channel_energy_weights(
-                        ch_map, var, used_ch, st, end, fs, cfg
-                    )
-                    finite = eta_all[np.isfinite(eta_all) & (eta_all > 0)]
-                    var_eta = float(np.mean(finite)) if finite.size else 0.0
+                eta_all = compute_channel_energy_weights(
+                    ch_map, var, used_ch, st, end, fs, cfg
+                )
+                finite = eta_all[np.isfinite(eta_all) & (eta_all > 0)]
+                var_eta = float(np.mean(finite)) if finite.size else 0.0
 
                 wf, _info = extract_breath_waveform_pca(
                     x_mat, cfg, seg_name, channel_weights=ch_w if channel_weight == "energy_ratio" else None
@@ -756,23 +777,11 @@ def run_pca_modal_fusion(
                 prev_wf[var] = wf.copy()
 
                 spec = waveform_normalized_spectrum(wf, fs, nfft, band_mask, hann, cfg.eps)
-                spectra.append(spec)
-                if modal_weight == "energy_ratio":
-                    mod_weights.append(max(var_eta, cfg.eps))
-                else:
-                    mod_weights.append(1.0)
+                modal_entries.append((spec, var_eta))
 
-            if not spectra:
-                bpms.append(np.nan)
-                continue
-
-            w_arr = np.asarray(mod_weights, dtype=float)
-            if np.sum(w_arr) <= cfg.eps:
-                bpms.append(np.nan)
-                continue
-            w_arr = w_arr / np.sum(w_arr)
-            fused = np.sum(w_arr[:, None] * np.vstack(spectra), axis=0)
-            bpms.append(_bpm_from_spectrum(fused, band_freqs, cfg.eps))
+            bpms.append(
+                _fuse_modal_spectra(modal_entries, modal_weight, band_freqs, cfg.eps)
+            )
 
         method_key = f"pca_modal_{modal_weight}_ch_{channel_weight}"
         from ble_analysis.chfusion import _seg_bpm_stats
@@ -901,4 +910,569 @@ def run_pca_complex_fusion(
 
     if verbose:
         print(f"✓ PCA complex ({amp_var}, ch={channel_weight})")
+    return results
+
+
+def _common_complex_segment_channels(
+    multichannel_by_var: Dict[str, Dict[str, Optional[dict]]],
+    seg_name: str,
+) -> Tuple[Optional[dict], Optional[dict], Optional[dict], Optional[dict], List[Any], int]:
+    """返回 remote/local/phase 段与共有信道列表、参考长度。"""
+    seg_rem = multichannel_by_var.get("remote_amplitudes", {}).get(seg_name)
+    seg_loc = multichannel_by_var.get("local_amplitudes", {}).get(seg_name)
+    seg_pha = multichannel_by_var.get("phases", {}).get(seg_name)
+    if seg_rem is None or seg_loc is None or seg_pha is None:
+        return None, None, None, None, [], 0
+    ch_map_r = seg_rem["channels"]
+    ch_map_l = seg_loc["channels"]
+    ch_map_p = seg_pha["channels"]
+    ch_list = sorted(
+        set(ch_map_r.keys()) & set(ch_map_l.keys()) & set(ch_map_p.keys()),
+        key=lambda c: (isinstance(c, str), str(c)),
+    )
+    return seg_rem, seg_loc, seg_pha, seg_pha, ch_list, 0
+
+
+def _ref_len_complex_triple(
+    ch_map_r: Dict[Any, dict],
+    ch_map_l: Dict[Any, dict],
+    ch_map_p: Dict[Any, dict],
+    ch_list: List[Any],
+    signal_key: SignalKey,
+) -> int:
+    ref_len = 0
+    for ch in ch_list:
+        ar = ch_map_r[ch]["remote_amplitudes"].get(signal_key)
+        al = ch_map_l[ch]["local_amplitudes"].get(signal_key)
+        ph = ch_map_p[ch]["phases"].get(signal_key)
+        if ar is not None and al is not None and ph is not None:
+            ref_len = max(ref_len, min(len(ar), len(al), len(ph)))
+    return ref_len
+
+
+def _complex_pca_bpm_from_matrix(
+    x_c: np.ndarray,
+    cfg: PcaSvdConfig,
+    seg_name: str,
+    ch_weights: Optional[np.ndarray],
+    prev_wf: Optional[np.ndarray],
+    fs: float,
+    nfft: int,
+    band_mask: np.ndarray,
+    band_freqs: np.ndarray,
+    hann: np.ndarray,
+) -> Tuple[float, np.ndarray]:
+    wf, _info = extract_breath_waveform_complex_pca(
+        x_c, cfg, seg_name, channel_weights=ch_weights
+    )
+    wf = align_waveform_sign(wf, prev_wf)
+    spec = waveform_normalized_spectrum(wf, fs, nfft, band_mask, hann, cfg.eps)
+    return _bpm_from_spectrum(spec, band_freqs, cfg.eps), wf
+
+
+def build_complex_dual_amp_matrix(
+    ch_map_r: Dict[Any, dict],
+    ch_map_l: Dict[Any, dict],
+    ch_map_p: Dict[Any, dict],
+    ch_list: List[Any],
+    st: int,
+    end: int,
+    signal_key: SignalKey,
+) -> Tuple[np.ndarray, List[Tuple[str, Any]]]:
+    """方案2：remote∥local 各 72 列 ``A·e^(jφ)``，共 2N 列。"""
+    cols: List[np.ndarray] = []
+    meta: List[Tuple[str, Any]] = []
+    for ch in ch_list:
+        ar = ch_map_r[ch]["remote_amplitudes"].get(signal_key)
+        al = ch_map_l[ch]["local_amplitudes"].get(signal_key)
+        ph = ch_map_p[ch]["phases"].get(signal_key)
+        if ar is None or al is None or ph is None or len(ar) < end or len(al) < end or len(ph) < end:
+            continue
+        p = ph[st:end]
+        cols.append(ar[st:end] * np.exp(1j * p))
+        meta.append(("remote_amplitudes", ch))
+        cols.append(al[st:end] * np.exp(1j * p))
+        meta.append(("local_amplitudes", ch))
+    if not cols:
+        return np.empty((end - st, 0), dtype=complex), []
+    return np.column_stack(cols), meta
+
+
+def build_complex_eta_blend_matrix(
+    ch_map_r: Dict[Any, dict],
+    ch_map_l: Dict[Any, dict],
+    ch_map_p: Dict[Any, dict],
+    ch_list: List[Any],
+    st: int,
+    end: int,
+    fs: float,
+    cfg: PcaSvdConfig,
+) -> Tuple[np.ndarray, List[Any]]:
+    """方案3：每信道 ``Ã=(η_r A_r + η_l A_l)/(η_r+η_l)``，再 ``Ã·e^(jφ)``。"""
+    cols: List[np.ndarray] = []
+    used: List[Any] = []
+    for ch in ch_list:
+        ar = ch_map_r[ch]["remote_amplitudes"].get(cfg.signal_key)
+        al = ch_map_l[ch]["local_amplitudes"].get(cfg.signal_key)
+        ph = ch_map_p[ch]["phases"].get(cfg.signal_key)
+        if ar is None or al is None or ph is None or len(ar) < end or len(al) < end or len(ph) < end:
+            continue
+        sl_r, sl_l, sl_p = ar[st:end], al[st:end], ph[st:end]
+        eta_r = _channel_energy_ratio(sl_r, fs, cfg)
+        eta_l = _channel_energy_ratio(sl_l, fs, cfg)
+        denom = eta_r + eta_l + cfg.eps
+        a_blend = (eta_r * sl_r + eta_l * sl_l) / denom
+        cols.append(a_blend * np.exp(1j * sl_p))
+        used.append(ch)
+    if not cols:
+        return np.empty((end - st, 0), dtype=complex), []
+    return np.column_stack(cols), used
+
+
+def _dual_amp_column_weights(
+    meta: List[Tuple[str, Any]],
+    ch_map_r: Dict[Any, dict],
+    ch_map_l: Dict[Any, dict],
+    st: int,
+    end: int,
+    fs: float,
+    cfg: PcaSvdConfig,
+) -> np.ndarray:
+    weights = []
+    for var, ch in meta:
+        ch_map = ch_map_r if var == "remote_amplitudes" else ch_map_l
+        w = compute_channel_energy_weights(ch_map, var, [ch], st, end, fs, cfg)
+        weights.append(float(w[0]) if w.size else 0.0)
+    return np.asarray(weights, dtype=float)
+
+
+def run_pca_complex_dual_amp(
+    multichannel_by_var: Dict[str, Dict[str, Optional[dict]]],
+    *,
+    channel_weight: ChannelWeightMode = "uniform",
+    metric_params: Optional[Any] = None,
+    pca_svd_config: Optional[PcaSvdConfig] = None,
+    verbose: bool = True,
+) -> Dict[str, Optional[dict]]:
+    """方案2：remote/local 双复矩阵堆叠 (2×72 列) → 复 PCA → BPM。"""
+    from ble_analysis.segments import BreathMetricParams, _sliding_window_indices
+    from ble_analysis.chfusion import _seg_bpm_stats
+
+    mp = metric_params or BreathMetricParams()
+    cfg = pca_svd_config or PcaSvdConfig()
+    results: Dict[str, Optional[dict]] = {}
+    mc_pha = multichannel_by_var.get("phases", {})
+
+    for seg_name in sorted(mc_pha.keys()):
+        seg_rem, seg_loc, seg_pha, _, ch_list, _ = _common_complex_segment_channels(
+            multichannel_by_var, seg_name
+        )
+        if seg_rem is None or not ch_list:
+            results[seg_name] = None
+            continue
+        metadata = seg_pha["metadata"]
+        if metadata.get("segment_type") == "apnea":
+            results[seg_name] = None
+            continue
+
+        bpm_gt = metadata.get("bpm_gt")
+        fs = metadata["sampling_rate"]
+        ch_map_r = seg_rem["channels"]
+        ch_map_l = seg_loc["channels"]
+        ch_map_p = seg_pha["channels"]
+        ref_len = _ref_len_complex_triple(ch_map_r, ch_map_l, ch_map_p, ch_list, cfg.signal_key)
+        if ref_len == 0:
+            results[seg_name] = None
+            continue
+
+        win_len = int(round(mp.window_length_sec * fs))
+        step_len = int(round(mp.step_length_sec * fs))
+        if ref_len < win_len:
+            results[seg_name] = None
+            continue
+
+        starts = _sliding_window_indices(ref_len, win_len, step_len)
+        nfft = _next_pow2(4 * win_len)
+        freqs = np.fft.rfftfreq(nfft, d=1.0 / fs)
+        band_mask = (freqs >= cfg.breath_freq_low) & (freqs <= cfg.breath_freq_high)
+        band_freqs = freqs[band_mask]
+        hann = np.hanning(win_len)
+        bpms: List[float] = []
+        prev_wf = None
+
+        for st in starts:
+            end = st + win_len
+            x_c, meta = build_complex_dual_amp_matrix(
+                ch_map_r, ch_map_l, ch_map_p, ch_list, st, end, cfg.signal_key
+            )
+            if x_c.shape[1] < cfg.min_channels:
+                bpms.append(np.nan)
+                continue
+            ch_w = (
+                _dual_amp_column_weights(meta, ch_map_r, ch_map_l, st, end, fs, cfg)
+                if channel_weight == "energy_ratio"
+                else None
+            )
+            bpm, prev_wf = _complex_pca_bpm_from_matrix(
+                x_c, cfg, seg_name, ch_w, prev_wf, fs, nfft, band_mask, band_freqs, hann
+            )
+            bpms.append(bpm)
+
+        key = f"pca_complex_dual_amp_ch_{channel_weight}"
+        results[seg_name] = {
+            "segment": seg_name,
+            "bpm_gt": bpm_gt,
+            "metadata": metadata,
+            key: _seg_bpm_stats(np.asarray(bpms, dtype=float), bpm_gt, len(starts)),
+        }
+
+    if verbose:
+        print(f"✓ PCA complex dual-amp (ch={channel_weight})")
+    return results
+
+
+def run_pca_complex_eta_blend(
+    multichannel_by_var: Dict[str, Dict[str, Optional[dict]]],
+    *,
+    channel_weight: ChannelWeightMode = "uniform",
+    metric_params: Optional[Any] = None,
+    pca_svd_config: Optional[PcaSvdConfig] = None,
+    verbose: bool = True,
+) -> Dict[str, Optional[dict]]:
+    """方案3：每信道 η 混合 remote/local 幅值后 ``Ã·e^(jφ)`` → 复 PCA。"""
+    from ble_analysis.segments import BreathMetricParams, _sliding_window_indices
+    from ble_analysis.chfusion import _seg_bpm_stats
+
+    mp = metric_params or BreathMetricParams()
+    cfg = pca_svd_config or PcaSvdConfig()
+    results: Dict[str, Optional[dict]] = {}
+    mc_pha = multichannel_by_var.get("phases", {})
+
+    for seg_name in sorted(mc_pha.keys()):
+        seg_rem, seg_loc, seg_pha, _, ch_list, _ = _common_complex_segment_channels(
+            multichannel_by_var, seg_name
+        )
+        if seg_rem is None or not ch_list:
+            results[seg_name] = None
+            continue
+        metadata = seg_pha["metadata"]
+        if metadata.get("segment_type") == "apnea":
+            results[seg_name] = None
+            continue
+
+        bpm_gt = metadata.get("bpm_gt")
+        fs = metadata["sampling_rate"]
+        ch_map_r = seg_rem["channels"]
+        ch_map_l = seg_loc["channels"]
+        ch_map_p = seg_pha["channels"]
+        ref_len = _ref_len_complex_triple(ch_map_r, ch_map_l, ch_map_p, ch_list, cfg.signal_key)
+        if ref_len == 0:
+            results[seg_name] = None
+            continue
+
+        win_len = int(round(mp.window_length_sec * fs))
+        step_len = int(round(mp.step_length_sec * fs))
+        if ref_len < win_len:
+            results[seg_name] = None
+            continue
+
+        starts = _sliding_window_indices(ref_len, win_len, step_len)
+        nfft = _next_pow2(4 * win_len)
+        freqs = np.fft.rfftfreq(nfft, d=1.0 / fs)
+        band_mask = (freqs >= cfg.breath_freq_low) & (freqs <= cfg.breath_freq_high)
+        band_freqs = freqs[band_mask]
+        hann = np.hanning(win_len)
+        bpms: List[float] = []
+        prev_wf = None
+
+        for st in starts:
+            end = st + win_len
+            x_c, used = build_complex_eta_blend_matrix(
+                ch_map_r, ch_map_l, ch_map_p, ch_list, st, end, fs, cfg
+            )
+            if x_c.shape[1] < cfg.min_channels:
+                bpms.append(np.nan)
+                continue
+            ch_w = None
+            if channel_weight == "energy_ratio":
+                eta_r = compute_channel_energy_weights(
+                    ch_map_r, "remote_amplitudes", used, st, end, fs, cfg
+                )
+                eta_l = compute_channel_energy_weights(
+                    ch_map_l, "local_amplitudes", used, st, end, fs, cfg
+                )
+                ch_w = (eta_r + eta_l) * 0.5
+            bpm, prev_wf = _complex_pca_bpm_from_matrix(
+                x_c, cfg, seg_name, ch_w, prev_wf, fs, nfft, band_mask, band_freqs, hann
+            )
+            bpms.append(bpm)
+
+        key = f"pca_complex_eta_blend_ch_{channel_weight}"
+        results[seg_name] = {
+            "segment": seg_name,
+            "bpm_gt": bpm_gt,
+            "metadata": metadata,
+            key: _seg_bpm_stats(np.asarray(bpms, dtype=float), bpm_gt, len(starts)),
+        }
+
+    if verbose:
+        print(f"✓ PCA complex η-blend (ch={channel_weight})")
+    return results
+
+
+def build_complex_amp_phase_matrix(
+    ch_map_amp: Dict[Any, dict],
+    ch_map_pha: Dict[Any, dict],
+    amp_var: str,
+    ch_list: List[Any],
+    st: int,
+    end: int,
+    signal_key: SignalKey,
+) -> Tuple[np.ndarray, List[Any]]:
+    cols: List[np.ndarray] = []
+    used: List[Any] = []
+    for ch in ch_list:
+        pa = ch_map_amp.get(ch)
+        pp = ch_map_pha.get(ch)
+        if pa is None or pp is None:
+            continue
+        ba = pa[amp_var].get(signal_key)
+        bp = pp["phases"].get(signal_key)
+        if ba is None or bp is None or len(ba) < end or len(bp) < end:
+            continue
+        cols.append(ba[st:end] * np.exp(1j * bp[st:end]))
+        used.append(ch)
+    if not cols:
+        return np.empty((end - st, 0), dtype=complex), []
+    return np.column_stack(cols), used
+
+
+def run_pca_complex_modal_fusion(
+    multichannel_by_var: Dict[str, Dict[str, Optional[dict]]],
+    *,
+    amp_variables: Sequence[str] = ("remote_amplitudes", "local_amplitudes"),
+    channel_weight: ChannelWeightMode = "uniform",
+    modal_weight: ModalWeightMode = "equal",
+    metric_params: Optional[Any] = None,
+    pca_svd_config: Optional[PcaSvdConfig] = None,
+    verbose: bool = True,
+) -> Dict[str, Optional[dict]]:
+    """方案4：每幅值变量独立 ``A·e^(jφ)`` 复 PCA → 模态谱融合 → BPM。"""
+    from ble_analysis.segments import BreathMetricParams, _sliding_window_indices
+    from ble_analysis.chfusion import _seg_bpm_stats
+
+    mp = metric_params or BreathMetricParams()
+    cfg = pca_svd_config or PcaSvdConfig()
+    amp_vars = list(amp_variables)
+    results: Dict[str, Optional[dict]] = {}
+    mc_pha = multichannel_by_var.get("phases", {})
+
+    for seg_name in sorted(mc_pha.keys()):
+        seg_rem, seg_loc, seg_pha, _, ch_list, _ = _common_complex_segment_channels(
+            multichannel_by_var, seg_name
+        )
+        if seg_rem is None or not ch_list:
+            results[seg_name] = None
+            continue
+        metadata = seg_pha["metadata"]
+        if metadata.get("segment_type") == "apnea":
+            results[seg_name] = None
+            continue
+
+        bpm_gt = metadata.get("bpm_gt")
+        fs = metadata["sampling_rate"]
+        ch_map_p = seg_pha["channels"]
+        amp_maps = {
+            "remote_amplitudes": seg_rem["channels"],
+            "local_amplitudes": seg_loc["channels"],
+            "amplitudes": multichannel_by_var.get("amplitudes", {}).get(seg_name, {}).get(
+                "channels", {}
+            ),
+        }
+        ref_len = _ref_len_complex_triple(
+            amp_maps["remote_amplitudes"],
+            amp_maps["local_amplitudes"],
+            ch_map_p,
+            ch_list,
+            cfg.signal_key,
+        )
+        if ref_len == 0:
+            results[seg_name] = None
+            continue
+
+        win_len = int(round(mp.window_length_sec * fs))
+        step_len = int(round(mp.step_length_sec * fs))
+        if ref_len < win_len:
+            results[seg_name] = None
+            continue
+
+        starts = _sliding_window_indices(ref_len, win_len, step_len)
+        nfft = _next_pow2(4 * win_len)
+        freqs = np.fft.rfftfreq(nfft, d=1.0 / fs)
+        band_mask = (freqs >= cfg.breath_freq_low) & (freqs <= cfg.breath_freq_high)
+        band_freqs = freqs[band_mask]
+        hann = np.hanning(win_len)
+        bpms: List[float] = []
+        prev_wf: Dict[str, Optional[np.ndarray]] = {v: None for v in amp_vars}
+
+        for st in starts:
+            end = st + win_len
+            modal_entries: List[Tuple[np.ndarray, float]] = []
+
+            for amp_var in amp_vars:
+                ch_map_a = amp_maps.get(amp_var, {})
+                if not ch_map_a:
+                    continue
+                x_c, used = build_complex_amp_phase_matrix(
+                    ch_map_a, ch_map_p, amp_var, ch_list, st, end, cfg.signal_key
+                )
+                if x_c.shape[1] < cfg.min_channels:
+                    continue
+                ch_w = None
+                eta_all = compute_channel_energy_weights(
+                    ch_map_a, amp_var, used, st, end, fs, cfg
+                )
+                finite = eta_all[np.isfinite(eta_all) & (eta_all > 0)]
+                var_eta = float(np.mean(finite)) if finite.size else 0.0
+                if channel_weight == "energy_ratio":
+                    ch_w = eta_all
+                wf, _ = extract_breath_waveform_complex_pca(
+                    x_c, cfg, seg_name, channel_weights=ch_w
+                )
+                wf = align_waveform_sign(wf, prev_wf[amp_var])
+                prev_wf[amp_var] = wf.copy()
+                spec = waveform_normalized_spectrum(
+                    wf, fs, nfft, band_mask, hann, cfg.eps
+                )
+                modal_entries.append((spec, var_eta))
+
+            bpms.append(
+                _fuse_modal_spectra(modal_entries, modal_weight, band_freqs, cfg.eps)
+            )
+
+        key = f"pca_complex_modal_{modal_weight}_ch_{channel_weight}"
+        results[seg_name] = {
+            "segment": seg_name,
+            "bpm_gt": bpm_gt,
+            "metadata": metadata,
+            key: _seg_bpm_stats(np.asarray(bpms, dtype=float), bpm_gt, len(starts)),
+        }
+
+    if verbose:
+        amps = "+".join(a.replace("_amplitudes", "") for a in amp_vars)
+        print(
+            f"✓ PCA complex modal ({amps}, ch={channel_weight}, modal={modal_weight})"
+        )
+    return results
+
+
+def _classify_bpm_harmonic_ratio(bpm_est: float, bpm_gt: float) -> str:
+    """窗级 BPM 与 GT 比值 → fundamental / double / half / other。"""
+    if not np.isfinite(bpm_est) or not np.isfinite(bpm_gt) or bpm_gt <= 0:
+        return "other"
+    ratio = float(bpm_est) / float(bpm_gt)
+    if 0.85 <= ratio <= 1.15:
+        return "fundamental"
+    if 1.75 <= ratio <= 2.25:
+        return "double"
+    if 0.4 <= ratio <= 0.6:
+        return "half"
+    return "other"
+
+
+def diagnose_complex_integration_harmonics(
+    multichannel_by_var: Dict[str, Dict[str, Optional[dict]]],
+    *,
+    integration: Literal["eta_blend", "dual_amp"],
+    channel_weight: ChannelWeightMode = "energy_ratio",
+    metric_params: Optional[Any] = None,
+    pca_svd_config: Optional[PcaSvdConfig] = None,
+) -> Dict[str, Optional[dict]]:
+    """091339 等场景：统计 η-blend / Dual-Amp PC1 窗级 BPM 倍频/半频占比。"""
+    from ble_analysis.segments import BreathMetricParams, _sliding_window_indices
+
+    mp = metric_params or BreathMetricParams()
+    cfg = pca_svd_config or PcaSvdConfig()
+    results: Dict[str, Optional[dict]] = {}
+    mc_pha = multichannel_by_var.get("phases", {})
+
+    for seg_name in sorted(mc_pha.keys()):
+        seg_rem, seg_loc, seg_pha, _, ch_list, _ = _common_complex_segment_channels(
+            multichannel_by_var, seg_name
+        )
+        if seg_rem is None or not ch_list:
+            results[seg_name] = None
+            continue
+        metadata = seg_pha["metadata"]
+        if metadata.get("segment_type") == "apnea":
+            results[seg_name] = None
+            continue
+
+        bpm_gt = metadata.get("bpm_gt")
+        fs = metadata["sampling_rate"]
+        ch_map_r = seg_rem["channels"]
+        ch_map_l = seg_loc["channels"]
+        ch_map_p = seg_pha["channels"]
+        ref_len = _ref_len_complex_triple(ch_map_r, ch_map_l, ch_map_p, ch_list, cfg.signal_key)
+        if ref_len == 0:
+            results[seg_name] = None
+            continue
+
+        win_len = int(round(mp.window_length_sec * fs))
+        step_len = int(round(mp.step_length_sec * fs))
+        if ref_len < win_len:
+            results[seg_name] = None
+            continue
+
+        starts = _sliding_window_indices(ref_len, win_len, step_len)
+        nfft = _next_pow2(4 * win_len)
+        freqs = np.fft.rfftfreq(nfft, d=1.0 / fs)
+        band_mask = (freqs >= cfg.breath_freq_low) & (freqs <= cfg.breath_freq_high)
+        band_freqs = freqs[band_mask]
+        hann = np.hanning(win_len)
+        buckets = {"fundamental": 0, "double": 0, "half": 0, "other": 0}
+        rel_errs: List[float] = []
+        prev_wf = None
+
+        for st in starts:
+            end = st + win_len
+            if integration == "dual_amp":
+                x_c, meta = build_complex_dual_amp_matrix(
+                    ch_map_r, ch_map_l, ch_map_p, ch_list, st, end, cfg.signal_key
+                )
+                ch_w = (
+                    _dual_amp_column_weights(meta, ch_map_r, ch_map_l, st, end, fs, cfg)
+                    if channel_weight == "energy_ratio"
+                    else None
+                )
+            else:
+                x_c, used = build_complex_eta_blend_matrix(
+                    ch_map_r, ch_map_l, ch_map_p, ch_list, st, end, fs, cfg
+                )
+                ch_w = None
+                if channel_weight == "energy_ratio" and used:
+                    ch_w = compute_channel_energy_weights(
+                        ch_map_r, "remote_amplitudes", used, st, end, fs, cfg
+                    )
+            if x_c.shape[1] < cfg.min_channels:
+                buckets["other"] += 1
+                continue
+            bpm, prev_wf = _complex_pca_bpm_from_matrix(
+                x_c, cfg, seg_name, ch_w, prev_wf, fs, nfft, band_mask, band_freqs, hann
+            )
+            if np.isfinite(bpm) and np.isfinite(bpm_gt) and bpm_gt > 0:
+                rel_errs.append(abs(bpm - bpm_gt) / bpm_gt)
+            buckets[_classify_bpm_harmonic_ratio(bpm, bpm_gt)] += 1
+
+        n_win = len(starts)
+        fracs = {k: buckets[k] / n_win for k in buckets}
+        mean_rel = float(np.mean(rel_errs)) * 100.0 if rel_errs else np.nan
+        results[seg_name] = {
+            "segment": seg_name,
+            "bpm_gt": bpm_gt,
+            "n_windows": n_win,
+            "mean_rel_err_pct": mean_rel,
+            "harmonic_fracs": fracs,
+            "harmonic_counts": buckets,
+        }
     return results

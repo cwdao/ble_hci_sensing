@@ -92,7 +92,10 @@ from ble_analysis.pca_svd import (
     extract_breath_waveform_complex_svd,
     extract_breath_waveform_pca,
     extract_breath_waveform_svd,
+    run_pca_complex_dual_amp,
+    run_pca_complex_eta_blend,
     run_pca_complex_fusion,
+    run_pca_complex_modal_fusion,
     run_pca_modal_fusion,
 )
 from ble_analysis.scenarios import load_scenario, print_scenario_summary
@@ -175,21 +178,65 @@ PCA_MODAL_EXPERIMENTS = {
         "modal_variables": ("remote_amplitudes", "phases"),
         "channel_weight": "energy_ratio", "modal_weight": "energy_ratio",
     },
+    "PCA-Modal3 top2/ch-η": {
+        "modal_variables": MODAL_PCA_VARIABLES,
+        "channel_weight": "energy_ratio", "modal_weight": "top2_equal",
+    },
+    "PCA-Modal amp+pha top2": {
+        "modal_variables": ("remote_amplitudes", "phases"),
+        "channel_weight": "energy_ratio", "modal_weight": "top2_equal",
+    },
 }
 
 PCA_COMPLEX_EXPERIMENTS = {
     "PCA-Cmplx Total ch-uni": {"amp_var": "amplitudes", "channel_weight": "uniform"},
     "PCA-Cmplx Total ch-η": {"amp_var": "amplitudes", "channel_weight": "energy_ratio"},
-    "PCA-Cmplx Remote ch-uni": {"amp_var": "remote_amplitudes", "channel_weight": "uniform"},
+}
+
+PCA_COMPLEX_INTEGRATION_EXPERIMENTS = {
+    # 方案2：remote∥local 双复堆叠 144 列
+    "PCA-Cmplx Dual-Amp ch-uni": {
+        "runner": "dual_amp", "channel_weight": "uniform",
+    },
+    "PCA-Cmplx Dual-Amp ch-η": {
+        "runner": "dual_amp", "channel_weight": "energy_ratio",
+    },
+    # 方案3：每信道 η 混合幅值后 Ã·e^(jφ)
+    "PCA-Cmplx η-blend ch-uni": {
+        "runner": "eta_blend", "channel_weight": "uniform",
+    },
+    "PCA-Cmplx η-blend ch-η": {
+        "runner": "eta_blend", "channel_weight": "energy_ratio",
+    },
+    # 方案4：remote/local 各自复 PCA → 模态谱融合
+    "PCA-Cmplx-Modal rem+loc eq": {
+        "runner": "complex_modal",
+        "amp_variables": ("remote_amplitudes", "local_amplitudes"),
+        "channel_weight": "uniform", "modal_weight": "equal",
+    },
+    "PCA-Cmplx-Modal rem+loc η": {
+        "runner": "complex_modal",
+        "amp_variables": ("remote_amplitudes", "local_amplitudes"),
+        "channel_weight": "energy_ratio", "modal_weight": "energy_ratio",
+    },
+    "PCA-Cmplx-Modal rem+loc top2": {
+        "runner": "complex_modal",
+        "amp_variables": ("remote_amplitudes", "local_amplitudes"),
+        "channel_weight": "energy_ratio", "modal_weight": "top2_equal",
+    },
 }
 
 CROSS_DOMAIN_COMPARE_LABELS = (
     "Modal η-weight",
+    "Modal top2 equal",
+    "PCA-Modal3 top2/ch-η",
+    "PCA-Cmplx-Modal rem+loc top2",
     "PCA-Cmplx Total ch-η",
+    "PCA-Cmplx η-blend ch-η",
+    "PCA-Cmplx-Modal rem+loc η",
     "PCA-Modal3 η/ch-η",
     "PCA-Modal amp+pha η",
     "PCA-HP Remote ch-η",
-    "Modal top2 equal",
     "PCA Total Amp",
     "Uniform Remote amplitude",
     "Single Remote amplitude",
@@ -572,6 +619,43 @@ def run_pca_v2_suite(
         )
         ckey = f"pca_complex_{exp_cfg['amp_var']}_ch_{exp_cfg['channel_weight']}"
         pca_v2[exp_name] = _modal_to_per_seg(raw, ckey)
+    for exp_name, exp_cfg in PCA_COMPLEX_INTEGRATION_EXPERIMENTS.items():
+        cfg = replace(pca_hp_cfg, channel_weight=exp_cfg.get("channel_weight", "uniform"))
+        runner = exp_cfg["runner"]
+        if verbose:
+            print(f"\n--- PCA integration: {exp_name} ---")
+        if runner == "dual_amp":
+            raw = run_pca_complex_dual_amp(
+                multichannel_by_var,
+                channel_weight=exp_cfg["channel_weight"],
+                metric_params=metric_params,
+                pca_svd_config=cfg,
+                verbose=verbose,
+            )
+            ikey = f"pca_complex_dual_amp_ch_{exp_cfg['channel_weight']}"
+        elif runner == "eta_blend":
+            raw = run_pca_complex_eta_blend(
+                multichannel_by_var,
+                channel_weight=exp_cfg["channel_weight"],
+                metric_params=metric_params,
+                pca_svd_config=cfg,
+                verbose=verbose,
+            )
+            ikey = f"pca_complex_eta_blend_ch_{exp_cfg['channel_weight']}"
+        else:
+            raw = run_pca_complex_modal_fusion(
+                multichannel_by_var,
+                amp_variables=exp_cfg["amp_variables"],
+                channel_weight=exp_cfg["channel_weight"],
+                modal_weight=exp_cfg["modal_weight"],
+                metric_params=metric_params,
+                pca_svd_config=cfg,
+                verbose=verbose,
+            )
+            ikey = (
+                f"pca_complex_modal_{exp_cfg['modal_weight']}_ch_{exp_cfg['channel_weight']}"
+            )
+        pca_v2[exp_name] = _modal_to_per_seg(raw, ikey)
     return pca_v2
 
 
@@ -633,7 +717,11 @@ def _category_color(label: str, category=None) -> str:
 def _pca_svd_category(exp_name: str) -> str:
     if exp_name.startswith("SVD Complex"):
         return "SVD Complex"
-    if exp_name.startswith("PCA-Modal") or exp_name.startswith("PCA-Cmplx"):
+    if (
+        exp_name.startswith("PCA-Modal")
+        or exp_name.startswith("PCA-Cmplx")
+        or exp_name.startswith("PCA-Cmplx-Modal")
+    ):
         return "PCA Modal"
     if exp_name.startswith("PCA-HP"):
         return "PCA HP"
@@ -1074,10 +1162,17 @@ def ensure_scenario_report(scenario_id: str, *, verbose: bool = False) -> dict:
         return output
     if path.is_file():
         cached = np.load(path, allow_pickle=True).item()
-        if "PCA-Modal3 η/ch-η" in cached.get("pca_svd_results", {}):
+        pca_res = cached.get("pca_svd_results", {})
+        _required_pca_v2 = (
+            "PCA-Modal3 η/ch-η",
+            "PCA-Modal3 top2/ch-η",
+            "PCA-Cmplx-Modal rem+loc top2",
+            "PCA-Cmplx η-blend ch-η",
+        )
+        if all(k in pca_res for k in _required_pca_v2):
             print(f"Loaded cached report: {path.name}")
             return cached
-        print(f"Stale cache (missing PCA v2): {path.name}")
+        print(f"Stale cache (missing PCA integration): {path.name}")
     print(f"Running PCA/SVD pipeline for {scenario_id} …")
     result = run_scenario_pipeline(
         scenario_id,
@@ -1175,3 +1270,62 @@ np.save(
     },
     allow_pickle=True,
 )
+
+# %% [markdown]
+# ## 9. cs_091339 复 PCA 整合失败诊断（η-blend / Dual-Amp）
+#
+# 统计窗级 BPM 与 GT 比值：fundamental / double / half / other，解释 091339 高误差来源。
+
+# %%
+
+from ble_analysis.pca_svd import diagnose_complex_integration_harmonics
+
+DIAG_SCENARIO_ID = "cs_091339"
+diag_sc = load_scenario(DIAG_SCENARIO_ID, project_root=project_root)
+diag_tag = diag_sc.tag
+if diag_tag not in results_by_tag:
+    results_by_tag[diag_tag] = ensure_scenario_report(DIAG_SCENARIO_ID, verbose=False)
+diag_mc = results_by_tag[diag_tag]["multichannel_by_var"]
+
+print(f"\n{'=' * 72}")
+print(f"  PC1 harmonic diagnosis — {diag_tag} ({DIAG_SCENARIO_ID})")
+print("=" * 72)
+print(f"  {'方法':<28} {'段':<12} {'GT':>5} {'err%':>7}  {'基频':>5} {'倍频':>5} {'半频':>5} {'其它':>5}")
+print("  " + "-" * 72)
+
+diag_summary = []
+for method_label, integration in (
+    ("η-blend ch-η", "eta_blend"),
+    ("Dual-Amp ch-η", "dual_amp"),
+):
+    harm = diagnose_complex_integration_harmonics(
+        diag_mc,
+        integration=integration,
+        channel_weight="energy_ratio",
+        metric_params=metric_params,
+        pca_svd_config=pca_hp_config,
+    )
+    for seg_name, row in sorted(harm.items()):
+        if row is None:
+            continue
+        fr = row["harmonic_fracs"]
+        err = row["mean_rel_err_pct"]
+        gt = row["bpm_gt"]
+        print(
+            f"  {method_label:<28} {seg_name:<12} {gt:>5.0f} {err:>7.1f}  "
+            f"{fr['fundamental']:>5.0%} {fr['double']:>5.0%} {fr['half']:>5.0%} {fr['other']:>5.0%}"
+        )
+        diag_summary.append({
+            "method": method_label,
+            "segment": seg_name,
+            "bpm_gt": gt,
+            "mean_rel_err_pct": err,
+            **{f"frac_{k}": v for k, v in fr.items()},
+        })
+
+np.save(
+    REPORTS_DIR / f"chfusion_pca_svd_{diag_tag}_harmonic_diag.npy",
+    {"scenario_id": DIAG_SCENARIO_ID, "summary": diag_summary},
+    allow_pickle=True,
+)
+print(f"\n  Saved: chfusion_pca_svd_{diag_tag}_harmonic_diag.npy")

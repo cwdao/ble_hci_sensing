@@ -153,14 +153,19 @@ BLE CS 一次测量提供 **72 信道 × 4 类观测量**：
 |------|------|
 | **Modal top2 / η-weight** | **9.45%** |
 | PCA-Modal3 η/ch-η | 10.92% |
+| **PCA-Cmplx-Modal rem+loc η**（不 oracle 选端） | **11.95%** |
 | Single Remote | 10.45% |
+| PCA-Cmplx η-blend / Dual-Amp ch-η | ~14.2–14.7% |
 | PCA-Cmplx Total ch-η | 14.66%（102621 优、091339 差） |
+
+**双幅值整合（2026-06）：** 在不预先知道 remote/local 哪端更好时，**方案4（两端各自复 PCA → 模态谱融合）** 跨域最优；方案3 η-blend 单场景 102621 可达 4.71% 但 091339 不稳。脚本 §9 对 091339 统计窗级倍频/半频占比，解释 η-blend / Dual-Amp 失败。
 
 **要点：**
 
-- **方法流程详解**见 `docs/chFusion_pca_svd_plan.md` **§9**（滤波级、信道/模态加权、BPM 路径逐项对照）。
+- **方法流程详解**见 `docs/chFusion_pca_svd_plan.md` **§9**（滤波级、信道/模态加权、BPM 路径逐项对照）；整合结果见 **§8.8**。
 - **PCA + 模态谱融合**（高通 + ch-η）优于带通单变量 PCA；**复 PCA Re(PC1)** 单场景最优但跨域不稳。
-- **复 SVD \|u₁\|、实 SVD 冗余、带通 v1 单变量** 建议停测；**P0 下一步：PCA-Modal top2、Top-K 信道 PCA**（§10）。
+- **已停测：** SVD Complex \|u₁\|、Remote·e^jφ、144 列 Dual-Amp 作部署路线。
+- **已接入：** PCA-Modal / PCA-Cmplx-Modal **top2_equal**（对齐 Plan2 top2）；**P0 下一步：重跑 §8 填表 + Top-K 信道 PCA**（`chFusion_pca_svd_plan.md` §10.3）。
 
 图：`pca_svd_102621_leaderboard_bars.pdf`、`pca_svd_cross_domain_aggregate_bars.pdf`。
 
