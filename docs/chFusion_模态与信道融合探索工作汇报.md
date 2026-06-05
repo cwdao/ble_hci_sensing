@@ -215,20 +215,33 @@ BLE CS 一次测量提供 **72 信道 × 4 类观测量**：
 | 脚本 | `notebooks/scripts/chFusion_fft-q.py` |
 | 脚本 | `notebooks/scripts/chFusion_plan2.py` |
 | 脚本 | `notebooks/scripts/chFusion_plan2_diff_domain_verify.py` |
-| 核心 API | `src/ble_analysis/chfusion.py` |
+| 脚本 | `notebooks/scripts/chFusion_pca_svd.py`（单场景） |
+| 脚本 | `notebooks/scripts/chFusion_pca_svd_cross_domain.py`（跨域） |
+| 脚本 | `notebooks/scripts/chFusion_pca_svd_p1_diag.py`（091339 诊断） |
+| 核心 API | `src/ble_analysis/chfusion.py` — Plan2 Modal |
+| 核心 API | `src/ble_analysis/pca_svd.py` — PCA/复 PCA 算法 |
+| **流水线** | `src/ble_analysis/pca_svd_pipeline.py` — 实验表、排行榜、跨域、诊断 |
+| 设计文档 | `docs/chFusion_pca_svd_plan.md`（§9 方法流程、§11 结论与开放问题） |
 | 场景配置 | `config/scenarios/cs_*.json` |
-| 场景加载 | `src/ble_analysis/scenarios.py` |
-| 报告缓存 | `outputs/reports/chfusion_plan2_*_validation.npy` |
-| 图表 | `outputs/figures/plan2_*` |
+| 报告缓存 | `outputs/reports/chfusion_pca_svd_*.npy` |
 
 ---
 
-## 5. 后续可拓展方向
+## 5. PCA/SVD 探索收官要点
 
-- 人体/非金属板场景：remote/local 先验更弱，模态融合价值可能更大。
-- 与 fft-q 信道融合 **串联**：模态融合后再做否定的 q 全信道融合（预期仍需谨慎）。
-- 窗级失败分析：互补性 worst 窗口是否集中在 apnea 边界、段切换处。
-- 误差聚合：当前跨域 std 为 **三域 macro mean 的 std**；若需统计检验可再 pooled 窗级样本。
+**已闭合：** 带通 v1、SVD Complex \|u₁\|、Remote·e^jφ、Dual-Amp 部署路线；跨域 **Modal 9.45%** 仍为默认。
+
+**PCA 最优但未及 Modal：** PCA-Modal3 top16 跨域 **10.85%**；复整合方案4 **11.95%**（不 oracle 选端）。
+
+**091339 机理：** 复 PCA 整合在半频/倍频窗失效；Plan2 Modal 用单道带通，不出现同类 PC1 半频。PCA-Modal 差在**模态内 72 道 PCA**，非 top2 丢模态 alone。
+
+## 6. 保留问题（详见 plan §11.3）
+
+- Q1：PCA 模态内 — top1 信道 vs PCA vs top-K 细调
+- Q2：复 PCA 半频抑制（谐波门控 / PC1 后再带通）
+- Q3：PCA-Modal 与 Plan2 窗级共识门控
+- Q4：更多场景（人体/非金属）验证
+- Q5：Total ch-η 单场景调参是否值得尾部风险
 
 ---
 

@@ -639,9 +639,62 @@ BPM：模态谱加权求和 → 呼吸带 argmax（parabolic）× 60。
 
 ### 10.5 脚本与模块索引
 
-| 组件 | 路径 |
+| 层级 | 路径 | 职责 |
+|------|------|------|
+| **算法核心** | `src/ble_analysis/pca_svd.py` | PCA/SVD/复 PCA、Top-K、`diagnose_complex_integration_harmonics` |
+| **流水线** | `src/ble_analysis/pca_svd_pipeline.py` | 实验表、单场景/跨场景 pipeline、排行榜、P1 诊断 |
+| **Plan2** | `src/ble_analysis/chfusion.py` | Modal/Single/Uniform 基线 |
+| **主 notebook** | `notebooks/scripts/chFusion_pca_svd.py` | 单场景图表 + 调用 pipeline |
+| **跨场景 CLI** | `notebooks/scripts/chFusion_pca_svd_cross_domain.py` | 仅 §8 三场景重跑 |
+| **诊断 CLI** | `notebooks/scripts/chFusion_pca_svd_p1_diag.py` | 091339 倍频 + 最差段谱图 |
+| **报告** | `outputs/reports/chfusion_pca_svd_*.npy` | 单场景 / 跨域 / harmonic_diag |
+
+---
+
+## 11. 探索结论与保留问题（2026-06 收官）
+
+### 11.1 已验证结论
+
+| 主题 | 结论 |
 |------|------|
-| PCA 核心 | `src/ble_analysis/pca_svd.py` — `run_pca_modal_fusion`, `run_pca_complex_modal_fusion`, `diagnose_complex_integration_harmonics` |
-| Plan2 / 基线 | `src/ble_analysis/chfusion.py` — `estimate_modal_best_channel_fusion`, `estimate_segment_bpm_methods` |
-| 实验脚本 | `notebooks/scripts/chFusion_pca_svd.py` — §3b v1, §3c v2, §8 跨场景 |
-| 报告 | `outputs/reports/chfusion_pca_svd_{tag}.npy`, `chfusion_pca_svd_cross_domain.npy` |
+| **跨场景部署** | Plan2 **Modal top2 / η-weight** 仍为最优（三域 mean **9.45%**） |
+| **PCA 能否替代 Single-best** | **不能稳定替代**。091339 上 Single Remote **10.91%**，PCA-Modal3 η **19.54%**；瓶颈在**模态内提取**（72 道 PCA vs 1 道 max-η），非 top2 模态筛选 |
+| **top2 对 PCA 模态** | 有小幅帮助（091339：top2 **18.97%** vs 全模态 η **19.54%**），但远逊于 Plan2 Modal top2（**13.04%**） |
+| **Top-K 信道** | Modal3 **top16** 为 PCA 系列最优（跨域 **10.85%**）；Remote top8 **差于** 72 道（11.69% vs 10.50%） |
+| **复 PCA 整合** | 不 oracle 选端时 **方案4 模态融合**最优（跨域 **11.95%**）；η-blend 单场景可达 4.71% 但 091339 不稳 |
+| **半频/倍频** | **复 PCA 整合**（η-blend/Dual-Amp/Total·e^jφ）在 091339 段 2b 出现 **100% 半频**；Plan2 Modal **不经 PC1**，失效模式不同 |
+| **明确废弃** | SVD Complex \|u₁\|、Remote·e^jφ、144 列 Dual-Amp 作部署路线 |
+
+### 11.2 结构对照（Plan2 Modal vs PCA-Modal3）
+
+```
+Plan2 Modal：     每模态 = max-η 单信道 + 带通 → 谱 → 模态融合(η/top2) → BPM
+PCA-Modal3：      每模态 = 72 道高通 PCA → PC1 谱 → 同一套模态融合 → BPM
+```
+
+相同：三模态、滑窗、谱融合权重。不同：滤波级、信道策略、top2 排序用 η 的定义（best 信道 η vs mean η）。
+
+### 11.3 保留问题（待后续场景或算法迭代）
+
+| ID | 问题 | 可能方向 |
+|----|------|----------|
+| **Q1** | 091339 上 PCA 模态内提取为何远差于 Single？差信道稀释 PC1，还是 phase/local 模态拖累？ | 每模态改为 **top1 信道** 与 PCA 对照；或 **PCA 前 top-K**（K=4/12）细调 |
+| **Q2** | 复 PCA 半频能否用谐波惩罚或带通 PC1 抑制？ | 窗级谱峰二次检验；Re(PC1) 后再带通 |
+| **Q3** | PCA-Modal 能否与 Plan2 **共识门控**（谱峰一致才融合）？ | 窗级 phase/remote/local 峰频差 > 阈值时退回 Single remote |
+| **Q4** | 金属板三场景结论能否推广到人体/非金属？ | 新场景接入 `config/scenarios/` + `chFusion_pca_svd_cross_domain.py` |
+| **Q5** | Total ch-η 单场景 3.35–3.81% 是否值得场景内调参？ | 仅当可接受 091339 类 **~28%** 尾部风险 |
+
+### 11.4 推荐工作流（复现）
+
+```bash
+# 单场景完整 notebook（图表 + 排行榜）
+python notebooks/scripts/chFusion_pca_svd.py
+
+# 仅三场景跨域表（读/写 outputs/reports/）
+python notebooks/scripts/chFusion_pca_svd_cross_domain.py
+
+# 091339 倍频统计 + 最差段 PC1 谱图
+python notebooks/scripts/chFusion_pca_svd_p1_diag.py
+```
+
+缓存失效条件：单场景 `.npy` 缺少 `REQUIRED_PCA_V2_CACHE_KEYS`（见 `pca_svd_pipeline.py`）。
