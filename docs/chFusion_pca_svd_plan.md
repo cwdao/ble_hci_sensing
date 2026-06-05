@@ -198,11 +198,13 @@ Python ≥ 3.9 的 `numpy.linalg.svd` 已原生支持复数矩阵，无需手动
 | 6 | SVD Total Amp | `amplitudes` 72 道实 SVD |
 | 7 | PCA Phase | `phases` 72 道实 PCA |
 | 8 | SVD Phase | `phases` 72 道实 SVD |
-| 9 | SVD Complex | `amplitudes`·e^(j·`phases`) 72 道复 SVD |
-| 10 | PCA Stacked | 三种幅值堆叠 (remote+local+total) 216 道实 PCA |
-| 11 | Single (baseline) | 现有能量比最优单信道 (remote amp) |
-| 12 | Uniform (baseline) | 现有等权融合 (remote amp) |
-| 13 | q_energy_peak (baseline) | 现有质量加权融合 (remote amp) |
+| 9 | SVD Complex Total | `amplitudes`·e^(j·`phases`) 72 道复 SVD |
+| 10 | SVD Complex Remote | `remote_amplitudes`·e^(j·`phases`) |
+| 11 | SVD Complex Local | `local_amplitudes`·e^(j·`phases`) |
+| 12 | PCA Stacked | 三种幅值堆叠 (remote+local+total) 216 道实 PCA |
+| 13 | Single (baseline) | 现有能量比最优单信道 (remote amp) |
+| 14 | Uniform (baseline) | 现有等权融合 (remote amp) |
+| 15 | q_energy_peak (baseline) | 现有质量加权融合 (remote amp) |
 
 注：baseline 统一使用 `remote_amplitudes`（当前实验中最优的单变量），benchmark 脚本中额外包含全部 4 种变量的 baseline。
 
@@ -216,7 +218,7 @@ Python ≥ 3.9 的 `numpy.linalg.svd` 已原生支持复数矩阵，无需手动
 
 - PCA/SVD 应优于 Single（因为它利用了所有信道的信息）
 - PCA/SVD 应至少与 Uniform 持平或更好（PC1 是数据驱动的最优组合）
-- 复 SVD 可能优于单独的幅值或相位 PCA（同时利用幅相信息）
+- ~~复 SVD 可能优于单独的幅值或相位 PCA~~ → **实验否定**：三种幅值+总相位复 SVD 均倍频失效（§8.5）
 - Stacked PCA 可能最优（融合了多种信号的互补信息）
 
 ## 6. 文件生成计划
@@ -284,7 +286,9 @@ Python ≥ 3.9 的 `numpy.linalg.svd` 已原生支持复数矩阵，无需手动
 | 10 | SVD Total Amp | 6.62 | PCA/SVD |
 | 11 | PCA Stacked | 6.75 | PCA/SVD |
 | 17 | PCA Remote Amp | 7.17 | PCA/SVD |
-| 26 | SVD Complex (总幅值+总相位) | 52.30 | PCA/SVD |
+| 26 | SVD Complex Remote | 48.02 | PCA/SVD |
+| 27 | SVD Complex Total | 52.30 | PCA/SVD |
+| 28 | SVD Complex Local | 52.72 | PCA/SVD |
 
 **要点：**
 
@@ -313,8 +317,261 @@ Python ≥ 3.9 的 `numpy.linalg.svd` 已原生支持复数矩阵，无需手动
 | SVD Complex Remote | `remote_amplitudes · e^(j·phases)` |
 | SVD Complex Local | `local_amplitudes · e^(j·phases)` |
 
-> 文档 §2.3 曾标注 remote/local + 总相位「物理参考系不一致」；此处作为 **对照实验** 检验是否比总幅值方案更稳。跨场景结论见 §8.5（运行 `chFusion_pca_svd.py` §8 后更新）。
+> 文档 §2.3 曾标注 remote/local + 总相位「物理参考系不一致」；此处作为 **对照实验** 检验是否比总幅值方案更稳。
 
-### 8.5 跨场景汇总
+**102621 单场景复 SVD 对照：**
 
-（三场景 `cs_091339` / `cs_095806` / `cs_102621` 运行后填写。）
+| 方法 | mean err% | 相对 Total |
+|------|-----------|------------|
+| SVD Complex Remote | 48.02 | 略优（仍不可用） |
+| SVD Complex Total | 52.30 | 基线 |
+| SVD Complex Local | 52.72 | 略差 |
+
+Remote 幅值 + 总相位在 102621 上略好于 Total，但 **PC1 方差占比更高 ≠ BPM 更准**（三种复 SVD 均 ~50%+）。倍频问题与幅值来源关系不大，更可能来自 `|u₁|` 取模。
+
+### 8.5 跨场景汇总（三场景 η 选路）
+
+| 方法 | 091339 | 095806 | 102621 | 跨域 mean | ±std |
+|------|--------|--------|--------|-----------|------|
+| **Modal top2 equal** | 13.04 | 10.61 | **4.69** | **9.45** | 4.29 |
+| **Modal η-weight** | 13.25 | 10.50 | **4.60** | **9.45** | 4.42 |
+| Single Remote | 10.91 | 12.16 | 8.29 | 10.45 | **1.97** |
+| Uniform Remote | 17.09 | 9.15 | 6.82 | 11.02 | 5.39 |
+| PCA Total Amp | 25.97 | 6.78 | 6.62 | 13.12 | 11.13 |
+| SVD Complex Remote | 47.53 | 73.69 | 48.02 | 56.42 | 14.97 |
+| SVD Complex Total | 49.94 | 73.05 | 52.30 | 58.43 | 12.72 |
+| SVD Complex Local | 50.49 | 71.78 | 52.72 | 58.33 | 11.70 |
+
+图：`outputs/figures/pca_svd_cross_domain_aggregate_bars.pdf`  
+报告：`outputs/reports/chfusion_pca_svd_cross_domain.npy`
+
+**跨场景结论：**
+
+1. **综合最优仍为 Plan2 Modal**（top2 equal / η-weight 跨域 mean **9.45%**），与 Plan2 跨域验证结论一致。
+2. **PCA Total Amp** 在 102621/095806 尚可（~6–7%），但 **091339 上 25.97%** 拉垮跨域均值（13.12%），稳定性不如 Modal。
+3. **三种复 SVD 均跨场景失效**（mean 56–58%）；Remote 略优于 Total/Local，不足以实用。
+4. Single Remote 跨域 mean 10.45%、**std 最小（1.97%）**——方差小但均值略逊于 Modal。
+
+### 8.6 PCA v2：高通 + 信道 η 加权 + PCA 模态融合（2026-06）
+
+**设计原则：** 非必要不用带通；统一用 ``highpass_filtered`` 构造 PCA 矩阵；呼吸频带仅在 FFT 估 BPM / 算 η 时使用。
+
+| 层级 | 选项 |
+|------|------|
+| 信道维（PCA 内） | ``uniform``（z-score）/ ``energy_ratio``（列 √η 加权） |
+| 模态维（谱融合） | ``equal`` / ``energy_ratio``（变量 mean η 加权） |
+| 复数 PCA | ``amp·e^(jφ)`` → Hermitian 协方差 PC1 → **Re(PC1)**（非 \|PC1\|） |
+
+**cs_102621 单场景 Top（节选）：**
+
+| 方法 | mean err% |
+|------|-----------|
+| **PCA-Cmplx Total ch-η** | **3.81** |
+| Modal η-weight | 4.60 |
+| PCA-Modal3 η/ch-η | 5.72 |
+| PCA-HP Remote ch-η | 7.06 |
+
+**三场景跨域（核心方法）：**
+
+| 方法 | 091339 | 095806 | 102621 | mean |
+|------|--------|--------|--------|------|
+| Modal top2 equal | 13.04 | 10.61 | 4.69 | **9.45** |
+| Modal η-weight | 13.25 | 10.50 | 4.60 | **9.45** |
+| PCA-Modal3 η/ch-η | 19.54 | 7.51 | 5.72 | 10.92 |
+| PCA-Cmplx Total ch-η | 28.43 | 11.73 | 3.81 | 14.66 |
+
+**结论：**
+
+- **PCA + 模态谱融合**（``PCA-Modal3 η/ch-η``）明显优于单变量带通 PCA（102621 5.72% vs 6.62%），说明「PCA 作提取、Plan2 作融合」方向正确。
+- **复 PCA（Re(PC1) + 高通 + ch-η）** 在 102621 单场景最优（3.81%），但 **091339 上 28.43%**，跨域不稳定；优于旧复 SVD（\|u₁\| 倍频）但仍不足以替代 Modal。
+- **幅值+相位两模态 PCA**（remote + phase）略逊于三模态 PCA-Modal3。
+- **跨场景部署默认仍为 Modal**；PCA 系列可作为单场景调参/对照，需更多场景验证稳定性。
+
+---
+
+## 9. 方法流程对照表（详细）
+
+本节列出 `chFusion_pca_svd.py` 排行榜中**各类方法**从原始帧到 BPM 的完整差异。  
+符号：η = 呼吸带能量 / 全频段能量（0.1–0.35 Hz / 0.05–0.8 Hz）；滑窗统一 **20 s 窗、1 s 步**。
+
+### 9.0 公共前置（所有方法共享）
+
+| 步骤 | 内容 |
+|------|------|
+| 数据源 | BLE CS 72 tone，`sampleData/CS_frames_*.jsonl` |
+| 分段 | `config/scenarios/*.json`：7 breath + 2 apnea，每段有 `bpm_gt` |
+| 单信道滤波链 | **median → highpass (0.05 Hz) → bandpass (0.1–0.35 Hz)**；`phases` 先 unwrap 再滤波 |
+| 存储键 | 每信道每变量存 `original` / `median_filtered` / `highpass_filtered` / `bandpass_filtered` |
+| 评估 | 窗级 BPM 相对误差 → 段内均值 → 各 breath 段再平均（%） |
+
+**关键分歧点**（后文每方法会标明）：
+
+1. **用哪级滤波信号**：`bandpass_filtered`（v1 PCA/SVD、Plan2）还是 `highpass_filtered`（v2 PCA）
+2. **多信道怎么用**：选 1 道 / 等权谱融合 / q 加权 / **PCA 提 PC1**
+3. **信道内加权**：z-score 等权（uniform）还是 **√η 列加权**（energy_ratio）
+4. **多变量怎么用**：单变量 / 模态谱融合 / 堆叠矩阵
+5. **BPM 怎么取**：波形 FFT 峰频 vs **归一化谱融合后峰频**
+
+---
+
+### 9.1 Plan 2 基线族（`run_plan2_validation`）
+
+#### A. Single / Uniform（每变量 4 种）
+
+| 项目 | Single X | Uniform X |
+|------|----------|-----------|
+| 变量 | `amplitudes` / `remote_amplitudes` / `local_amplitudes` / `phases` | 同左 |
+| 滤波用于特征 | **带通** `bandpass_filtered` 做 FFT 谱；η 在 **高通** `highpass_filtered` 上算 | 同左 |
+| 多信道 | **每窗选 η 最大 1 道**（`energy_ratio` 选路） | **72 道带通谱** |
+| 信道融合 | 无（单道） | **等权平均** 归一化谱 |
+| BPM | 单道带通 FFT 峰频，或融合谱 argmax × 60 | 同左 |
+
+#### B. Modal 融合（5 种，Plan2 核心）
+
+| 项目 | 说明 |
+|------|------|
+| 参与模态 | **phase + remote_amp + local_amp**（不含 total amp） |
+| 滤波 | 每模态用 **best 单信道** 的 **带通** 波形做 FFT 谱 |
+| 多信道（模态内） | 每变量 **独立** 选 η 最大信道（与 Single 相同选路） |
+| 模态融合策略 | 见下表 |
+
+| 方法名 | 模态权重 |
+|--------|----------|
+| Modal equal | 1/3 等权 |
+| Modal η-weight | 各模态 best 信道的 η 归一化加权 |
+| Modal 0.5/0.25/0.25 | 固定 phase 0.5，remote/local 各 0.25 |
+| Modal top2 equal | 每窗按 η 排序取 **前 2 变量**，等权 0.5 |
+| Modal top2 ρ-weight | top2 按谱峰 ρ 加权 |
+
+BPM：加权融合归一化谱 → 呼吸带 parabolic 峰频 × 60。
+
+---
+
+### 9.2 chFusion 精简基线（脚本 §2，仅 remote）
+
+| 方法 | 变量 | 滤波 | 多信道 | BPM |
+|------|------|------|--------|-----|
+| Single (remote amp) | `remote_amplitudes` | 带通 | η 最大 1 道 | 波形 FFT 峰频 |
+| Uniform (remote amp) | 同左 | 带通 | 72 道谱等权融 | 融合谱峰频 |
+| q_energy_peak (remote) | 同左 | 带通 | 72 道 **q_energy_peak** 加权谱 | 融合谱峰频 |
+
+---
+
+### 9.3 PCA/SVD v1（带通，§3b `PCA_SVD_EXPERIMENTS`）
+
+**共同流程：**
+
+```
+带通 M×N 矩阵 → 列 z-score → (可选) PCA/SVD → PC1/u₁ 波形
+→ 符号对齐 → 波形 Hanning FFT → 呼吸带峰频 → BPM
+```
+
+| 方法组 | 变量 / 矩阵 | 分解 | 信道内加权 | 备注 |
+|--------|-------------|------|------------|------|
+| PCA/SVD Remote/Local/Total Amp | 单变量 72 列 | PCA 或 SVD（实，**数学等价**） | z-score 等权 | 输入 `bandpass_filtered` |
+| PCA/SVD Phase | `phases` 72 列 | 同左 | z-score 等权 | 同左 |
+| SVD Complex ×3 | `amp·e^(jφ)` 72 列复矩阵 | 复 SVD，波形 = **\|u₁\|** | 列中心化，无 z-score | **已证实倍频失效，勿部署** |
+| PCA Stacked | remote+local+total **216 列** 实矩阵 | PCA | z-score 等权 | 单窗内跨变量堆叠 |
+
+**与 Plan2 差异：** 用**全部信道**线性组合，不做 per-channel η 筛选；BPM 用**波形 FFT** 而非谱融合。
+
+---
+
+### 9.4 PCA v2（高通，§3c）
+
+**设计原则：** 矩阵构造用 `highpass_filtered`；呼吸带 0.1–0.35 Hz 仅用于 η 与 BPM 谱峰搜索。
+
+#### 9.4.1 单变量 PCA-HP（6 种）
+
+| 方法名 | 变量 | 信道内加权 | 流程 |
+|--------|------|------------|------|
+| PCA-HP Remote/Phase/Total **ch-uniform** | 各 1 变量 × 72 列 | z-score 等权 | 高通矩阵 → PCA → 波形 FFT BPM |
+| PCA-HP Remote/Phase/Total **ch-η** | 同左 | 先 z-score，再列 **√η** 缩放后 PCA | η 在同窗高通切片上 per-channel 计算 |
+
+#### 9.4.2 PCA 模态融合（4 种，`run_pca_modal_fusion`）
+
+**模态内（替代 Plan2 的「选 best 信道」）：**
+
+```
+每变量: 高通 72 列 → (uniform 或 ch-η) PCA → PC1 波形 → 符号对齐
+      → Hanning FFT → 呼吸带归一化谱 P̄_var(f)
+```
+
+| 方法名 | 参与模态 | 信道加权 | 模态融合 |
+|--------|----------|----------|----------|
+| PCA-Modal3 eq/ch-uni | phase + remote + local | uniform | **等权 1/3** |
+| PCA-Modal3 η/ch-η | 同左 | **ch-η** | 各模态 **mean(信道 η)** 加权 |
+| PCA-Modal amp+pha eq | **remote + phase**（2 模态） | uniform | 等权 1/2 |
+| PCA-Modal amp+pha η | 同左 | ch-η | mean η 加权 |
+
+BPM：模态谱加权求和 → 呼吸带 argmax（parabolic）× 60。  
+**与 Plan2 Modal 的唯一结构差异：** 模态内是 **PCA(72 道)** 而非 **Single best(1 道)**。
+
+#### 9.4.3 复数 PCA（3 种，`run_pca_complex_fusion`）
+
+| 方法名 | 复矩阵列 | 信道加权 | 波形 | BPM |
+|--------|----------|----------|------|-----|
+| PCA-Cmplx Total/Remote **ch-uni** | `A·e^(jφ)`，A=total 或 remote | uniform | **Re(PC1)**，非 \|PC1\| | 谱融合峰频 |
+| PCA-Cmplx Total **ch-η** | `amplitudes·e^(jφ)` | ch-η | Re(PC1) | 同左 |
+
+流程：每窗 72 列复矩阵 → 列中心化 → (可选 √η) → **Hermitian 协方差** 第一特征向量 → 时间序列取实部 → 符号对齐 → 归一化谱 → BPM。
+
+**与 SVD Complex 差异：** 分解用 PCA/Hermitian；输出 **Re(PC1)** 而非 **\|u₁\|**，避免倍频。
+
+---
+
+### 9.5 一表总览（排行榜方法族）
+
+| 族 | 代表方法 | 信号 | 信道策略 | 变量/模态 | BPM 路径 | 跨域 mean（三场景） |
+|----|----------|------|----------|-----------|----------|---------------------|
+| Plan2 Modal | η-weight / top2 | 带通 | 每模态 **1 best** | 3 模态谱融合 | 谱 argmax | **9.45%** |
+| Plan2 Single | Remote amp | 带通 | 1 best | 单变量 | 波形/谱 | 10.45% |
+| PCA-Modal v2 | Modal3 η/ch-η | **高通** | **PCA 72** + ch-η | 3 模态谱融合 | 谱 argmax | 10.92% |
+| PCA-Cmplx v2 | Total ch-η | 高通 | 复 PCA 72 + ch-η | 幅相联合单矩阵 | 谱 argmax | 14.66%（不稳） |
+| PCA v1 带通 | Total Amp | 带通 | PCA 72 等权 | 单变量 | 波形 FFT | 13.12% |
+| SVD Complex | Total | 带通 | 复 SVD \|u₁\| | 幅相联合 | 波形 FFT | **~58%（废弃）** |
+| 实 SVD ≡ PCA | Remote Amp | 带通 | 同 PCA | 单变量 | 波形 FFT | 与 PCA 相同 |
+
+---
+
+## 10. 测试取舍与下一步
+
+### 10.1 建议 **不再投入** 的实验（已有充分负/冗余结论）
+
+| 类别 | 原因 |
+|------|------|
+| **SVD Complex**（Total/Remote/Local，\|u₁\|） | 三场景 mean 56–58%，倍频；与复 PCA 相比无优势 |
+| **实矩阵 SVD** 独立排行榜 | 与 PCA 数值完全一致，保留 PCA 即可 |
+| **PCA v1 带通单变量** 全矩阵 | 被 PCA-HP + PCA-Modal 替代；带通未比高通+谱融合更好 |
+| **PCA Stacked 216 列** | 未超过 PCA Total / PCA-Modal3，复杂度高收益低 |
+| **SVD Complex Remote vs Local** 细调 | 差异 <5% err，均在失效区 |
+| **PCA-HP Phase ch-η** 单变量深挖 | 102621 10.8%，远逊于 remote / modal 路线 |
+
+### 10.2 建议 **重点继续** 的实验
+
+| 优先级 | 方向 | 具体内容 |
+|--------|------|----------|
+| **P0** | **PCA-Modal + top2** | 对齐 Plan2 `Modal top2`：每窗按变量 mean η 取前 2，再 PCA 谱融合（目前缺这条） |
+| **P0** | **Top-K 信道 PCA** | 先筛 η 前 K 道（如 8/16）再 PCA，缓解差信道稀释 |
+| **P1** | **PCA-Modal3 η/ch-η 稳定性** | 跨域 10.92% 已接近 Modal；加 top2 / 共识门控看能否压到 <9.5% |
+| **P1** | **PCA-Cmplx 诊断** | 091339 上 28% 失败原因：PC1 频谱 / 符号 / 与 GT 波形对比图 |
+| **P2** | **复 PCA 幅值源** | Total vs remote 跨场景；local+φ 物理不一致，低优先级 |
+| **P2** | **PCA-Modal amp+pha** | 两模态已略逊于三模态，作轻量部署备选即可 |
+
+### 10.3 部署参考（当前证据）
+
+| 场景 | 推荐 |
+|------|------|
+| **跨场景生产默认** | Plan2 **Modal top2 equal** 或 **Modal η-weight**（跨域 9.45%） |
+| **单场景调优上限** | 可试 **PCA-Cmplx Total ch-η**（102621 3.81%），需接受 091339 风险 |
+| **研究对照基线** | Single Remote（std 最小 1.97%） |
+| **明确避免** | SVD Complex \|u₁\|、带通单变量 PCA 作为最终方案 |
+
+### 10.4 脚本与模块索引
+
+| 组件 | 路径 |
+|------|------|
+| PCA 核心 | `src/ble_analysis/pca_svd.py` — `extract_breath_waveform_pca`, `run_pca_modal_fusion`, `run_pca_complex_fusion` |
+| Plan2 / 基线 | `src/ble_analysis/chfusion.py` — `estimate_modal_best_channel_fusion`, `estimate_segment_bpm_methods` |
+| 实验脚本 | `notebooks/scripts/chFusion_pca_svd.py` — §3b v1, §3c v2, §8 跨场景 |
+| 报告 | `outputs/reports/chfusion_pca_svd_{tag}.npy`, `chfusion_pca_svd_cross_domain.npy` |

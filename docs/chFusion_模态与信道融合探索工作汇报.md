@@ -137,23 +137,32 @@ BLE CS 一次测量提供 **72 信道 × 4 类观测量**：
 
 **动机：** 利用 72 信道相关性，用 PC1 / 第一奇异向量提取呼吸共同模式，与 Plan2「每窗选最优信道」对照。
 
-**单场景 102621（与 Plan2 同口径，7 breath 段）：**
+**单场景 102621（v1 + v2，7 breath 段）：**
 
 | 方法 | mean err% |
 |------|-----------|
-| Modal η-weight | **4.60** |
-| PCA Total Amp | 6.62 |
-| Uniform remote | 6.82 |
-| Single remote | 8.29 |
-| SVD Complex（总幅值+总相位） | 52.30（失效） |
+| **PCA-Cmplx Total ch-η**（v2） | **3.81** |
+| Modal η-weight（Plan2） | 4.60 |
+| PCA-Modal3 η/ch-η（v2） | 5.72 |
+| PCA Total Amp（v1 带通） | 6.62 |
+| SVD Complex \|u₁\|（v1） | 52+（失效） |
+
+**跨场景三域 aggregate：**
+
+| 方法 | mean |
+|------|------|
+| **Modal top2 / η-weight** | **9.45%** |
+| PCA-Modal3 η/ch-η | 10.92% |
+| Single Remote | 10.45% |
+| PCA-Cmplx Total ch-η | 14.66%（102621 优、091339 差） |
 
 **要点：**
 
-- 修复排行榜 **未 ×100** 的单位 bug 后，PCA/SVD 误差回到 5–10% 量级，可与 Plan2 直接比较。
-- 实矩阵 PCA ≡ SVD；**PCA Total Amp** 略优于 Uniform，仍不及 Modal。
-- **复 SVD（总幅值+总相位）** 严重倍频，保留作对照；已增 remote/local 幅值 + 总相位变体及三场景聚合（见 `docs/chFusion_pca_svd_plan.md` §8）。
+- **方法流程详解**见 `docs/chFusion_pca_svd_plan.md` **§9**（滤波级、信道/模态加权、BPM 路径逐项对照）。
+- **PCA + 模态谱融合**（高通 + ch-η）优于带通单变量 PCA；**复 PCA Re(PC1)** 单场景最优但跨域不稳。
+- **复 SVD \|u₁\|、实 SVD 冗余、带通 v1 单变量** 建议停测；**P0 下一步：PCA-Modal top2、Top-K 信道 PCA**（§10）。
 
-图：`outputs/figures/pca_svd_102621_leaderboard_bars.pdf` 等。
+图：`pca_svd_102621_leaderboard_bars.pdf`、`pca_svd_cross_domain_aggregate_bars.pdf`。
 
 ---
 

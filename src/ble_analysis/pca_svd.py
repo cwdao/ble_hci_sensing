@@ -12,7 +12,7 @@ WiFi CSI 呼吸感知文献中 PCA/SVD 是标准的降噪+信号提取手段。
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any, Dict, List, Literal, Optional, Tuple
+from typing import Any, Dict, List, Literal, Optional, Sequence, Tuple
 
 import numpy as np
 
@@ -24,6 +24,10 @@ PcaSvdMethod = Literal["pca", "svd_real", "svd_complex"]
 """PCA: 实矩阵特征分解; SVD_real: 实矩阵 SVD; SVD_complex: 复矩阵 SVD"""
 
 NormalizeMethod = Literal["none", "zscore", "minmax"]
+ChannelWeightMode = Literal["uniform", "energy_ratio"]
+"""信道间加权：uniform=仅 z-score；energy_ratio=按呼吸能量比 η 加权列。"""
+SignalKey = Literal["highpass_filtered", "bandpass_filtered"]
+ModalWeightMode = Literal["equal", "energy_ratio"]
 """标准化策略:
 - none:   不标准化（注意：幅值大的信道会主导结果）
 - zscore: 按列 (x - μ) / σ（推荐，消除信道间幅值差异）
@@ -69,6 +73,14 @@ class PcaSvdConfig:
         PC1 方差占比阈值，低于此值发出警告（呼吸可能不主导）。
     eps : float
         数值稳定小量。
+    channel_weight : ChannelWeightMode
+        信道维加权；``energy_ratio`` 时用 ``signal_key`` 切片算 η 后乘到列上。
+    signal_key : SignalKey
+        构造数据矩阵时使用的滤波键，默认 ``highpass_filtered``。
+    breath_freq_low, breath_freq_high : float
+        呼吸频带 [Hz]，用于 η 与 BPM 谱峰搜索。
+    total_freq_low, total_freq_high : float
+        η 分母频带 [Hz]。
     """
 
     method: PcaSvdMethod = "pca"
@@ -76,6 +88,12 @@ class PcaSvdConfig:
     min_channels: int = 4
     min_variance_ratio: float = 0.10
     eps: float = 1e-12
+    channel_weight: ChannelWeightMode = "uniform"
+    signal_key: SignalKey = "highpass_filtered"
+    breath_freq_low: float = 0.1
+    breath_freq_high: float = 0.35
+    total_freq_low: float = 0.05
+    total_freq_high: float = 0.8
 
 
 # ---------------------------------------------------------------------------
@@ -137,6 +155,126 @@ def _check_and_warn(
     return True
 
 
+def _channel_energy_ratio(
+    signal_seg: np.ndarray,
+    fs: float,
+    cfg: PcaSvdConfig,
+) -> float:
+    """单信道呼吸带能量 / 全频段能量（与 chfusion ``_energy_ratio`` 一致）。"""
+    if len(signal_seg) < 4 or not np.all(np.isfinite(signal_seg)):
+        return 0.0
+    windowed = (signal_seg - np.mean(signal_seg)) * np.hanning(len(signal_seg))
+    fft_power = np.abs(np.fft.rfft(windowed)) ** 2
+    fft_freq = np.fft.rfftfreq(len(windowed), 1.0 / fs)
+    breath_mask = (fft_freq >= cfg.breath_freq_low) & (fft_freq <= cfg.breath_freq_high)
+    total_mask = (fft_freq >= cfg.total_freq_low) & (fft_freq <= cfg.total_freq_high)
+    breath_energy = float(np.sum(fft_power[breath_mask]))
+    total_energy = float(np.sum(fft_power[total_mask]))
+    if total_energy <= cfg.eps:
+        return 0.0
+    return breath_energy / total_energy
+
+
+def _apply_channel_weights(Z: np.ndarray, channel_weights: Optional[np.ndarray], eps: float) -> np.ndarray:
+    """列加权：sqrt(w) 缩放，保持与均匀 PCA 可比的总尺度。"""
+    if channel_weights is None or Z.shape[1] == 0:
+        return Z
+    w = np.maximum(np.asarray(channel_weights, dtype=float), 0.0)
+    if w.shape[0] != Z.shape[1]:
+        return Z
+    s = float(np.sum(w))
+    if s <= eps:
+        return Z
+    w = w / s * Z.shape[1]
+    return Z * np.sqrt(w)[np.newaxis, :]
+
+
+def build_channel_data_matrix(
+    ch_map: Dict[Any, Dict[str, Any]],
+    variable: str,
+    channels: List[Any],
+    st: int,
+    end: int,
+    signal_key: SignalKey = "highpass_filtered",
+) -> Tuple[np.ndarray, List[Any]]:
+    """构造单变量 M×N 矩阵（每列一道 ``signal_key`` 切片）。"""
+    cols: List[np.ndarray] = []
+    used: List[Any] = []
+    m = end - st
+    for ch in channels:
+        proc = ch_map.get(ch)
+        if proc is None:
+            continue
+        sig = proc[variable].get(signal_key)
+        if sig is None or len(sig) < end:
+            continue
+        col = sig[st:end].astype(float)
+        if len(col) == m:
+            cols.append(col)
+            used.append(ch)
+    if not cols:
+        return np.empty((m, 0)), []
+    return np.column_stack(cols), used
+
+
+def compute_channel_energy_weights(
+    ch_map: Dict[Any, Dict[str, Any]],
+    variable: str,
+    channels: List[Any],
+    st: int,
+    end: int,
+    fs: float,
+    cfg: PcaSvdConfig,
+) -> np.ndarray:
+    """每信道 η；用于 PCA 列加权或模态级变量权重。"""
+    weights = []
+    for ch in channels:
+        proc = ch_map.get(ch)
+        if proc is None:
+            weights.append(0.0)
+            continue
+        sig = proc[variable].get(cfg.signal_key)
+        if sig is None or len(sig) < end:
+            weights.append(0.0)
+            continue
+        weights.append(_channel_energy_ratio(sig[st:end], fs, cfg))
+    return np.asarray(weights, dtype=float)
+
+
+def waveform_normalized_spectrum(
+    waveform: np.ndarray,
+    fs: float,
+    nfft: int,
+    band_mask: np.ndarray,
+    hann: np.ndarray,
+    eps: float = 1e-12,
+) -> np.ndarray:
+    """1D 波形 → 呼吸带归一化功率谱（用于模态融合）。"""
+    if len(waveform) != len(hann) or not np.all(np.isfinite(waveform)):
+        return np.zeros(int(np.sum(band_mask)), dtype=float)
+    seg = waveform - np.mean(waveform)
+    if np.std(seg) < eps:
+        return np.zeros(int(np.sum(band_mask)), dtype=float)
+    x = np.fft.rfft(seg * hann, n=nfft)
+    p_band = (np.abs(x) ** 2)[band_mask]
+    return p_band / (float(np.sum(p_band)) + eps)
+
+
+def _bpm_from_spectrum(fused: np.ndarray, band_freqs: np.ndarray, eps: float) -> float:
+    if fused.size == 0 or not np.any(np.isfinite(fused)):
+        return np.nan
+    k = int(np.argmax(fused))
+    f_hat = float(band_freqs[k])
+    if 0 < k < len(fused) - 1:
+        y0, y1, y2 = fused[k - 1], fused[k], fused[k + 1]
+        denom = y0 - 2.0 * y1 + y2
+        if abs(denom) > eps:
+            delta = 0.5 * (y0 - y2) / denom
+            df = band_freqs[1] - band_freqs[0]
+            f_hat = float(band_freqs[k] + delta * df)
+    return 60.0 * f_hat
+
+
 # ---------------------------------------------------------------------------
 # 实矩阵 PCA
 # ---------------------------------------------------------------------------
@@ -146,6 +284,7 @@ def extract_breath_waveform_pca(
     X: np.ndarray,
     cfg: Optional[PcaSvdConfig] = None,
     seg_name: str = "",
+    channel_weights: Optional[np.ndarray] = None,
 ) -> Tuple[np.ndarray, Dict[str, Any]]:
     """从 M×N 实矩阵提取呼吸波形（PC1）。
 
@@ -177,6 +316,7 @@ def extract_breath_waveform_pca(
 
     M, N = X.shape
     Z = _normalize_matrix(X, cfg.normalize, cfg.eps)
+    Z = _apply_channel_weights(Z, channel_weights, cfg.eps)
 
     # 协方差矩阵 N×N（N=72 << M，特征分解高效）
     C = (Z.T @ Z) / max(M - 1, 1)
@@ -356,6 +496,43 @@ def extract_breath_waveform_complex_svd(
     return waveform, info
 
 
+def extract_breath_waveform_complex_pca(
+    X_complex: np.ndarray,
+    cfg: Optional[PcaSvdConfig] = None,
+    seg_name: str = "",
+    channel_weights: Optional[np.ndarray] = None,
+) -> Tuple[np.ndarray, Dict[str, Any]]:
+    """复矩阵 PCA：每列 ``A·e^(jφ)``，Hermitian 协方差第一特征向量，取 ``Re(PC1)``。"""
+    cfg = cfg or PcaSvdConfig()
+    info: Dict[str, Any] = {
+        "explained_variance_ratio": [],
+        "pc1_variance_ratio": np.nan,
+        "warn": [],
+    }
+    if not _check_and_warn(np.abs(X_complex), cfg, seg_name):
+        return np.full(X_complex.shape[0], np.nan), info
+
+    m, n = X_complex.shape
+    z = X_complex.astype(complex) - np.mean(X_complex.astype(complex), axis=0, keepdims=True)
+    if channel_weights is not None and n > 0:
+        w = np.maximum(np.asarray(channel_weights, dtype=float), 0.0)
+        if w.shape[0] == n and np.sum(w) > cfg.eps:
+            w = w / np.sum(w) * n
+            z = z * np.sqrt(w)[np.newaxis, :]
+
+    c = (z.conj().T @ z) / max(m - 1, 1)
+    eigenvalues, eigenvectors = np.linalg.eigh(c)
+    eigenvalues = eigenvalues[::-1].real
+    eigenvectors = eigenvectors[:, ::-1]
+    total_var = float(np.sum(eigenvalues))
+    ratios = eigenvalues / total_var if total_var > cfg.eps else np.zeros_like(eigenvalues)
+    info["explained_variance_ratio"] = ratios.tolist()
+    info["pc1_variance_ratio"] = float(ratios[0]) if len(ratios) else np.nan
+
+    pc1 = z @ eigenvectors[:, 0]
+    return np.real(pc1), info
+
+
 # ---------------------------------------------------------------------------
 # 符号一致性
 # ---------------------------------------------------------------------------
@@ -412,17 +589,17 @@ def build_multivariable_data_matrix(
     channels: List[Any],
     st: int,
     end: int,
+    signal_key: SignalKey = "highpass_filtered",
 ) -> np.ndarray:
     """将多种变量的多信道数据构造成一个 M×N 矩阵。
 
-    每列是某个信道某个变量的 ``bandpass_filtered[st:end]`` 切片。
+    每列是某个信道某个变量的 ``signal_key[st:end]`` 切片。
     列顺序: var_1 的所有信道, var_2 的所有信道, ...。
 
     Parameters
     ----------
     ch_maps : dict
-        key=变量名, value = ``{ch: proc}``，其中 ``proc[varname]["bandpass_filtered"]``
-        是 np.ndarray。
+        key=变量名, value = ``{ch: proc}``，其中 ``proc[varname][signal_key]`` 是 np.ndarray。
     var_names : list[str]
         要包含的变量名列表。
     channels : list
@@ -444,12 +621,284 @@ def build_multivariable_data_matrix(
             proc = ch_map.get(ch)
             if proc is None:
                 continue
-            bp = proc[var].get("bandpass_filtered")
-            if bp is None or len(bp) < end:
+            sig = proc[var].get(signal_key)
+            if sig is None or len(sig) < end:
                 continue
-            col = bp[st:end].copy()
+            col = sig[st:end].copy()
             if len(col) == M:
                 cols.append(col)
     if not cols:
         return np.empty((M, 0))
     return np.column_stack(cols).astype(float)
+
+
+# ---------------------------------------------------------------------------
+# PCA 模态融合（Plan2 结构，提取步换为 PCA）
+# ---------------------------------------------------------------------------
+
+MODAL_PCA_VARIABLES: Tuple[str, ...] = (
+    "phases",
+    "remote_amplitudes",
+    "local_amplitudes",
+)
+
+
+def _next_pow2(n: int) -> int:
+    return 1 if n <= 1 else 1 << (int(n) - 1).bit_length()
+
+
+def run_pca_modal_fusion(
+    multichannel_by_var: Dict[str, Dict[str, Optional[dict]]],
+    *,
+    modal_variables: Sequence[str] = MODAL_PCA_VARIABLES,
+    channel_weight: ChannelWeightMode = "uniform",
+    modal_weight: ModalWeightMode = "equal",
+    metric_params: Optional[Any] = None,
+    pca_svd_config: Optional[PcaSvdConfig] = None,
+    verbose: bool = True,
+) -> Dict[str, Optional[dict]]:
+    """每变量滑窗 PCA 提取波形 → 归一化谱 → 模态加权融合 → BPM。
+
+    与 Plan2 modal 相同融合框架，但将「每变量最佳单信道谱」替换为
+    「该变量 72 道 PCA 主成分谱」。默认使用 ``highpass_filtered``。
+    """
+    from ble_analysis.segments import BreathMetricParams, _sliding_window_indices
+
+    mp = metric_params or BreathMetricParams()
+    cfg = pca_svd_config or PcaSvdConfig()
+    cfg.channel_weight = channel_weight
+    modal_vars = list(modal_variables)
+    results: Dict[str, Optional[dict]] = {}
+
+    ref_mc = multichannel_by_var.get(modal_vars[0], {})
+    for seg_name in sorted(ref_mc.keys()):
+        ref_seg = ref_mc.get(seg_name)
+        if ref_seg is None:
+            results[seg_name] = None
+            continue
+        metadata = ref_seg.get("metadata", {})
+        if metadata.get("segment_type") == "apnea":
+            results[seg_name] = None
+            continue
+
+        bpm_gt = metadata.get("bpm_gt")
+        fs = metadata["sampling_rate"]
+        seg_maps: Dict[str, Dict[Any, dict]] = {}
+        ref_len = 0
+        ok = True
+        for var in modal_vars:
+            seg = multichannel_by_var.get(var, {}).get(seg_name)
+            if seg is None or not seg.get("channels"):
+                ok = False
+                break
+            seg_maps[var] = seg["channels"]
+            ref_len = max(
+                ref_len,
+                max(
+                    len(c[var][cfg.signal_key])
+                    for c in seg["channels"].values()
+                    if c[var].get(cfg.signal_key) is not None
+                ),
+            )
+        if not ok or ref_len == 0:
+            results[seg_name] = None
+            continue
+
+        win_len = int(round(mp.window_length_sec * fs))
+        step_len = int(round(mp.step_length_sec * fs))
+        if ref_len < win_len:
+            results[seg_name] = None
+            continue
+
+        starts = _sliding_window_indices(ref_len, win_len, step_len)
+        nfft = _next_pow2(4 * win_len)
+        freqs = np.fft.rfftfreq(nfft, d=1.0 / fs)
+        band_mask = (freqs >= cfg.breath_freq_low) & (freqs <= cfg.breath_freq_high)
+        band_freqs = freqs[band_mask]
+        hann = np.hanning(win_len)
+
+        bpms: List[float] = []
+        prev_wf: Dict[str, Optional[np.ndarray]] = {v: None for v in modal_vars}
+
+        for st in starts:
+            end = st + win_len
+            spectra: List[np.ndarray] = []
+            mod_weights: List[float] = []
+
+            for var in modal_vars:
+                ch_map = seg_maps[var]
+                ch_list = sorted(ch_map.keys(), key=lambda c: (isinstance(c, str), str(c)))
+                x_mat, used_ch = build_channel_data_matrix(
+                    ch_map, var, ch_list, st, end, cfg.signal_key
+                )
+                if x_mat.shape[1] < cfg.min_channels:
+                    continue
+
+                ch_w = None
+                var_eta = 0.0
+                if channel_weight == "energy_ratio":
+                    ch_w = compute_channel_energy_weights(
+                        ch_map, var, used_ch, st, end, fs, cfg
+                    )
+                    finite = ch_w[np.isfinite(ch_w) & (ch_w > 0)]
+                    var_eta = float(np.mean(finite)) if finite.size else 0.0
+                else:
+                    eta_all = compute_channel_energy_weights(
+                        ch_map, var, used_ch, st, end, fs, cfg
+                    )
+                    finite = eta_all[np.isfinite(eta_all) & (eta_all > 0)]
+                    var_eta = float(np.mean(finite)) if finite.size else 0.0
+
+                wf, _info = extract_breath_waveform_pca(
+                    x_mat, cfg, seg_name, channel_weights=ch_w if channel_weight == "energy_ratio" else None
+                )
+                wf = align_waveform_sign(wf, prev_wf[var])
+                prev_wf[var] = wf.copy()
+
+                spec = waveform_normalized_spectrum(wf, fs, nfft, band_mask, hann, cfg.eps)
+                spectra.append(spec)
+                if modal_weight == "energy_ratio":
+                    mod_weights.append(max(var_eta, cfg.eps))
+                else:
+                    mod_weights.append(1.0)
+
+            if not spectra:
+                bpms.append(np.nan)
+                continue
+
+            w_arr = np.asarray(mod_weights, dtype=float)
+            if np.sum(w_arr) <= cfg.eps:
+                bpms.append(np.nan)
+                continue
+            w_arr = w_arr / np.sum(w_arr)
+            fused = np.sum(w_arr[:, None] * np.vstack(spectra), axis=0)
+            bpms.append(_bpm_from_spectrum(fused, band_freqs, cfg.eps))
+
+        method_key = f"pca_modal_{modal_weight}_ch_{channel_weight}"
+        from ble_analysis.chfusion import _seg_bpm_stats
+
+        results[seg_name] = {
+            "segment": seg_name,
+            "bpm_gt": bpm_gt,
+            "metadata": metadata,
+            method_key: _seg_bpm_stats(np.asarray(bpms, dtype=float), bpm_gt, len(starts)),
+        }
+
+    if verbose:
+        n_ok = sum(1 for v in results.values() if v is not None)
+        print(
+            f"✓ PCA modal fusion ({len(modal_vars)} vars, ch={channel_weight}, "
+            f"modal={modal_weight}) | {n_ok} segments"
+        )
+    return results
+
+
+def run_pca_complex_fusion(
+    multichannel_by_var: Dict[str, Dict[str, Optional[dict]]],
+    *,
+    amp_var: str = "amplitudes",
+    channel_weight: ChannelWeightMode = "uniform",
+    metric_params: Optional[Any] = None,
+    pca_svd_config: Optional[PcaSvdConfig] = None,
+    verbose: bool = True,
+) -> Dict[str, Optional[dict]]:
+    """每窗构造 ``amp·e^(j·phase)`` 复矩阵 → 复 PCA → BPM（高通输入）。"""
+    from ble_analysis.segments import BreathMetricParams, _sliding_window_indices
+    from ble_analysis.chfusion import _seg_bpm_stats
+
+    mp = metric_params or BreathMetricParams()
+    cfg = pca_svd_config or PcaSvdConfig()
+    results: Dict[str, Optional[dict]] = {}
+
+    mc_amp = multichannel_by_var.get(amp_var, {})
+    mc_pha = multichannel_by_var.get("phases", {})
+
+    for seg_name in sorted(mc_pha.keys()):
+        seg_amp = mc_amp.get(seg_name)
+        seg_pha = mc_pha.get(seg_name)
+        if seg_amp is None or seg_pha is None:
+            results[seg_name] = None
+            continue
+        metadata = seg_pha.get("metadata", {})
+        if metadata.get("segment_type") == "apnea":
+            results[seg_name] = None
+            continue
+
+        bpm_gt = metadata.get("bpm_gt")
+        fs = metadata["sampling_rate"]
+        ch_map_a = seg_amp["channels"]
+        ch_map_p = seg_pha["channels"]
+        ch_list = sorted(
+            set(ch_map_a.keys()) & set(ch_map_p.keys()),
+            key=lambda c: (isinstance(c, str), str(c)),
+        )
+        ref_len = 0
+        for ch in ch_list:
+            a = ch_map_a[ch][amp_var].get(cfg.signal_key)
+            p = ch_map_p[ch]["phases"].get(cfg.signal_key)
+            if a is not None and p is not None:
+                ref_len = max(ref_len, min(len(a), len(p)))
+        if ref_len == 0:
+            results[seg_name] = None
+            continue
+
+        win_len = int(round(mp.window_length_sec * fs))
+        step_len = int(round(mp.step_length_sec * fs))
+        if ref_len < win_len:
+            results[seg_name] = None
+            continue
+
+        starts = _sliding_window_indices(ref_len, win_len, step_len)
+        nfft = _next_pow2(4 * win_len)
+        freqs = np.fft.rfftfreq(nfft, d=1.0 / fs)
+        band_mask = (freqs >= cfg.breath_freq_low) & (freqs <= cfg.breath_freq_high)
+        band_freqs = freqs[band_mask]
+        hann = np.hanning(win_len)
+        bpms: List[float] = []
+        prev_wf = None
+
+        for st in starts:
+            end = st + win_len
+            cols_c = []
+            used = []
+            for ch in ch_list:
+                pa = ch_map_a.get(ch)
+                pp = ch_map_p.get(ch)
+                if pa is None or pp is None:
+                    continue
+                ba = pa[amp_var].get(cfg.signal_key)
+                bp = pp["phases"].get(cfg.signal_key)
+                if ba is None or bp is None or len(ba) < end or len(bp) < end:
+                    continue
+                cols_c.append(ba[st:end] * np.exp(1j * bp[st:end]))
+                used.append(ch)
+
+            if len(cols_c) < cfg.min_channels:
+                bpms.append(np.nan)
+                continue
+
+            x_c = np.column_stack(cols_c)
+            ch_w = None
+            if channel_weight == "energy_ratio":
+                ch_w = compute_channel_energy_weights(
+                    ch_map_a, amp_var, used, st, end, fs, cfg
+                )
+            wf, _info = extract_breath_waveform_complex_pca(
+                x_c, cfg, seg_name, channel_weights=ch_w
+            )
+            wf = align_waveform_sign(wf, prev_wf)
+            prev_wf = wf.copy()
+            spec = waveform_normalized_spectrum(wf, fs, nfft, band_mask, hann, cfg.eps)
+            bpms.append(_bpm_from_spectrum(spec, band_freqs, cfg.eps))
+
+        key = f"pca_complex_{amp_var}_ch_{channel_weight}"
+        results[seg_name] = {
+            "segment": seg_name,
+            "bpm_gt": bpm_gt,
+            "metadata": metadata,
+            key: _seg_bpm_stats(np.asarray(bpms, dtype=float), bpm_gt, len(starts)),
+        }
+
+    if verbose:
+        print(f"✓ PCA complex ({amp_var}, ch={channel_weight})")
+    return results

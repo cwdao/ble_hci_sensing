@@ -13,7 +13,7 @@ Methods
 - **SVD Remote/Local/Total Amp** : 远程/本地/总幅值 72 道实 SVD
 - **PCA Phase**              : 总相位 72 道实 PCA
 - **SVD Phase**              : 总相位 72 道实 SVD
-- **SVD Complex**            : 总幅值+j总相位 72 道复 SVD
+- **SVD Complex Total/Remote/Local** : 总/远程/本地幅值 + j·总相位 72 道复 SVD
 - **PCA Stacked**            : 三种幅值堆叠 216 道实 PCA
 
 Run: ``python notebooks/scripts/chFusion_pca_svd.py``
@@ -32,12 +32,14 @@ Run: ``python notebooks/scripts/chFusion_pca_svd.py``
 # | 5 | Segment x method heatmap |
 # | 6 | PC1 variance ratio analysis |
 # | 7 | Save results |
+# | 8 | Cross-scenario aggregate leaderboard |
 
 # %% [markdown]
 # ## 0. Environment bootstrap
 
 # %%
 import sys
+from dataclasses import replace
 from pathlib import Path
 
 import matplotlib.pyplot as plt
@@ -80,17 +82,118 @@ from ble_analysis.chfusion import (
 from ble_analysis.segments import _estimate_breathing_freq_hz, _sliding_window_indices
 from ble_analysis.data import load_ble_frames
 from ble_analysis.pca_svd import (
+    MODAL_PCA_VARIABLES,
     PcaSvdConfig,
     align_waveform_sign,
+    build_channel_data_matrix,
     build_multivariable_data_matrix,
+    compute_channel_energy_weights,
+    extract_breath_waveform_complex_pca,
     extract_breath_waveform_complex_svd,
     extract_breath_waveform_pca,
     extract_breath_waveform_svd,
+    run_pca_complex_fusion,
+    run_pca_modal_fusion,
 )
 from ble_analysis.scenarios import load_scenario, print_scenario_summary
 from ble_analysis.segments import BreathMetricParams, FilterParams
 
 SCENARIO_ID = "cs_102621"
+COMPARE_SCENARIO_IDS = ("cs_091339", "cs_095806", "cs_102621")
+
+PCA_SVD_EXPERIMENTS = {
+    "PCA Remote Amp": {"method": "pca", "variable": "remote_amplitudes"},
+    "PCA Local Amp": {"method": "pca", "variable": "local_amplitudes"},
+    "PCA Total Amp": {"method": "pca", "variable": "amplitudes"},
+    "SVD Remote Amp": {"method": "svd_real", "variable": "remote_amplitudes"},
+    "SVD Local Amp": {"method": "svd_real", "variable": "local_amplitudes"},
+    "SVD Total Amp": {"method": "svd_real", "variable": "amplitudes"},
+    "PCA Phase": {"method": "pca", "variable": "phases"},
+    "SVD Phase": {"method": "svd_real", "variable": "phases"},
+    "SVD Complex Total": {
+        "method": "svd_complex",
+        "variable": "phases",
+        "complex_amp_var": "amplitudes",
+    },
+    "SVD Complex Remote": {
+        "method": "svd_complex",
+        "variable": "phases",
+        "complex_amp_var": "remote_amplitudes",
+    },
+    "SVD Complex Local": {
+        "method": "svd_complex",
+        "variable": "phases",
+        "complex_amp_var": "local_amplitudes",
+    },
+    "PCA Stacked": {
+        "method": "pca",
+        "variable": ["remote_amplitudes", "local_amplitudes", "amplitudes"],
+    },
+}
+
+PCA_V2_EXPERIMENTS = {
+    "PCA-HP Remote ch-uniform": {
+        "method": "pca", "variable": "remote_amplitudes",
+        "channel_weight": "uniform", "signal_key": "highpass_filtered",
+    },
+    "PCA-HP Remote ch-η": {
+        "method": "pca", "variable": "remote_amplitudes",
+        "channel_weight": "energy_ratio", "signal_key": "highpass_filtered",
+    },
+    "PCA-HP Phase ch-uniform": {
+        "method": "pca", "variable": "phases",
+        "channel_weight": "uniform", "signal_key": "highpass_filtered",
+    },
+    "PCA-HP Phase ch-η": {
+        "method": "pca", "variable": "phases",
+        "channel_weight": "energy_ratio", "signal_key": "highpass_filtered",
+    },
+    "PCA-HP Total ch-uniform": {
+        "method": "pca", "variable": "amplitudes",
+        "channel_weight": "uniform", "signal_key": "highpass_filtered",
+    },
+    "PCA-HP Total ch-η": {
+        "method": "pca", "variable": "amplitudes",
+        "channel_weight": "energy_ratio", "signal_key": "highpass_filtered",
+    },
+}
+
+PCA_MODAL_EXPERIMENTS = {
+    "PCA-Modal3 eq/ch-uni": {
+        "modal_variables": MODAL_PCA_VARIABLES,
+        "channel_weight": "uniform", "modal_weight": "equal",
+    },
+    "PCA-Modal3 η/ch-η": {
+        "modal_variables": MODAL_PCA_VARIABLES,
+        "channel_weight": "energy_ratio", "modal_weight": "energy_ratio",
+    },
+    "PCA-Modal amp+pha eq": {
+        "modal_variables": ("remote_amplitudes", "phases"),
+        "channel_weight": "uniform", "modal_weight": "equal",
+    },
+    "PCA-Modal amp+pha η": {
+        "modal_variables": ("remote_amplitudes", "phases"),
+        "channel_weight": "energy_ratio", "modal_weight": "energy_ratio",
+    },
+}
+
+PCA_COMPLEX_EXPERIMENTS = {
+    "PCA-Cmplx Total ch-uni": {"amp_var": "amplitudes", "channel_weight": "uniform"},
+    "PCA-Cmplx Total ch-η": {"amp_var": "amplitudes", "channel_weight": "energy_ratio"},
+    "PCA-Cmplx Remote ch-uni": {"amp_var": "remote_amplitudes", "channel_weight": "uniform"},
+}
+
+CROSS_DOMAIN_COMPARE_LABELS = (
+    "Modal η-weight",
+    "PCA-Cmplx Total ch-η",
+    "PCA-Modal3 η/ch-η",
+    "PCA-Modal amp+pha η",
+    "PCA-HP Remote ch-η",
+    "Modal top2 equal",
+    "PCA Total Amp",
+    "Uniform Remote amplitude",
+    "Single Remote amplitude",
+)
 scenario = load_scenario(SCENARIO_ID, project_root=project_root)
 filepath = scenario.resolve_data_path(project_root)
 segment_config = scenario.segment_config
@@ -113,6 +216,19 @@ pca_svd_config = PcaSvdConfig(
     normalize="zscore",
     min_channels=4,
     min_variance_ratio=0.10,
+    signal_key="bandpass_filtered",
+    breath_freq_low=metric_params.breath_freq_low,
+    breath_freq_high=metric_params.breath_freq_high,
+)
+
+pca_hp_config = PcaSvdConfig(
+    method="pca",
+    normalize="zscore",
+    min_channels=4,
+    min_variance_ratio=0.10,
+    signal_key="highpass_filtered",
+    breath_freq_low=metric_params.breath_freq_low,
+    breath_freq_high=metric_params.breath_freq_high,
 )
 
 variables = [v[0] for v in CS_SIGNAL_VARIABLES]
@@ -191,6 +307,7 @@ def run_pca_svd_bpm(
     fs,
     metric_params,
     pca_svd_config=None,
+    complex_amp_var=None,
     verbose=True,
 ):
     """对每个呼吸段做滑窗 PCA/SVD -> BPM 估计。"""
@@ -232,9 +349,9 @@ def run_pca_svd_bpm(
                 if seg is None or seg.get("channels") is None:
                     continue
                 for ch, proc in seg["channels"].items():
-                    bp = proc[var].get("bandpass_filtered")
-                    if bp is not None:
-                        ch_lengths[ch] = min(ch_lengths.get(ch, len(bp)), len(bp))
+                    sig = proc[var].get(pca_cfg.signal_key)
+                    if sig is not None:
+                        ch_lengths[ch] = min(ch_lengths.get(ch, len(sig)), len(sig))
             ch_list = sorted(k for k in ch_lengths if ch_lengths[k] >= win_len)
             ref_len = max(ch_lengths[c] for c in ch_list) if ch_list else 0
         else:
@@ -246,7 +363,7 @@ def run_pca_svd_bpm(
                 continue
             ch_map = seg["channels"]
             ch_list = sorted(ch_map.keys(), key=lambda c: (isinstance(c, str), str(c)))
-            ref_len = max(len(ch_map[c][var].get("bandpass_filtered", [])) for c in ch_list)
+            ref_len = max(len(ch_map[c][var].get(pca_cfg.signal_key, [])) for c in ch_list)
 
         if ref_len < win_len:
             if verbose:
@@ -262,8 +379,10 @@ def run_pca_svd_bpm(
         for st in starts:
             end_val = st + win_len
 
-            if method == "svd_complex" and not is_stack:
-                mc_amp = multichannel_by_var.get("amplitudes", {})
+            sk = pca_cfg.signal_key
+            if method in ("svd_complex", "pca_complex") and not is_stack:
+                amp_var = complex_amp_var or "amplitudes"
+                mc_amp = multichannel_by_var.get(amp_var, {})
                 mc_pha = multichannel_by_var.get("phases", {})
                 seg_amp = mc_amp.get(seg_name)
                 seg_pha = mc_pha.get(seg_name)
@@ -272,41 +391,49 @@ def run_pca_svd_bpm(
                     continue
                 ch_map_amp = seg_amp["channels"]
                 ch_map_pha = seg_pha["channels"]
-                cols_a, cols_p = [], []
+                cols_c, used = [], []
                 for ch in ch_list:
                     pa = ch_map_amp.get(ch)
                     pp = ch_map_pha.get(ch)
                     if pa is None or pp is None:
                         continue
-                    bp_a = pa["amplitudes"].get("bandpass_filtered")
-                    bp_p = pp["phases"].get("bandpass_filtered")
-                    if bp_a is None or bp_p is None or len(bp_a) < end_val or len(bp_p) < end_val:
+                    ba = pa[amp_var].get(sk)
+                    bp = pp["phases"].get(sk)
+                    if ba is None or bp is None or len(ba) < end_val or len(bp) < end_val:
                         continue
-                    cols_a.append(bp_a[st:end_val])
-                    cols_p.append(bp_p[st:end_val])
-                if len(cols_a) < pca_cfg.min_channels:
+                    cols_c.append(ba[st:end_val] * np.exp(1j * bp[st:end_val]))
+                    used.append(ch)
+                if len(cols_c) < pca_cfg.min_channels:
                     bpms.append(np.nan)
                     continue
-                X_r = np.column_stack(cols_a).astype(float)
-                X_p = np.column_stack(cols_p).astype(float)
-                X_c = X_r * np.exp(1j * X_p)
-                waveform, info = extract_breath_waveform_complex_svd(X_c, pca_cfg, seg_name)
+                X_c = np.column_stack(cols_c)
+                ch_w = None
+                if pca_cfg.channel_weight == "energy_ratio":
+                    ch_w = compute_channel_energy_weights(
+                        ch_map_amp, amp_var, used, st, end_val, fs, pca_cfg
+                    )
+                if method == "pca_complex":
+                    waveform, info = extract_breath_waveform_complex_pca(
+                        X_c, pca_cfg, seg_name, channel_weights=ch_w
+                    )
+                else:
+                    waveform, info = extract_breath_waveform_complex_svd(X_c, pca_cfg, seg_name)
             elif not is_stack:
-                cols = []
-                for ch in ch_list:
-                    proc = ch_map.get(ch)
-                    if proc is None:
-                        continue
-                    bp = proc[var].get("bandpass_filtered")
-                    if bp is None or len(bp) < end_val:
-                        continue
-                    cols.append(bp[st:end_val])
-                if len(cols) < pca_cfg.min_channels:
+                X, used_ch = build_channel_data_matrix(
+                    ch_map, var, ch_list, st, end_val, sk
+                )
+                if X.shape[1] < pca_cfg.min_channels:
                     bpms.append(np.nan)
                     continue
-                X = np.column_stack(cols).astype(float)
+                ch_w = None
+                if pca_cfg.channel_weight == "energy_ratio":
+                    ch_w = compute_channel_energy_weights(
+                        ch_map, var, used_ch, st, end_val, fs, pca_cfg
+                    )
                 if method == "pca":
-                    waveform, info = extract_breath_waveform_pca(X, pca_cfg, seg_name)
+                    waveform, info = extract_breath_waveform_pca(
+                        X, pca_cfg, seg_name, channel_weights=ch_w
+                    )
                 else:
                     waveform, info = extract_breath_waveform_svd(X, pca_cfg, seg_name)
             else:
@@ -314,7 +441,9 @@ def run_pca_svd_bpm(
                     v: multichannel_by_var.get(v, {}).get(seg_name, {}).get("channels", {})
                     for v in var_list
                 }
-                X = build_multivariable_data_matrix(ch_maps, var_list, ch_list, st, end_val)
+                X = build_multivariable_data_matrix(
+                    ch_maps, var_list, ch_list, st, end_val, sk
+                )
                 if X.shape[1] < pca_cfg.min_channels:
                     bpms.append(np.nan)
                     continue
@@ -346,25 +475,9 @@ def run_pca_svd_bpm(
 
 
 # %% [markdown]
-# ## 3b. Run PCA/SVD BPM estimation (10 methods)
+# ## 3b. Run PCA/SVD BPM estimation (12 methods)
 
 # %%
-
-PCA_SVD_EXPERIMENTS = {
-    "PCA Remote Amp": {"method": "pca", "variable": "remote_amplitudes"},
-    "PCA Local Amp": {"method": "pca", "variable": "local_amplitudes"},
-    "PCA Total Amp": {"method": "pca", "variable": "amplitudes"},
-    "SVD Remote Amp": {"method": "svd_real", "variable": "remote_amplitudes"},
-    "SVD Local Amp": {"method": "svd_real", "variable": "local_amplitudes"},
-    "SVD Total Amp": {"method": "svd_real", "variable": "amplitudes"},
-    "PCA Phase": {"method": "pca", "variable": "phases"},
-    "SVD Phase": {"method": "svd_real", "variable": "phases"},
-    "SVD Complex": {"method": "svd_complex", "variable": "amplitudes"},
-    "PCA Stacked": {
-        "method": "pca",
-        "variable": ["remote_amplitudes", "local_amplitudes", "amplitudes"],
-    },
-}
 
 pca_svd_results = {}
 for exp_name, exp_cfg in PCA_SVD_EXPERIMENTS.items():
@@ -376,6 +489,7 @@ for exp_name, exp_cfg in PCA_SVD_EXPERIMENTS.items():
         segment_config,
         method=exp_cfg["method"],
         variable_or_vars=exp_cfg["variable"],
+        complex_amp_var=exp_cfg.get("complex_amp_var"),
         fs=fs,
         metric_params=metric_params,
         pca_svd_config=pca_svd_config,
@@ -386,7 +500,89 @@ for exp_name, exp_cfg in PCA_SVD_EXPERIMENTS.items():
 print(f"\nOK {len(pca_svd_results)} PCA/SVD methods completed")
 
 # %% [markdown]
-# ## 3c. Plan 2 validation (same scenario, same metrics)
+# ## 3c. PCA v2 — highpass + channel η-weight + PCA modal / complex PCA
+#
+# 默认用 ``highpass_filtered``；PCA 作多信道提取，再按 Plan2 框架做模态谱融合。
+
+# %%
+
+
+def _modal_to_per_seg(modal_raw, method_key):
+    """将 ``run_pca_modal_fusion`` 输出转为与其它实验一致的 per-seg dict。"""
+    out = {}
+    for seg_name, row in modal_raw.items():
+        if row is None:
+            out[seg_name] = None
+            continue
+        block = row.get(method_key)
+        if block is None:
+            out[seg_name] = None
+            continue
+        out[seg_name] = {**block, "bpm_gt": row.get("bpm_gt")}
+    return out
+
+
+def run_pca_v2_suite(
+    multichannel_by_var,
+    segment_config,
+    fs,
+    metric_params,
+    pca_hp_cfg,
+    *,
+    verbose=True,
+):
+    """高通 PCA 单变量 + PCA 模态融合 + 复 PCA。"""
+    pca_v2 = {}
+    for exp_name, exp_cfg in PCA_V2_EXPERIMENTS.items():
+        cfg = replace(pca_hp_cfg, channel_weight=exp_cfg["channel_weight"])
+        if verbose:
+            print(f"\n--- PCA v2: {exp_name} ---")
+        pca_v2[exp_name] = run_pca_svd_bpm(
+            multichannel_by_var,
+            segment_config,
+            method=exp_cfg["method"],
+            variable_or_vars=exp_cfg["variable"],
+            fs=fs,
+            metric_params=metric_params,
+            pca_svd_config=cfg,
+            verbose=verbose,
+        )
+    for exp_name, exp_cfg in PCA_MODAL_EXPERIMENTS.items():
+        cfg = replace(pca_hp_cfg, channel_weight=exp_cfg["channel_weight"])
+        raw = run_pca_modal_fusion(
+            multichannel_by_var,
+            modal_variables=exp_cfg["modal_variables"],
+            channel_weight=exp_cfg["channel_weight"],
+            modal_weight=exp_cfg["modal_weight"],
+            metric_params=metric_params,
+            pca_svd_config=cfg,
+            verbose=verbose,
+        )
+        mkey = f"pca_modal_{exp_cfg['modal_weight']}_ch_{exp_cfg['channel_weight']}"
+        pca_v2[exp_name] = _modal_to_per_seg(raw, mkey)
+    for exp_name, exp_cfg in PCA_COMPLEX_EXPERIMENTS.items():
+        cfg = replace(pca_hp_cfg, channel_weight=exp_cfg["channel_weight"])
+        raw = run_pca_complex_fusion(
+            multichannel_by_var,
+            amp_var=exp_cfg["amp_var"],
+            channel_weight=exp_cfg["channel_weight"],
+            metric_params=metric_params,
+            pca_svd_config=cfg,
+            verbose=verbose,
+        )
+        ckey = f"pca_complex_{exp_cfg['amp_var']}_ch_{exp_cfg['channel_weight']}"
+        pca_v2[exp_name] = _modal_to_per_seg(raw, ckey)
+    return pca_v2
+
+
+pca_v2_results = run_pca_v2_suite(
+    multichannel_by_var, segment_config, fs, metric_params, pca_hp_config, verbose=True
+)
+pca_svd_results.update(pca_v2_results)
+print(f"\nOK PCA v2: {len(pca_v2_results)} additional methods")
+
+# %% [markdown]
+# ## 3d. Plan 2 validation (same scenario, same metrics)
 
 # %%
 
@@ -413,6 +609,8 @@ print(f"Plan 2 methods: {len(plan2_leaderboard)} entries")
 
 METHOD_CATEGORY_COLORS = {
     "PCA": "#5A9BD5",
+    "PCA HP": "#4A8BC2",
+    "PCA Modal": "#9B7FBF",
     "SVD": "#70AD47",
     "SVD Complex": "#BF8FBF",
     "Stacked": "#EDB144",
@@ -425,8 +623,111 @@ METHOD_CATEGORY_COLORS = {
 
 
 def _category_color(label: str, category=None) -> str:
-    cat = category or label.split()[0]
-    return METHOD_CATEGORY_COLORS.get(cat, "#CCCCCC")
+    if category:
+        return METHOD_CATEGORY_COLORS.get(category, "#CCCCCC")
+    if label.startswith("SVD Complex"):
+        return METHOD_CATEGORY_COLORS["SVD Complex"]
+    return METHOD_CATEGORY_COLORS.get(label.split()[0], "#CCCCCC")
+
+
+def _pca_svd_category(exp_name: str) -> str:
+    if exp_name.startswith("SVD Complex"):
+        return "SVD Complex"
+    if exp_name.startswith("PCA-Modal") or exp_name.startswith("PCA-Cmplx"):
+        return "PCA Modal"
+    if exp_name.startswith("PCA-HP"):
+        return "PCA HP"
+    return exp_name.split()[0]
+
+
+def run_scenario_pipeline(
+    scenario_id: str,
+    *,
+    project_root,
+    filter_params,
+    metric_params,
+    chfusion_config,
+    plan2_config,
+    pca_svd_config,
+    pca_hp_cfg=None,
+    verbose: bool = True,
+) -> dict:
+    """单场景完整流程：滤波 → PCA/SVD → Plan2 → 排行榜。"""
+    sc = load_scenario(scenario_id, project_root=project_root)
+    _data, run_frames = load_ble_frames(sc.resolve_data_path(project_root), verbose=False)
+    seg_cfg = sc.segment_config
+    vars_list = [v[0] for v in CS_SIGNAL_VARIABLES]
+
+    mc_by_var = {}
+    run_fs = None
+    for variable in vars_list:
+        mc, run_fs = run_multichannel_segment_filtering(
+            run_frames,
+            seg_cfg,
+            variable=variable,
+            filter_params=filter_params,
+            verbose=verbose,
+        )
+        mc_by_var[variable] = mc
+
+    baseline = estimate_segment_bpm_methods(
+        mc_by_var["remote_amplitudes"],
+        variable="remote_amplitudes",
+        config=chfusion_config,
+        metric_params=metric_params,
+        methods=("single", "uniform", "q_energy_peak"),
+        single_channel_metric="energy_ratio",
+        verbose=verbose,
+    )
+
+    pca_results = {}
+    for exp_name, exp_cfg in PCA_SVD_EXPERIMENTS.items():
+        if verbose:
+            print(f"\n--- [{sc.tag}] {exp_name} ---")
+        pca_results[exp_name] = run_pca_svd_bpm(
+            mc_by_var,
+            seg_cfg,
+            method=exp_cfg["method"],
+            variable_or_vars=exp_cfg["variable"],
+            complex_amp_var=exp_cfg.get("complex_amp_var"),
+            fs=run_fs,
+            metric_params=metric_params,
+            pca_svd_config=pca_svd_config,
+            verbose=verbose,
+        )
+
+    hp_cfg = pca_hp_cfg or pca_hp_config
+    pca_results.update(
+        run_pca_v2_suite(
+            mc_by_var, seg_cfg, run_fs, metric_params, hp_cfg, verbose=verbose
+        )
+    )
+
+    plan2_out = run_plan2_validation(
+        run_frames,
+        seg_cfg,
+        filter_params=filter_params,
+        metric_params=metric_params,
+        config=chfusion_config,
+        plan2_config=plan2_config,
+        reference_variable="phases",
+        verbose=verbose,
+    )
+    p2_lb = build_plan2_leaderboard_rows(plan2_out)
+    lb = build_leaderboard(pca_results, baseline, p2_lb)
+
+    return {
+        "scenario_id": scenario_id,
+        "scenario_tag": sc.tag,
+        "segment_config": seg_cfg,
+        "fs": run_fs,
+        "multichannel_by_var": mc_by_var,
+        "baseline_results": baseline,
+        "pca_svd_results": pca_results,
+        "plan2_results": plan2_out,
+        "plan2_leaderboard": p2_lb,
+        "leaderboard": lb,
+    }
 
 
 def build_leaderboard(pca_svd_results, baseline_results, plan2_rows=None):
@@ -462,7 +763,7 @@ def build_leaderboard(pca_svd_results, baseline_results, plan2_rows=None):
         mean_err, std_err, n_valid = _segment_rel_err_pct(errs)
         if not np.isfinite(mean_err):
             continue
-        cat = exp_name.split()[0]
+        cat = _pca_svd_category(exp_name)
         rows.append({
             "label": exp_name,
             "mean_rel_err_pct": mean_err,
@@ -694,7 +995,9 @@ pc1_colors = {
 fig, ax = plt.subplots(figsize=(10, max(5.5, 0.36 * len(pc1_records) + 1.5)))
 labels_pc1 = [r["label"] for r in pc1_records]
 means_pc1 = np.asarray([r["mean"] for r in pc1_records], dtype=float)
-colors_pc1 = [pc1_colors.get(r["label"].split()[0], "#CCCCCC") for r in pc1_records]
+colors_pc1 = [
+    pc1_colors.get(_pca_svd_category(r["label"]), "#CCCCCC") for r in pc1_records
+]
 y_pc1 = np.arange(len(pc1_records))
 
 ax.barh(y_pc1, means_pc1, color=colors_pc1, edgecolor="black",
@@ -750,3 +1053,125 @@ print(f"  最优: {best['label']}  ({best['mean_rel_err_pct']:.2f}%)")
 print(f"  图表: {bar_path.name}, {heatmap_path.name}, {pc1_path.name}")
 print(f"  报告: {report_path.name}")
 print(f"{'=' * 60}")
+
+# %% [markdown]
+# ## 8. Cross-scenario aggregate (cs_091339 / cs_095806 / cs_102621)
+#
+# 对三场景各方法 mean err% 取跨域均值；误差线为跨场景标准差。
+
+# %%
+
+
+def _leaderboard_lookup(leaderboard_rows: list) -> dict:
+    return {r["label"]: r for r in leaderboard_rows}
+
+
+def ensure_scenario_report(scenario_id: str, *, verbose: bool = False) -> dict:
+    """加载缓存报告，缺失则运行完整 pipeline。"""
+    sc = load_scenario(scenario_id, project_root=project_root)
+    path = REPORTS_DIR / f"chfusion_pca_svd_{sc.tag}.npy"
+    if scenario_id == SCENARIO_ID:
+        return output
+    if path.is_file():
+        cached = np.load(path, allow_pickle=True).item()
+        if "PCA-Modal3 η/ch-η" in cached.get("pca_svd_results", {}):
+            print(f"Loaded cached report: {path.name}")
+            return cached
+        print(f"Stale cache (missing PCA v2): {path.name}")
+    print(f"Running PCA/SVD pipeline for {scenario_id} …")
+    result = run_scenario_pipeline(
+        scenario_id,
+        project_root=project_root,
+        filter_params=filter_params,
+        metric_params=metric_params,
+        chfusion_config=chfusion_config,
+        plan2_config=plan2_config,
+        pca_svd_config=pca_svd_config,
+        pca_hp_cfg=pca_hp_config,
+        verbose=verbose,
+    )
+    np.save(path, result, allow_pickle=True)
+    print(f"Saved: {path.name}")
+    return result
+
+
+results_by_tag: dict[str, dict] = {}
+for sid in COMPARE_SCENARIO_IDS:
+    sc = load_scenario(sid, project_root=project_root)
+    if sid == SCENARIO_ID:
+        results_by_tag[sc.tag] = output
+    else:
+        results_by_tag[sc.tag] = ensure_scenario_report(sid, verbose=False)
+
+compare_tags = [load_scenario(sid, project_root=project_root).tag for sid in COMPARE_SCENARIO_IDS]
+
+print(f"\n{'=' * 72}")
+print("  Cross-scenario leaderboard (mean err% per domain)")
+print(f"  Scenarios: {' / '.join(compare_tags)}")
+print("=" * 72)
+col_w = 10
+header = f"{'方法':<32}" + "".join(f"{t:>{col_w}}" for t in compare_tags) + f"{'mean':>8}{'±std':>8}"
+print(header)
+print("-" * (32 + col_w * len(compare_tags) + 16))
+
+cross_rows = []
+for lbl in CROSS_DOMAIN_COMPARE_LABELS:
+    domain_errs = []
+    for tag in compare_tags:
+        row = _leaderboard_lookup(results_by_tag[tag]["leaderboard"]).get(lbl)
+        val = row["mean_rel_err_pct"] if row else np.nan
+        domain_errs.append(float(val) if np.isfinite(val) else np.nan)
+    finite = [e for e in domain_errs if np.isfinite(e)]
+    if not finite:
+        continue
+    mean_across = float(np.mean(finite))
+    std_across = float(np.std(finite, ddof=1)) if len(finite) > 1 else 0.0
+    cross_rows.append({
+        "label": lbl,
+        "domain_errs": domain_errs,
+        "mean_across_domains": mean_across,
+        "std_across_domains": std_across,
+    })
+    line = f"{lbl:<32}"
+    for e in domain_errs:
+        line += f"{e:>{col_w}.2f}" if np.isfinite(e) else f"{'—':>{col_w}}"
+    line += f"{mean_across:>{col_w}.2f}{std_across:>8.2f}"
+    print(line)
+
+cross_rows.sort(key=lambda r: r["mean_across_domains"])
+print(f"\n  ★ 跨场景综合最优: {cross_rows[0]['label']}  →  {cross_rows[0]['mean_across_domains']:.2f}% "
+      f"± {cross_rows[0]['std_across_domains']:.2f}%")
+
+# 跨场景柱状图
+fig, ax = plt.subplots(figsize=(10, max(5.0, 0.38 * len(cross_rows) + 1.5)))
+labels_cd = [r["label"] for r in cross_rows]
+means_cd = np.asarray([r["mean_across_domains"] for r in cross_rows], dtype=float)
+stds_cd = np.asarray([r["std_across_domains"] for r in cross_rows], dtype=float)
+y_cd = np.arange(len(cross_rows))
+ax.barh(y_cd, means_cd, xerr=stds_cd, color="#7B9FD4", edgecolor="black",
+        alpha=0.85, height=0.72, capsize=3)
+ax.set_yticks(y_cd)
+ax.set_yticklabels(labels_cd, fontsize=9)
+ax.invert_yaxis()
+ax.set_xlabel("Mean relative BPM error (%) across scenarios")
+ax.set_title("PCA/SVD + Plan2 — cross-domain aggregate (lower = better)")
+ax.grid(True, axis="x", alpha=0.25)
+for i, (m, s) in enumerate(zip(means_cd, stds_cd)):
+    ax.text(m + s + 0.3, i, f"{m:.1f}±{s:.1f}%", va="center", fontsize=8)
+plt.tight_layout()
+cross_path = FIGURES_DIR / "pca_svd_cross_domain_aggregate_bars.pdf"
+fig.savefig(cross_path, dpi=150, bbox_inches="tight")
+print(f"\n  Fig 4: Cross-domain aggregate  ->  {cross_path.name}")
+plt.show()
+
+np.save(
+    REPORTS_DIR / "chfusion_pca_svd_cross_domain.npy",
+    {
+        "scenario_ids": COMPARE_SCENARIO_IDS,
+        "scenario_tags": compare_tags,
+        "compare_labels": CROSS_DOMAIN_COMPARE_LABELS,
+        "cross_rows": cross_rows,
+        "results_by_tag": {k: v["leaderboard"] for k, v in results_by_tag.items()},
+    },
+    allow_pickle=True,
+)
