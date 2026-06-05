@@ -255,3 +255,66 @@ Python ≥ 3.9 的 `numpy.linalg.svd` 已原生支持复数矩阵，无需手动
 | 复 SVD 实现复杂度 | ✅ 清晰 | numpy.svd 原生支持复数 |
 | 标准化策略影响结果 | ⚠️ 需实验 | 三种策略均实现，实验后选择最优 |
 | 与现有 pipeline 的集成 | ✅ 清晰 | 复用 `run_multichannel_segment_filtering` 的输出 |
+| 排行榜单位错误（未 ×100） | ✅ 已修复 | 与 `_overall_rel_error` 对齐，热力图同步 ×100 |
+
+## 8. 验证结果（cs_102621，2026-06）
+
+### 8.1 评估口径
+
+与 Plan 2 完全一致：
+
+1. 四变量 × 72 信道带通滤波（phase 先 unwrap）
+2. 20 s 窗 / 1 s 步滑窗
+3. 每窗估计 BPM，段内相对误差 `|est−GT|/GT` 取均值
+4. 对 breath 段再取平均，**单位为 %**（`bpm_rel_err` 存比例，展示时 ×100）
+
+脚本：`notebooks/scripts/chFusion_pca_svd.py`  
+输出：`outputs/figures/pca_svd_102621_*.pdf`，`outputs/reports/chfusion_pca_svd_102621.npy`
+
+### 8.2 单场景排行榜（7 个 breath 段）
+
+| 排名 | 方法 | mean err% | 类别 |
+|------|------|-----------|------|
+| 1 | Modal η-weight | **4.60** | Plan2 模态 |
+| 2 | Modal equal | 4.64 | Plan2 模态 |
+| 3 | Modal top2 equal | 4.69 | Plan2 模态 |
+| 6 | Uniform Total amplitude | 5.91 | Plan2 基线 |
+| 8 | q_energy_peak (remote) | 6.61 | chFusion 基线 |
+| 9 | **PCA Total Amp** | **6.62** | PCA/SVD |
+| 10 | SVD Total Amp | 6.62 | PCA/SVD |
+| 11 | PCA Stacked | 6.75 | PCA/SVD |
+| 17 | PCA Remote Amp | 7.17 | PCA/SVD |
+| 26 | SVD Complex (总幅值+总相位) | 52.30 | PCA/SVD |
+
+**要点：**
+
+- 修复单位 bug 前，上述误差会显示为真实值的 **1/100**（例如 7.17% 误显示为 0.07%）。
+- 实矩阵 **PCA ≡ SVD**（数值一致，符合理论）。
+- PC1 方差占比约 **0.32–0.72**，未达文档预期的 0.5+，但提取仍可用。
+- **SVD Complex（总幅值 + 总相位）严重失效**（mean 52%），段 1a/1b 约 108%——疑为 `|u₁|` 取幅值引入倍频；已保留该方案并追加 remote/local 幅值 + 总相位对照实验（见 §8.4）。
+- **当前单场景最优仍为 Plan2 Modal 融合**，PCA Total Amp 略优于 Uniform remote，未超过 Modal。
+
+### 8.3 脚本改动摘要
+
+| 改动 | 说明 |
+|------|------|
+| 复用 `_seg_bpm_stats` / `_overall_rel_error` | 与 chfusion、Plan2 同口径 |
+| 接入 `run_plan2_validation` | 统一排行榜含 13 种 Plan2 方法 |
+| 修复 `mean_rel_err_pct` | 段级比例 ×100 再展示 |
+| 段元数据 | `bpm_gt` / `segment_type` 从滤波 metadata 读取 |
+
+### 8.4 复 SVD 幅值来源对照（待跨场景汇总）
+
+除保留 **总幅值 + 总相位** 外，脚本增加：
+
+| 方法 | 复矩阵构造 |
+|------|------------|
+| SVD Complex Total | `amplitudes · e^(j·phases)` |
+| SVD Complex Remote | `remote_amplitudes · e^(j·phases)` |
+| SVD Complex Local | `local_amplitudes · e^(j·phases)` |
+
+> 文档 §2.3 曾标注 remote/local + 总相位「物理参考系不一致」；此处作为 **对照实验** 检验是否比总幅值方案更稳。跨场景结论见 §8.5（运行 `chFusion_pca_svd.py` §8 后更新）。
+
+### 8.5 跨场景汇总
+
+（三场景 `cs_091339` / `cs_095806` / `cs_102621` 运行后填写。）

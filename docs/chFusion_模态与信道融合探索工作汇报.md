@@ -133,6 +133,30 @@ BLE CS 一次测量提供 **72 信道 × 4 类观测量**：
 
 ---
 
+### 阶段 D — `chFusion_pca_svd.py`（PCA/SVD 共同模式提取）
+
+**动机：** 利用 72 信道相关性，用 PC1 / 第一奇异向量提取呼吸共同模式，与 Plan2「每窗选最优信道」对照。
+
+**单场景 102621（与 Plan2 同口径，7 breath 段）：**
+
+| 方法 | mean err% |
+|------|-----------|
+| Modal η-weight | **4.60** |
+| PCA Total Amp | 6.62 |
+| Uniform remote | 6.82 |
+| Single remote | 8.29 |
+| SVD Complex（总幅值+总相位） | 52.30（失效） |
+
+**要点：**
+
+- 修复排行榜 **未 ×100** 的单位 bug 后，PCA/SVD 误差回到 5–10% 量级，可与 Plan2 直接比较。
+- 实矩阵 PCA ≡ SVD；**PCA Total Amp** 略优于 Uniform，仍不及 Modal。
+- **复 SVD（总幅值+总相位）** 严重倍频，保留作对照；已增 remote/local 幅值 + 总相位变体及三场景聚合（见 `docs/chFusion_pca_svd_plan.md` §8）。
+
+图：`outputs/figures/pca_svd_102621_leaderboard_bars.pdf` 等。
+
+---
+
 ## 3. 综合结论（从探索过程到部署启示）
 
 ### 3.1 单场景下「谁最好」不稳定

@@ -69,9 +69,15 @@ REPORTS_DIR = _env["REPORTS_DIR"]
 from ble_analysis.chfusion import (
     CS_SIGNAL_VARIABLES,
     ChFusionConfig,
+    Plan2Config,
+    _overall_rel_error,
+    _seg_bpm_stats,
+    build_plan2_leaderboard_rows,
     estimate_segment_bpm_methods,
     run_multichannel_segment_filtering,
+    run_plan2_validation,
 )
+from ble_analysis.segments import _estimate_breathing_freq_hz, _sliding_window_indices
 from ble_analysis.data import load_ble_frames
 from ble_analysis.pca_svd import (
     PcaSvdConfig,
@@ -99,6 +105,8 @@ chfusion_config = ChFusionConfig(
     step_length_sec=metric_params.step_length_sec,
     enable_consensus=False,
 )
+
+plan2_config = Plan2Config(channel_metric="energy_ratio")
 
 pca_svd_config = PcaSvdConfig(
     method="pca",
@@ -151,41 +159,13 @@ baseline_results = estimate_segment_bpm_methods(
 print(f"Baseline ({len(baseline_results)} segments) completed")
 
 # %% [markdown]
-# ## 3a. Helpers — sliding window + BPM estimation via PCA/SVD
+# ## 3a. Helpers — BPM estimation via PCA/SVD (reuse chfusion metrics)
 
 # %%
 
 
-def _sliding_window_indices(signal_length, window_samples, step_samples):
-    """生成滑窗起始索引。"""
-    if signal_length <= 0 or window_samples <= 0:
-        return []
-    if signal_length < window_samples:
-        return [0]
-    starts, s = [], 0
-    while s + window_samples <= signal_length:
-        starts.append(s)
-        s += step_samples
-    return starts
-
-
-def _estimate_breathing_freq_hz(bandpass_slice, sampling_rate, low_hz, high_hz):
-    """从带通滤波信号估计呼吸频率。"""
-    if len(bandpass_slice) < 4:
-        return np.nan
-    windowed = bandpass_slice * np.hanning(len(bandpass_slice))
-    fft_power = np.abs(np.fft.rfft(windowed)) ** 2
-    fft_freq = np.fft.rfftfreq(len(windowed), 1.0 / sampling_rate)
-    freq_mask = (fft_freq >= low_hz) & (fft_freq <= high_hz)
-    if not np.any(freq_mask):
-        return np.nan
-    freq_indices = np.where(freq_mask)[0]
-    max_freq_idx = freq_indices[np.argmax(fft_power[freq_mask])]
-    return float(fft_freq[max_freq_idx])
-
-
 def window_bpm_from_waveform(waveform, fs, breath_freq_low, breath_freq_high):
-    """对提取的呼吸波形做 FFT 估计 BPM。"""
+    """对提取的呼吸波形做 FFT 估计 BPM（与 Single 基线相同的峰频法）。"""
     if len(waveform) < 4 or not np.all(np.isfinite(waveform)):
         return np.nan
     wf = waveform - np.mean(waveform)
@@ -193,28 +173,13 @@ def window_bpm_from_waveform(waveform, fs, breath_freq_low, breath_freq_high):
     return f_hz * 60.0 if np.isfinite(f_hz) else np.nan
 
 
-def seg_bpm_stats(bpm_arr, bpm_gt, n_windows):
-    """聚合窗口 BPM 估计为统计量。"""
-    bpm_mean = float(np.nanmean(bpm_arr))
-    rel_per_win = np.array(
-        [
-            abs(b - bpm_gt) / bpm_gt
-            if (bpm_gt and bpm_gt > 0 and np.isfinite(b))
-            else np.nan
-            for b in bpm_arr
-        ],
-        dtype=float,
-    )
-    valid = rel_per_win[~np.isnan(rel_per_win)]
-    rel_mean = float(np.mean(valid)) if valid.size else np.nan
-    rel_std = float(np.std(valid, ddof=1)) if valid.size > 1 else 0.0
-    return {
-        "bpm_mean": bpm_mean,
-        "bpm_per_window": bpm_arr,
-        "bpm_rel_err": rel_mean,
-        "bpm_rel_err_std": rel_std,
-        "n_windows": n_windows,
-    }
+def _segment_rel_err_pct(errs: list[float]) -> tuple[float, float, int]:
+    """段级相对误差比例 → 百分比（与 ``_overall_rel_error`` 一致）。"""
+    if not errs:
+        return np.nan, np.nan, 0
+    a = np.asarray(errs, dtype=float)
+    std = float(np.std(a, ddof=1) * 100.0) if len(a) > 1 else 0.0
+    return float(np.mean(a) * 100.0), std, len(a)
 
 
 def run_pca_svd_bpm(
@@ -249,11 +214,16 @@ def run_pca_svd_bpm(
 
     for seg_name in sorted(segment_config.keys()):
         seg_cfg = segment_config[seg_name]
-        if seg_cfg.get("type") == "apnea":
+        ref_mc = multichannel_by_var.get(
+            var_list[0] if not is_stack else "remote_amplitudes", {}
+        )
+        ref_seg = ref_mc.get(seg_name)
+        metadata = ref_seg.get("metadata", {}) if ref_seg else {}
+        if metadata.get("segment_type") == "apnea" or seg_cfg.get("type") == "apnea":
             results[seg_name] = None
             continue
 
-        bpm_gt = seg_cfg.get("bpm_gt")
+        bpm_gt = metadata.get("bpm_gt") or seg_cfg.get("bpm_gt")
         if is_stack:
             ch_lengths = {}
             for var in var_list:
@@ -361,14 +331,15 @@ def run_pca_svd_bpm(
 
         bpm_arr = np.asarray(bpms, dtype=float)
         n_wins = len(starts)
-        stats = seg_bpm_stats(bpm_arr, bpm_gt, n_wins)
+        stats = _seg_bpm_stats(bpm_arr, bpm_gt, n_wins)
+        stats["bpm_gt"] = bpm_gt
         stats["pc1_variance_ratios"] = pc1_ratios
         stats["mean_pc1_ratio"] = float(np.nanmean(pc1_ratios)) if pc1_ratios else np.nan
         results[seg_name] = stats
 
         if verbose:
             e = stats["bpm_rel_err"]
-            err_str = f"{e:.3f}" if np.isfinite(e) else "---"
+            err_str = f"{e * 100:.2f}%" if np.isfinite(e) else "---"
             print(f"  {seg_name}: mean_rel_err={err_str}  pc1_ratio={stats['mean_pc1_ratio']:.3f}")
 
     return results
@@ -415,9 +386,28 @@ for exp_name, exp_cfg in PCA_SVD_EXPERIMENTS.items():
 print(f"\nOK {len(pca_svd_results)} PCA/SVD methods completed")
 
 # %% [markdown]
-# ## 4. Leaderboard  —  text ranking + horizontal bar chart
+# ## 3c. Plan 2 validation (same scenario, same metrics)
+
+# %%
+
+plan2 = run_plan2_validation(
+    frames,
+    segment_config,
+    filter_params=filter_params,
+    metric_params=metric_params,
+    config=chfusion_config,
+    plan2_config=plan2_config,
+    reference_variable="phases",
+    verbose=True,
+)
+
+plan2_leaderboard = build_plan2_leaderboard_rows(plan2)
+print(f"Plan 2 methods: {len(plan2_leaderboard)} entries")
+
+# %% [markdown]
+# ## 4. Unified leaderboard  —  PCA/SVD + baseline + Plan 2
 #
-# 按类别着色：PCA=蓝, SVD=绿, SVD Complex=紫, Stacked=金, Baseline=橙, Single=红
+# 误差指标与 Plan 2 一致：各 breath 段窗级相对误差均值，再对段取平均，单位为 %。
 
 # %%
 
@@ -428,56 +418,70 @@ METHOD_CATEGORY_COLORS = {
     "Stacked": "#EDB144",
     "Baseline": "#F0C8A0",
     "Single": "#E8A0A0",
+    "Uniform": "#F0C8A0",
+    "Modal": "#C9A0DC",
+    "Plan2": "#C9A0DC",
 }
 
 
-def _category_color(label: str) -> str:
-    for key, col in METHOD_CATEGORY_COLORS.items():
-        if key in label:
-            return col
-    return "#CCCCCC"
+def _category_color(label: str, category=None) -> str:
+    cat = category or label.split()[0]
+    return METHOD_CATEGORY_COLORS.get(cat, "#CCCCCC")
 
 
-def build_leaderboard(pca_svd_results, baseline_results):
-    """从 PCA/SVD 和 baseline 结果构建 leaderboard rows。"""
+def build_leaderboard(pca_svd_results, baseline_results, plan2_rows=None):
+    """构建统一排行榜（``mean_rel_err_pct`` 已为百分比）。"""
     rows = []
     baseline_names_map = {
-        "fft_single_max_energy": "Single (remote amp)",
-        "fft_uniform_fusion": "Uniform (remote amp)",
-        "fft_q_energy_peak_fusion": "q_energy_peak (remote amp)",
+        "fft_single_max_energy": ("Single (remote amp)", "Single"),
+        "fft_uniform_fusion": ("Uniform (remote amp)", "Uniform"),
+        "fft_q_energy_peak_fusion": ("q_energy_peak (remote amp)", "Baseline"),
     }
-    for key, label in baseline_names_map.items():
-        errs = []
-        for seg_name, seg_out in baseline_results.items():
-            if seg_out is None:
-                continue
-            m = seg_out.get(key, {})
-            err = m.get("bpm_rel_err", np.nan)
-            if np.isfinite(err):
-                errs.append(err)
-        mean_err = float(np.mean(errs)) if errs else np.nan
-        std_err = float(np.std(errs, ddof=1)) if len(errs) > 1 else 0.0
-        cat = "Single" if "Single" in label else "Baseline"
+    for key, (label, cat) in baseline_names_map.items():
+        stats = _overall_rel_error(baseline_results, key)
+        if not np.isfinite(stats["mean_rel_err_pct"]):
+            continue
         rows.append({
-            "label": label, "mean_rel_err_pct": mean_err,
-            "std_rel_err_pct": std_err, "n_valid": len(errs),
-            "category": cat, "color": _category_color(label),
+            "label": label,
+            "mean_rel_err_pct": stats["mean_rel_err_pct"],
+            "std_rel_err_pct": stats["std_rel_err_pct"],
+            "n_valid": stats["n_segments"],
+            "category": cat,
+            "color": _category_color(label, cat),
+            "source": "baseline",
         })
 
     for exp_name, per_seg in pca_svd_results.items():
         errs = []
-        for seg_name, seg_stats in per_seg.items():
+        for _seg_name, seg_stats in per_seg.items():
             if seg_stats is None:
                 continue
             err = seg_stats.get("bpm_rel_err", np.nan)
             if np.isfinite(err):
-                errs.append(err)
-        mean_err = float(np.mean(errs)) if errs else np.nan
-        std_err = float(np.std(errs, ddof=1)) if len(errs) > 1 else 0.0
+                errs.append(float(err))
+        mean_err, std_err, n_valid = _segment_rel_err_pct(errs)
+        if not np.isfinite(mean_err):
+            continue
+        cat = exp_name.split()[0]
         rows.append({
-            "label": exp_name, "mean_rel_err_pct": mean_err,
-            "std_rel_err_pct": std_err, "n_valid": len(errs),
-            "category": exp_name.split()[0], "color": _category_color(exp_name),
+            "label": exp_name,
+            "mean_rel_err_pct": mean_err,
+            "std_rel_err_pct": std_err,
+            "n_valid": n_valid,
+            "category": cat,
+            "color": _category_color(exp_name, cat),
+            "source": "pca_svd",
+        })
+
+    for prow in plan2_rows or []:
+        rows.append({
+            "label": prow["label"],
+            "mean_rel_err_pct": prow["mean_rel_err_pct"],
+            "std_rel_err_pct": prow["std_rel_err_pct"],
+            "n_valid": prow.get("n_segments", 0),
+            "category": prow.get("category", "Plan2"),
+            "color": prow.get("color", _category_color(prow["label"], "Plan2")),
+            "source": "plan2",
         })
 
     rows.sort(key=lambda r: (
@@ -488,28 +492,33 @@ def build_leaderboard(pca_svd_results, baseline_results):
     return rows
 
 
-leaderboard = build_leaderboard(pca_svd_results, baseline_results)
+leaderboard = build_leaderboard(pca_svd_results, baseline_results, plan2_leaderboard)
 
 # ---- 文本排名 ----
 print("\n" + "=" * 72)
 print(f"  chFusion PCA/SVD  —  Leaderboard")
 print(f"  Scenario: {scenario.tag} ({SCENARIO_ID})")
 print("=" * 72)
-print(f"  {'Rank':>4}  {'方法':<28} {'err%':>7} {'±std%':>7}  {'类别'}")
-print("  " + "-" * 58)
+print(f"  {'Rank':>4}  {'方法':<32} {'err%':>7} {'±std%':>7}  {'类别':<10} {'来源'}")
+print("  " + "-" * 72)
 for r in leaderboard:
     e = f"{r['mean_rel_err_pct']:.2f}" if np.isfinite(r["mean_rel_err_pct"]) else "  ---"
     s = f"{r['std_rel_err_pct']:.2f}"
     mark = " ★" if r["rank"] == 1 else ""
-    print(f"  {r['rank']:>4}{mark} {r['label']:<28} {e:>7} {s:>7}  {r['category']}")
+    print(
+        f"  {r['rank']:>4}{mark} {r['label']:<32} {e:>7} {s:>7}  "
+        f"{r['category']:<10} {r.get('source', '')}"
+    )
 
 best = leaderboard[0]
-print(f"\n  ★ 最优: {best['label']}  →  {best['mean_rel_err_pct']:.2f}%")
-# PCA/SVD 内部对比
-pca_only = [r for r in leaderboard if r["category"] not in ("Single", "Baseline")]
+print(f"\n  ★ 全局最优: {best['label']}  →  {best['mean_rel_err_pct']:.2f}%")
+pca_only = [r for r in leaderboard if r.get("source") == "pca_svd"]
 if pca_only:
     print(f"  PCA/SVD 最优: {pca_only[0]['label']} ({pca_only[0]['mean_rel_err_pct']:.2f}%)")
     print(f"  PCA/SVD 最差: {pca_only[-1]['label']} ({pca_only[-1]['mean_rel_err_pct']:.2f}%)")
+plan2_only = [r for r in leaderboard if r.get("source") == "plan2"]
+if plan2_only:
+    print(f"  Plan2 最优: {plan2_only[0]['label']} ({plan2_only[0]['mean_rel_err_pct']:.2f}%)")
 print()
 
 # ---- 横向柱状图 ----
@@ -525,7 +534,7 @@ ax.set_yticks(y)
 ax.set_yticklabels(labels, fontsize=9)
 ax.invert_yaxis()
 ax.set_xlabel("Mean relative BPM error (%)")
-ax.set_title("chFusion PCA/SVD — Leaderboard (lower = better)")
+ax.set_title("chFusion unified leaderboard — PCA/SVD vs baseline vs Plan 2")
 ax.grid(True, axis="x", alpha=0.25)
 
 for i, (m, r) in enumerate(zip(means, leaderboard)):
@@ -546,7 +555,7 @@ for r in leaderboard:
 ax.legend(handles=handles, loc="lower right", fontsize=8, title="Category")
 
 plt.tight_layout()
-bar_path = FIGURES_DIR / "pca_svd_leaderboard_bars.pdf"
+bar_path = FIGURES_DIR / f"pca_svd_{scenario.tag}_leaderboard_bars.pdf"
 fig.savefig(bar_path, dpi=150, bbox_inches="tight")
 print(f"  Fig 1: Leaderboard bars  ->  {bar_path.name}")
 plt.show()
@@ -566,13 +575,15 @@ matrix = np.full((len(seg_names), len(all_meth_labels)), np.nan)
 
 for j, row_data in enumerate(leaderboard):
     label = row_data["label"]
-    if label in pca_svd_results:
+    source = row_data.get("source")
+    if source == "pca_svd" and label in pca_svd_results:
         per_seg = pca_svd_results[label]
         for i, seg_name in enumerate(seg_names):
             stats = per_seg.get(seg_name)
             if stats is not None:
-                matrix[i, j] = stats.get("bpm_rel_err", np.nan)
-    else:
+                err = stats.get("bpm_rel_err", np.nan)
+                matrix[i, j] = float(err) * 100.0 if np.isfinite(err) else np.nan
+    elif source == "baseline":
         bmap = {
             "Single (remote amp)": "fft_single_max_energy",
             "Uniform (remote amp)": "fft_uniform_fusion",
@@ -583,7 +594,28 @@ for j, row_data in enumerate(leaderboard):
             for i, seg_name in enumerate(seg_names):
                 seg_out = baseline_results.get(seg_name)
                 if seg_out is not None and bkey in seg_out:
-                    matrix[i, j] = seg_out[bkey].get("bpm_rel_err", np.nan)
+                    err = seg_out[bkey].get("bpm_rel_err", np.nan)
+                    matrix[i, j] = float(err) * 100.0 if np.isfinite(err) else np.nan
+    elif source == "plan2":
+        plan2_lookup = {r["label"]: r for r in plan2_leaderboard}
+        spec = plan2_lookup.get(label)
+        if spec is None:
+            continue
+        results = (
+            plan2["variable_baselines"][spec["baseline_var"]]
+            if spec.get("baseline_var") is not None
+            else plan2["modal_benchmark"]["results"]
+        )
+        result_key = spec["result_key"]
+        for i, seg_name in enumerate(seg_names):
+            row = results.get(seg_name)
+            if row is None:
+                continue
+            block = row.get(result_key)
+            if block is None:
+                continue
+            err = block.get("bpm_rel_err", np.nan)
+            matrix[i, j] = float(err) * 100.0 if np.isfinite(err) else np.nan
 
 row_labels = []
 for seg in seg_names:
@@ -612,7 +644,7 @@ for i in range(matrix.shape[0]):
 cbar = fig.colorbar(im, ax=ax, fraction=0.03, pad=0.02)
 cbar.set_label("Rel. error (%)")
 plt.tight_layout()
-heatmap_path = FIGURES_DIR / "pca_svd_segment_method_heatmap.pdf"
+heatmap_path = FIGURES_DIR / f"pca_svd_{scenario.tag}_segment_method_heatmap.pdf"
 fig.savefig(heatmap_path, dpi=150, bbox_inches="tight")
 print(f"  Fig 2: Heatmap  ->  {heatmap_path.name}")
 plt.show()
@@ -680,7 +712,7 @@ for i, m in enumerate(means_pc1):
     ax.text(m + 0.02, i, f"{m:.2f}", va="center", fontsize=8)
 
 plt.tight_layout()
-pc1_path = FIGURES_DIR / "pca_svd_pc1_variance_ratio.pdf"
+pc1_path = FIGURES_DIR / f"pca_svd_{scenario.tag}_pc1_variance_ratio.pdf"
 fig.savefig(pc1_path, dpi=150, bbox_inches="tight")
 print(f"  Fig 3: PC1 variance  ->  {pc1_path.name}")
 plt.show()
@@ -695,6 +727,8 @@ output = {
     "segment_config": segment_config,
     "baseline_results": baseline_results,
     "pca_svd_results": pca_svd_results,
+    "plan2_results": plan2,
+    "plan2_leaderboard": plan2_leaderboard,
     "leaderboard": leaderboard,
     "pc1_analysis": pc1_records,
     "pca_svd_config": {
@@ -702,6 +736,7 @@ output = {
         "min_channels": pca_svd_config.min_channels,
         "min_variance_ratio": pca_svd_config.min_variance_ratio,
     },
+    "plan2_config": {"channel_metric": plan2_config.channel_metric},
 }
 
 report_path = REPORTS_DIR / f"chfusion_pca_svd_{scenario.tag}.npy"
