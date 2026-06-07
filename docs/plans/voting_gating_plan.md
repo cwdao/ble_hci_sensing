@@ -31,6 +31,13 @@
 
 这说明不同方法的优劣是**窗级条件性**的——某些窗适合 voting（per-tone 多数派明确），某些窗适合谱融合（per-tone 分散但谱峰收敛）。
 
+**2026-06-07 更新：频率选择性衰落的直接证据。** Voting 增强诊断（commit `7330738`）揭示了一个关键的物理机制：
+
+- **Tone 内时序高度稳定**：同一 tone 在相邻窗之间的 BPM 变化仅 ~0.40 BPM（72 tone × 39 窗的均值）。每个 tone 的 BPM 估计在时间上是自洽的——它持续跟踪该频点上多径信道赋予的主导周期成分。
+- **Tone 间系统性分化**：不同 tone 形成多个不相干的 BPM 簇（如 8–10、14、18–20 BPM），这不是随机噪声，而是**频率选择性衰落**的直接表现——某些频点的呼吸路径增益高（BPM ≈ GT），某些频点的呼吸路径被多径抵消（BPM ≈ 半频），某些频点被其他周期信号主导。
+
+这从根本上改变了门控的设计思路：不能只依赖 voting 内部置信度（τ），因为"稳定的错误簇"也可以达到高 τ。需要度量 **tone 之间的一致性结构**——如果大多数 tone 的 BPM 时间序列聚类在单个值附近，voting 可靠；如果形成多个大小相当的簇，应退回谱融合。
+
 ### 1.2 核心假设
 
 > **H1**：在 095806 上 T0-V3 优于 Modal top2 的那些窗口，与 Modal top2 在 091339 上优于 T0-V3 的那些窗口，存在**可检测的信号特征差异**（如 voting confidence、谱峰一致性、η 分布偏度）。如果能检测这些特征，就可以在窗口级别动态选择方法。
@@ -41,7 +48,8 @@
 
 - **PCA plan Q3** 提出了完全一致的思路：*"窗级 phase/remote/local 峰频差 > 阈值时退回 Single remote"*。本 plan 将这一概念从 PCA/Modal 之间的门控，扩展到 **Voting / Modal / PCA-Modal 三者之间的通用门控框架**。
 - **Deng et al. 论文** 的 voting threshold τ 本质上是一种"单方法内部门控"——当票数不足时标记 low-conf。本 plan 将其扩展为**跨方法门控**——不仅看 voting 内部置信度，还看 voting 与 Modal 的外部一致性。
-- **[待文献调研后补充]**
+- **Voting 增强诊断（2026-06-07）** 发现了频率选择性衰落的直接证据：tone 内 BPM 时序高度稳定（|ΔBPM| ≈ 0.40），tone 间系统性分化。这意味着门控信号应包含 **tone 间一致性结构**（双峰性检测、聚类 coherence），而非仅看投票票数。由此衍生出 G5（双峰性门控）和 G6（persistence-filtered voting）。
+- **[待文献调研后补充]** TR-BREATH [7] / Wi-Breath [6] / Bimodal CSI [10]
 
 ### 1.4 文献调研衔接（预留）
 
@@ -78,7 +86,10 @@
 | `η_vote_max` | T0-V3 | 参与 voting 的 tone 中最高 η |
 | `ρ_vote_mean` | T0-v3 | 参与 voting 的 tone 的平均 ρ |
 | `modal_eta_gap` | Modal top2 | top2 模态的 η 差距（top1 η − top2 η） |
-| [待补充] | TRRS | TR-BREATH 谐振强度指标 |
+| `bimodality_score` | T0-V3 | BPM 分布的双峰性：最高 bin 与第二高峰 bin 的票数比。低值 = 多簇竞争、voting 不可靠 |
+| `tone_persistence` | per-tone 时序 | 每个 tone 的跨窗 BPM 平均 L1 步长（`mean_step_L1`）。高 persistence = tone 稳定跟踪某个周期成分；低 persistence = 噪声 tone，投票前剔除 |
+| `n_coherent_tones` | T0-V3 | persistence ≤ 阈值且 BPM 在 ±2 BPM 内聚类的 tone 数量。少 = 可靠选民不足 |
+| [待文献调研后补充] | TRRS | TR-BREATH 谐振强度指标 |
 
 ---
 
@@ -128,13 +139,59 @@
 | **G3 — 自适应** | 2.0 ~ 5.0 | η-dependent | δ 随 max(η_vote, η_modal) 缩放：η 高时容忍度小 |
 | **G4 — Single fallback** | — | — | 只在 voting 与 modal 分歧时退回 Single；一致时取 voting+modal 平均 |
 
-### 3.4 待文献调研后追加的方法变体
+### 3.4 基于频率选择性衰落的新门控策略（G5–G6）
+
+以下策略直接利用增强诊断揭示的"tone 内时序稳定 + tone 间分化"机制，**不需要文献调研即可实现**。
+
+#### G5 — 双峰性门控（Bimodality Gating）
+
+```
+对每窗:
+  1. 计算 72 tone 的 per-tone BPM 估计（与 T0-V3 相同）
+  2. 在 [6, 30] BPM × 1 BPM bin 上做直方图 → 得到每个 bin 的 η·ρ 加权票数
+  3. 找最高 bin (peak_1) 和第二高 bin (peak_2)，二者在 BPM 轴上相距 ≥ 2 bin
+  4. bimodality_score = peak_2_mass / peak_1_mass    # 0~1，越高越双峰
+
+  5. 门控决策:
+     if bimodality_score < 0.5:                       # 单峰主导 → voting 可靠
+       BPM_final = T0-V3 投票结果
+     elif bimodality_score ≥ 0.5 and peak_1_mass / total > 0.25:
+       # 明显双峰 → 检查 peak_1 是否接近 Modal top2 的结果
+       if |bin_center(peak_1) - BPM_modal| ≤ 2:
+         BPM_final = weighted_avg(peak_1, BPM_modal)  # 主峰与 modal 一致
+       else:
+         BPM_final = BPM_modal                         # 双峰竞争 → 不信 voting
+     else:
+       BPM_final = BPM_single                          # 高度分散 → fallback
+```
+
+**与 G1–G4 的关键区别**：G5 不依赖 τ（票数阈值），而是看"有没有第二股势力"——如果两个 BPM 簇大小相当，无论绝对票数多少，voting 都不可靠。
+
+#### G6 — Persistence-Filtered Voting（稳定性筛选投票）
+
+```
+对每窗:
+  1. 如果有前一窗的 per-tone persistence 数据:
+     - 剔除 mean_step_L1 > 阈值（如 2.0 BPM）的 tone
+     → 这些 tone 在窗间 BPM 跳变剧烈，是噪声选民
+  2. 对剩余 "稳定 tone" 做 T0-V3 voting
+  3. 如果稳定 tone 数 < 12（太少）:
+     → 退回 BPM_modal
+
+预计算 persistence:
+  从 voting 结果中提取 bpm_per_tone_per_window 矩阵 (n_win × 72)
+  对每个 tone: mean_step_L1 = mean(|BPM[t+1] - BPM[t]|) across all windows
+```
+
+**与 G1–G4 的关键区别**：G6 在 voting 之前做预处理，而不是在 voting 之后做门控。它利用时域稳定性作为一个新的 tone 质量维度，与 η（频域能量）、ρ（频域峰度）互补。
+
+#### 待文献调研后追加
 
 > `[待文献调研后补充]`：
 >
-> - **G5 — TRRS 门控**：用 TRRS 替代/补充 conf_vote 作为门控信号
-> - **G6 — SVM 窗级质量分类器**：用 Wi-Breath 的 SVM 特征工程思路训练窗级 quality classifier
-> - **G7 — Bimodal CSI 体动检测器**：借鉴 [10] 的 motion detection 作为 "切换到 robust fallback" 的触发器
+> - **G7 — TRRS 门控**：用 TR-BREATH [7] 的 TRRS 替代/补充 conf_vote 作为门控信号
+> - **G8 — SVM 窗级质量分类器**：用 Wi-Breath [6] 的 SVM 特征工程思路训练窗级 quality classifier
+> - **G9 — Bimodal CSI 体动检测器**：借鉴 [10] 的 motion detection 作为 "切换到 robust fallback" 的触发器
 
 ### 3.5 共识门控 vs 无门控的预期差异
 
@@ -178,6 +235,8 @@ BPM_final = (w_vote * BPM_vote + w_modal * BPM_modal) / (w_vote + w_modal)
 | **G2** | 置信度优先门控（δ=2, τ_hi=0.35） | 本 plan §3.3 |
 | **G3** | 自适应门控 | 本 plan §3.3 |
 | **G4** | Simple consensus + Single fallback | 本 plan §3.3 |
+| **G5** | 双峰性门控（bimodality gating） | 本 plan §3.4 — 基于频率选择性衰落诊断 |
+| **G6** | Persistence-filtered voting | 本 plan §3.4 — tone 时序稳定性筛选 |
 
 ### 4.2 预期相对关系
 
@@ -186,14 +245,17 @@ BPM_final = (w_vote * BPM_vote + w_modal * BPM_modal) / (w_vote + w_modal)
 | G1 vs T0-V3 | 091339 改善、095806 略降 | 门控应阻止 091339 上的 voting 错误，但 095806 上可能因保守而损失一些窗 |
 | G1 vs B2 (Modal) | 跨域优于或接近 Modal | 门控组合了两种方法的优势 |
 | G4 vs G1 | 091339 更好、095806 略差 | Single fallback 在 voting-modal 分歧时更保守 |
-| G1–G4 跨域 mean | 预期在 8.5–9.5% 区间 | 理想情况下接近 T0-V3 在 095806 的表现 + Modal 在 091339 的表现 |
+| **G5 vs G1** | **091339 更好** | 双峰性检测直接识别"多簇竞争"场景（091339 特征），比 τ + peak_dist 更精确 |
+| **G6 vs T0-V3** | **三个场景均改善** | 剔除噪声 tone 应提升 voting 输入质量，不依赖场景 |
+| G1–G6 跨域 mean | 预期在 8.0–9.5% 区间 | G5/G6 理想情况下超越 G1–G4 |
 
 ### 4.3 文献调研后追加的 baseline
 
 > `[待文献调研后补充]`：
 >
-> | G5 | TRRS 门控 | TR-BREATH [7] |
-> | G6 | η/ρ/TRRS 联合特征 + threshold | — |
+> | G7 | TRRS 门控 | TR-BREATH [7] |
+> | G8 | η/ρ/TRRS/persistence 联合特征 + threshold | — |
+> | G9 | SVM 窗级 quality classifier | Wi-Breath [6] |
 > | PCA 共识门控 | PCA-Modal3 + Plan2 Modal 共识（PCA plan Q3） | 与 G1 同框架、不同方法对 |
 
 ---
@@ -285,6 +347,8 @@ __all__ = [
     "GatingStrategy",
     "GatingDecision",
     "compute_gating_signals",
+    "compute_bimodality_score",
+    "compute_tone_persistence",
     "apply_gating",
     "run_gating_benchmark",
 ]
@@ -297,6 +361,11 @@ class GatingConfig:
     fallback_method: str = "single"    # "single" | "modal"
     consensus_weighting: str = "conf"  # "equal" | "conf"
     min_eta_for_gating: float = 0.02   # η 过低时直接 fallback
+    # G5 专属
+    bimodality_threshold: float = 0.5  # peak_2/peak_1 超过此值视为双峰
+    # G6 专属
+    persistence_threshold: float = 2.0 # mean_step_L1 超过此值的 tone 被剔除
+    min_stable_tones: int = 12         # 最少稳定 tone 数，不足则 fallback
 
 class GatingDecision(Enum):
     CONSENSUS_HIGH = "consensus_high"      # 一致 + 高置信 → 平均
@@ -401,10 +470,11 @@ for seg in breath_segments:
 | ID | 问题 | 备注 |
 |----|------|------|
 | Q1 | 门控最优 δ/τ_hi 是否跨场景一致？ | `[待确认]` — 需三场景分别扫描 |
-| Q2 | η 是否足够作为"窗级可靠性"的代理？ | `[待确认]` |
+| Q2 | η 是否足够作为"窗级可靠性"的代理？tone_persistence 和 bimodality_score 是否更优？ | `[待确认]` — G5/G6 将直接回答此问题 |
 | Q3 | Fallback 用 Single Remote 还是 Modal top2？091339 上 Single 更优（10.91% vs 13.04%），095806 上 Modal 更优（10.61% vs 12.16%） | `[待确认]` — 可能也需要场景自适应 |
-| Q4 | [待文献调研后补充] TRRS / SVM 特征是否能提供更好的门控信号？ | |
-| Q5 | [待文献调研后补充] 门控能否扩展到 PCA-Modal3 + Modal top2 的方法对？ | |
+| Q4 | persistence_threshold = 2.0 BPM 是否合理？剔除后稳定 tone 数通常剩多少？ | G6 执行后分析 tone 剔除分布 |
+| Q5 | [待文献调研后补充] TRRS / SVM 特征是否能提供比 persistence/bimodality 更好的门控信号？ | |
+| Q6 | [待文献调研后补充] 门控能否扩展到 PCA-Modal3 + Modal top2 的方法对？ | |
 
 ---
 
@@ -414,12 +484,14 @@ for seg in breath_segments:
 
 | 章节 | 当前状态 | 待补充内容 |
 |------|----------|-----------|
-| §1.3 | 写了 PCA Q3 和 Deng et al. τ | 追加 TR-BREATH TRRS、Wi-Breath SVM、Bimodal CSI motion detection 与本 plan 的关联 |
+| §1.3 | 已写 PCA Q3、Deng τ、频率选择性衰落诊断 | 追加 TR-BREATH TRRS、Wi-Breath SVM、Bimodal CSI motion detection |
 | §1.4 | 空 | 每个关键论文可借鉴的具体技术点 + 如何集成到门控框架 |
-| §2.2 | 列出了 η/ρ/conf 等现有信号 | 追加 TRRS、SVM confidence score 等文献中的门控信号候选 |
-| §3.4 | 空 | G5/G6/G7 方法定义 |
-| §4.3 | 空 | 文献驱动的 baseline 方法 |
-| §8.2 Q4/Q5 | 空 | 文献驱动的保留问题 |
+| §2.2 | 已写 13 个门控信号（含 bimodality_score / tone_persistence / n_coherent_tones） | 追加 TRRS、SVM confidence score |
+| §3.4 | **G5/G6 已定义**（基于诊断发现，可立即实现） | G7/G8/G9（文献驱动的方法变体） |
+| §4.3 | **G5/G6 已加入必跑表** | G7/G8/G9（文献驱动的 baseline） |
+| §8.2 Q5/Q6 | 已写 persistence/bimodality 相关问题 | 待文献驱动的新问题 |
+
+**可立即执行**：G1–G6 共 6 种门控策略 + 5 个 baseline + T0-V3 = **12 个方法**，无需等待文献调研。
 
 ---
 
@@ -436,12 +508,21 @@ for seg in breath_segments:
 
 ## 给执行 Agent 的首条指令
 
-> ⚠️ **本 plan 尚未就绪**：请等待用户完成文献调研（`docs/plans/literature_review_plan.md`），由 Claude/DeepSeek 更新本 plan 的 `[待文献调研后补充]` 章节后，再在 Cursor Composer 中执行。
+> ⚠️ **本 plan 部分就绪**：G1–G6 可立即执行（无需文献调研）。G7–G9 和 PCA 共识门控等待文献调研后再追加。
 >
-> 当前可执行的内容（如果用户选择不等待文献调研）：
-> 1. 实现 §3.2–3.3 的 G1–G4 四种门控策略
-> 2. 新增 `src/ble_analysis/consensus_gating.py`（接口见 §6.3）
-> 3. 写 `notebooks/scripts/chFusion_voting_gating.py`
-> 4. 跑 §4.1 的 10 个方法 × 三场景
-> 5. 输出 §7 的图表和报告
-> 6. 生成 §5.4 的 oracle 方法选择准确率分析
+> Cursor Composer 当前执行内容：
+> 1. 实现 §3.2–3.4 的 G1–G6 六种门控策略
+> 2. 新增 `src/ble_analysis/consensus_gating.py`（接口见 §6.3，含 `compute_bimodality_score`、`compute_tone_persistence`）
+> 3. 复用 `voting_fusion.compute_channel_bpm_persistence`（已实现）作为 G6 的输入
+> 4. 写 `notebooks/scripts/chFusion_voting_gating.py`
+> 5. 跑 §4.1 的 12 个方法（4 baseline + T0-V3 + G1–G6）× 三场景
+> 6. 输出 §7 的图表和报告
+> 7. 生成 §5.4 的 oracle 方法选择准确率分析
+>
+> 执行完成后，请返回以下材料给 Claude/DeepSeek Review：
+>
+> - `docs/reports/voting_gating_report.md`
+> - `outputs/reports/voting_gating_*.npy`
+> - `outputs/figures/voting_gating_*.pdf`
+> - `src/ble_analysis/consensus_gating.py`
+> - git diff 摘要
