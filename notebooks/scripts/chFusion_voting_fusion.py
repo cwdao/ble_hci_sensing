@@ -40,7 +40,9 @@ from ble_analysis.segments import BreathMetricParams, FilterParams
 from ble_analysis.voting_fusion import (
     VOTING_METHOD_SPECS,
     build_voting_leaderboard_rows,
+    compute_channel_bpm_persistence,
     compute_cross_domain_aggregate,
+    plot_voting_diagnostics,
     run_voting_fusion_benchmark,
 )
 
@@ -162,7 +164,7 @@ print(f"Saved: {cross_path}")
 plt.close(fig)
 
 # %%
-# Diagnostics: per-tone BPM scatter vs GT (091339, one segment)
+# Diagnostics: per-tone BPM + multi-method trajectories (091339, seg 3)
 diag_scenario = "cs_091339"
 bench = results_by_scenario[diag_scenario]
 results = bench["results"]
@@ -171,52 +173,36 @@ row = results.get(seg_name)
 if row and "t0_v2_eta_weighted" in row:
     block = row["t0_v2_eta_weighted"]
     gt = row["bpm_gt"]
-    tone_bpms = block.get("bpm_per_tone_per_window", [])
-    conf = block.get("confident_per_window", [])
-    voted = block.get("bpm_per_window", [])
+    ch_ids = block.get("tone_channel_ids")
+    if not ch_ids:
+        ref_seg = bench["multichannel_by_var"]["remote_amplitudes"].get(seg_name)
+        if ref_seg:
+            ch_ids = sorted(
+                ref_seg["channels"].keys(),
+                key=lambda c: (isinstance(c, str), str(c)),
+            )
 
-    fig, axes = plt.subplots(1, 3, figsize=(14, 4))
-    # Panel 1: per-tone BPM vs window for first 3 windows
-    for wi in range(min(3, len(tone_bpms))):
-        tb = tone_bpms[wi]
-        axes[0].scatter(
-            np.full(len(tb), wi) + np.random.uniform(-0.1, 0.1, len(tb)),
-            tb,
-            s=8,
-            alpha=0.5,
-            label=f"win {wi}",
+    plot_voting_diagnostics(
+        row,
+        seg_name=seg_name,
+        gt=gt,
+        tone_channel_ids=ch_ids or [],
+        figures_dir=FIGURES_DIR,
+        scenario_tag=load_scenario(diag_scenario, project_root=project_root).tag,
+        show=False,
+        save=True,
+    )
+
+    if ch_ids:
+        pers = compute_channel_bpm_persistence(block, ch_ids)
+        print(
+            f"\nChannel BPM persistence (seg {seg_name}): "
+            f"mean |ΔBPM| across consecutive windows = {pers['mean_step_l1']:.2f} BPM "
+            f"({pers['n_channels']} tones, {pers['n_windows']} windows)"
         )
-        if wi < len(voted) and np.isfinite(voted[wi]):
-            axes[0].axhline(voted[wi], color="red", linestyle="--", alpha=0.4)
-    axes[0].axhline(gt, color="black", linestyle="-", linewidth=2, label=f"GT={gt}")
-    axes[0].set_xlabel("Window index (sample)")
-    axes[0].set_ylabel("Per-tone BPM")
-    axes[0].set_title(f"Per-tone BPM scatter (seg {seg_name})")
-    axes[0].legend(fontsize=7)
-
-    # Panel 2: confidence distribution
-    conf_frac = 1.0 - block.get("low_confidence_frac", 0.0)
-    axes[1].bar(["confident", "low-conf"], [conf_frac, 1 - conf_frac], color=["green", "orange"])
-    axes[1].set_ylabel("Fraction of windows")
-    axes[1].set_title("Voting confidence (T0-V2)")
-
-    # Panel 3: histogram example (last window)
-    if tone_bpms:
-        tb = tone_bpms[-1]
-        valid = tb[np.isfinite(tb)]
-        axes[2].hist(valid, bins=np.arange(5.5, 31.5, 1.0), edgecolor="black", alpha=0.7)
-        axes[2].axvline(gt, color="black", linestyle="-", label=f"GT={gt}")
-        if len(voted) and np.isfinite(voted[-1]):
-            axes[2].axvline(voted[-1], color="red", linestyle="--", label=f"voted={voted[-1]:.1f}")
-        axes[2].set_xlabel("BPM")
-        axes[2].set_ylabel("Tone count")
-        axes[2].set_title("Last-window BPM histogram")
-        axes[2].legend(fontsize=8)
-
-    plt.tight_layout()
-    diag_path = FIGURES_DIR / "voting_fusion_diagnostics.pdf"
-    fig.savefig(diag_path, bbox_inches="tight")
-    print(f"Saved: {diag_path}")
-    plt.close(fig)
+        print(
+            "Panel 1 overlays (cross-domain rank): T0-V2, T0-V3 (best voting), "
+            "Modal top2, Single Remote, T3 hybrid"
+        )
 
 print("\n=== Done ===")

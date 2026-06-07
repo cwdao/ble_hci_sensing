@@ -49,6 +49,15 @@ VOTING_METHOD_SPECS: Tuple[Tuple[str, str, str], ...] = (
     ("T3 Voting+Modal hybrid", "t3_voting_modal_hybrid", "crimson"),
 )
 
+# Methods overlaid on diagnostic panel 1 (label, result_key, color, linestyle)
+DIAGNOSTIC_METHOD_OVERLAYS: Tuple[Tuple[str, str, str, str], ...] = (
+    ("T0-V2 η-vote", "t0_v2_eta_weighted", "red", "-"),
+    ("T0-V3 η·ρ-vote", "t0_v3_eta_rho_weighted", "darkorange", "-"),
+    ("Modal top2", "b2_modal_top2_equal", "steelblue", "--"),
+    ("Single Remote", "b0_single_remote", "seagreen", "--"),
+    ("T3 hybrid", "t3_voting_modal_hybrid", "mediumpurple", "-."),
+)
+
 __all__ = [
     "VotingConfig",
     "VotingStrategy",
@@ -61,6 +70,8 @@ __all__ = [
     "run_voting_fusion_benchmark",
     "build_voting_leaderboard_rows",
     "compute_cross_domain_aggregate",
+    "plot_voting_diagnostics",
+    "DIAGNOSTIC_METHOD_OVERLAYS",
 ]
 
 
@@ -336,6 +347,7 @@ def estimate_voting_segment_methods(
                 "confident_per_window": confident_flags,
                 "low_confidence_frac": 1.0 - n_conf / max(len(starts), 1),
                 "bpm_per_tone_per_window": tone_bpms_all,
+                "tone_channel_ids": list(ch_list),
             },
         }
 
@@ -687,3 +699,194 @@ def compute_cross_domain_aggregate(
     for rank, row in enumerate(agg, start=1):
         row["rank"] = rank
     return agg
+
+
+def _segment_method_bpm_series(segment_row: dict, method_key: str) -> Optional[np.ndarray]:
+    """Window-level BPM array for one method on one segment."""
+    block = segment_row.get(method_key)
+    if not isinstance(block, dict):
+        return None
+    arr = block.get("bpm_per_window")
+    if arr is None:
+        return None
+    return np.asarray(arr, dtype=float)
+
+
+def plot_voting_diagnostics(
+    segment_row: dict,
+    *,
+    seg_name: str,
+    gt: float,
+    tone_channel_ids: Sequence[Any],
+    figures_dir,
+    scenario_tag: str = "091339",
+    per_tone_method_key: str = "t0_v2_eta_weighted",
+    overlay_methods: Optional[Sequence[Tuple[str, str, str, str]]] = None,
+    show: bool = False,
+    save: bool = True,
+):
+    """Three-panel voting diagnostics.
+
+    Panel 1 scatter: per-tone BPM from ``per_tone_method_key`` (default T0-V2).
+    Colored lines: window-level BPM trajectories for ``overlay_methods``.
+    """
+    import matplotlib.pyplot as plt
+    from pathlib import Path
+
+    block = segment_row.get(per_tone_method_key, {})
+    if not isinstance(block, dict):
+        block = segment_row
+
+    tone_bpms = block.get("bpm_per_tone_per_window", [])
+    overlays = overlay_methods or DIAGNOSTIC_METHOD_OVERLAYS
+    ch_ids = list(tone_channel_ids)
+    n_ch = len(ch_ids)
+    cmap = plt.cm.twilight
+    norm = plt.Normalize(vmin=0, vmax=max(n_ch - 1, 1))
+
+    n_win = len(tone_bpms)
+    fig = plt.figure(figsize=(17, 5.5))
+    gs = fig.add_gridspec(1, 3, width_ratios=[2.4, 0.85, 1.0], wspace=0.30)
+    ax0 = fig.add_subplot(gs[0, 0])
+    ax1 = fig.add_subplot(gs[0, 1])
+    ax2 = fig.add_subplot(gs[0, 2])
+
+    # --- Panel 1: per-tone scatter (T0-V2) + multi-method BPM trajectories ---
+    bpm_matrix = np.full((n_win, n_ch), np.nan, dtype=float)
+    for wi, tb in enumerate(tone_bpms):
+        tb = np.asarray(tb, dtype=float)
+        n = min(len(tb), n_ch)
+        bpm_matrix[wi, :n] = tb[:n]
+
+    for ci in range(n_ch):
+        color = cmap(norm(ci))
+        ys = bpm_matrix[:, ci]
+        xs = np.arange(n_win, dtype=float)
+        valid = np.isfinite(ys)
+        if np.sum(valid) == 0:
+            continue
+        ax0.scatter(xs[valid], ys[valid], c=[color], s=8, alpha=0.55, linewidths=0)
+        for wi in range(n_win - 1):
+            if np.isfinite(ys[wi]) and np.isfinite(ys[wi + 1]):
+                ax0.plot(
+                    [wi, wi + 1],
+                    [ys[wi], ys[wi + 1]],
+                    color=color,
+                    alpha=0.10,
+                    linewidth=0.5,
+                    zorder=0,
+                )
+
+    last_window_bpms: List[Tuple[str, float, str]] = []
+    for label, key, color, ls in overlays:
+        series = _segment_method_bpm_series(segment_row, key)
+        if series is None or len(series) == 0:
+            continue
+        win_x = np.arange(len(series))
+        valid = np.isfinite(series)
+        if np.any(valid):
+            ax0.plot(
+                win_x[valid],
+                series[valid],
+                color=color,
+                linewidth=1.6 if key == per_tone_method_key else 1.3,
+                linestyle=ls,
+                alpha=0.92,
+                label=label,
+                zorder=6,
+            )
+        if len(series) and np.isfinite(series[-1]):
+            last_window_bpms.append((label, float(series[-1]), color))
+
+    ax0.axhline(gt, color="black", linewidth=2, label=f"GT={gt:.2f}", zorder=7)
+    ax0.set_xlabel("Sliding window index")
+    ax0.set_ylabel("BPM")
+    ax0.set_title(
+        f"Per-tone BPM (scatter, {per_tone_method_key}) + method trajectories\n"
+        f"seg {seg_name}: {n_win} windows × {n_ch} tones | color = tone index"
+    )
+    ax0.legend(loc="upper left", bbox_to_anchor=(1.02, 1.0), fontsize=7, framealpha=0.9)
+    ax0.grid(True, alpha=0.2)
+
+    sm = plt.cm.ScalarMappable(cmap=cmap, norm=norm)
+    sm.set_array([])
+    cbar = fig.colorbar(sm, ax=ax0, fraction=0.022, pad=0.18)
+    cbar.set_label("Tone index")
+
+    # --- Panel 2: T0-V2 voting confidence ---
+    conf_block = segment_row.get(per_tone_method_key, block)
+    conf_frac = 1.0 - conf_block.get("low_confidence_frac", 0.0)
+    ax1.bar(["confident", "low-conf"], [conf_frac, 1 - conf_frac], color=["green", "orange"])
+    ax1.set_ylabel("Fraction of windows")
+    ax1.set_title("Voting confidence\n(T0-V2 only)")
+    ax1.set_ylim(0, 1)
+
+    # --- Panel 3: T0-V2 per-tone histogram + all methods last-window BPM ---
+    if tone_bpms:
+        tb = np.asarray(tone_bpms[-1], dtype=float)
+        valid = tb[np.isfinite(tb)]
+        ax2.hist(valid, bins=np.arange(5.5, 31.5, 1.0), edgecolor="black", alpha=0.65, label="T0-V2 tones")
+        ax2.axvline(gt, color="black", linestyle="-", linewidth=2, label=f"GT={gt:.2f}")
+        for label, bpm, color in last_window_bpms:
+            ax2.axvline(
+                bpm,
+                color=color,
+                linestyle="--",
+                linewidth=1.2,
+                alpha=0.85,
+                label=f"{label}={bpm:.1f}",
+            )
+        ax2.set_xlabel("BPM")
+        ax2.set_ylabel("Tone count")
+        ax2.set_title("Last window: tone histogram + method BPM")
+        ax2.legend(fontsize=6.5, loc="upper right")
+
+    fig.suptitle(
+        f"Voting diagnostics — cs_{scenario_tag} / seg {seg_name}",
+        fontsize=11,
+        y=1.01,
+    )
+    fig.subplots_adjust(top=0.90, wspace=0.38, right=0.88)
+
+    diag_path = Path(figures_dir) / "voting_fusion_diagnostics.pdf"
+    if save:
+        fig.savefig(diag_path, bbox_inches="tight")
+        print(f"Saved: {diag_path}")
+    if show:
+        plt.show()
+    else:
+        plt.close(fig)
+    return diag_path
+
+
+def compute_channel_bpm_persistence(
+    block: dict,
+    tone_channel_ids: Sequence[Any],
+) -> dict:
+    """Per-channel BPM stability across consecutive windows (L1 step mean)."""
+    tone_bpms = block.get("bpm_per_tone_per_window", [])
+    n_ch = len(tone_channel_ids)
+    n_win = len(tone_bpms)
+    if n_win < 2 or n_ch == 0:
+        return {"mean_step_l1": np.nan, "per_channel_mean_step": []}
+
+    matrix = np.full((n_win, n_ch), np.nan)
+    for wi, tb in enumerate(tone_bpms):
+        tb = np.asarray(tb, dtype=float)
+        n = min(len(tb), n_ch)
+        matrix[wi, :n] = tb[:n]
+
+    per_ch_steps: List[float] = []
+    for ci in range(n_ch):
+        ys = matrix[:, ci]
+        diffs = np.abs(np.diff(ys))
+        valid = diffs[np.isfinite(diffs)]
+        if valid.size:
+            per_ch_steps.append(float(np.mean(valid)))
+
+    return {
+        "mean_step_l1": float(np.mean(per_ch_steps)) if per_ch_steps else np.nan,
+        "per_channel_mean_step": per_ch_steps,
+        "n_windows": n_win,
+        "n_channels": n_ch,
+    }
