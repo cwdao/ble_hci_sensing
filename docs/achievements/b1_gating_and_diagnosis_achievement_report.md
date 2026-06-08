@@ -1,5 +1,7 @@
 # B1 联合门控与 Vote→Equal 机制诊断 — 成果汇报
 
+> **文档性质**：Cursor Composer 底稿（非正式成果汇报）  
+> **说明**：由执行 Agent 在未经 Achievement Report Mode 定稿前生成，供 Claude/DeepSeek 或用户改写；请勿与 Claude 正式成果汇报等同。  
 > **面向**：人（研究员 / 合作者）  
 > **来源**：[`b1_gating_and_diagnosis_plan.md`](../plans/b1_gating_and_diagnosis_plan.md) → [`b1_gating_and_diagnosis_report.md`](../reports/b1_gating_and_diagnosis_report.md)  
 > **日期**：2026-06-08  

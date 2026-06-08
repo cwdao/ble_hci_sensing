@@ -564,6 +564,9 @@ docs/plans/{next_topic}_plan.md
 | 风格 | 模板化、checklist | 叙事性、论证性 |
 | 图表 | 列出路径 | 内嵌 `![]()` 引用 |
 | 结论 | 分级标签 | 逐假设讨论 + 部署建议 |
+| **默认作者** | **Cursor Composer（执行 Agent）** | **Claude/DeepSeek（Achievement Report Mode）** |
+
+**Cursor Composer 边界**：除非用户**明确允许**撰写成果汇报，执行 Agent **不得**产出正式 `docs/achievements/{topic}_achievement_report.md`。若用户要求先有一版可读材料，Composer 仅可交付标注为 **「Cursor Composer 底稿（非正式成果汇报）」** 的底稿，供本 Mode 重写定稿。
 
 ### 10.2 输入
 

@@ -75,6 +75,7 @@ alwaysApply: false
 - 不硬编码特定场景、帧 index、标签或结果。
 - 不把未验证方案标记为 recommended。
 - 不把单场景成功写成全局结论。
+- **不写正式成果汇报**（`docs/achievements/{topic}_achievement_report.md`），除非用户**明确允许**或**明确要求**生成/撰写成果汇报。正式成果汇报默认由 Claude/DeepSeek **Achievement Report Mode** 产出。
 
 如果 plan 不可执行，必须：
 
@@ -161,7 +162,22 @@ outputs/figures/{topic}_*.png
 docs/reports/{topic}_report.md
 ```
 
-### 4.5 更新后的 plan
+### 4.5 成果汇报（默认不做）
+
+```text
+docs/achievements/{topic}_achievement_report.md
+```
+
+**默认禁止**由执行 Agent 撰写正式成果汇报。以下规则必须遵守：
+
+1. **除非用户明确允许**，不得创建或更新 `docs/achievements/*_achievement_report.md`。
+2. 若用户仅要求「同步到 plan / 方便 Review / 先写一版给人看的材料」，可交付 **底稿**，但必须：
+   - 文件名仍放 `docs/achievements/`，或在验证报告末尾增「成果汇报底稿」节；
+   - 文首 `> **文档性质**：Cursor Composer 底稿（非正式成果汇报）`；
+   - 正文说明：正式版应在 Claude/DeepSeek **Achievement Report Mode** 中重写或定稿。
+3. 底稿不得冒充 Claude 成果汇报；不得删除「底稿」标注后直接 commit 为正式版，除非用户确认。
+
+### 4.6 更新后的 plan
 
 ```text
 docs/plans/{topic}_plan.md
