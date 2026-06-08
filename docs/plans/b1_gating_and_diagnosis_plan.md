@@ -348,7 +348,20 @@ def per_modal_voting_spectrum_variant(
 
 ## 9. 验证状态
 
-状态：**待实现**
+状态：**已完成**
+
+| 字段 | 内容 |
+|------|------|
+| **验证状态** | 已完成（P0：G4-B1 v1–v4、D1–D3、G5-B1） |
+| **脚本** | `notebooks/scripts/chFusion_b1_gating_diagnosis.py` |
+| **模块** | `src/ble_analysis/b1_gating_diagnosis.py`, `src/ble_analysis/consensus_gating.py` |
+| **数值结果** | `outputs/reports/b1_gating_diagnosis_*.npy` |
+| **图表** | `outputs/figures/b1_gating_*.png`, `outputs/figures/b1_diag_*.png` |
+| **报告** | `docs/reports/b1_gating_and_diagnosis_report.md` |
+
+**结论摘要**：G4-B1-v2 跨域 8.05% 为当前最优，优于 B1/G4；H2（Voting 谱更相似）已验证；H3/G5-B1 未证实；102621 仍适合 G4。
+
+**遗留问题**：102621 上 v2 弱于 G4；091339 退化根因待查；场景自适应门控需新 plan。
 
 ---
 

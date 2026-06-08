@@ -47,6 +47,7 @@ __all__ = [
     "compute_bimodality_score",
     "compute_tone_persistence",
     "compute_gating_signals",
+    "gate_three_candidates",
     "apply_gating_segment",
     "run_gating_benchmark",
     "build_gating_leaderboard_rows",
@@ -169,6 +170,75 @@ def _adaptive_delta(config: GatingConfig, eta_vote: float, eta_modal: float) -> 
         config.delta_bpm_high_eta
         + (config.delta_bpm_low_eta - config.delta_bpm_high_eta) * (1.0 - scale)
     )
+
+
+def gate_three_candidates(
+    bpm_b1: float,
+    bpm_vote: float,
+    bpm_modal: float,
+    bpm_single: float,
+    *,
+    delta: float = 3.0,
+    variant: str = "v1",
+) -> Tuple[float, str]:
+    """Three-candidate gating (B1, T0-V3 vote, Modal top2) with Single fallback.
+
+    Returns ``(bpm, decision_tag)``.
+    """
+    candidates = {
+        "vote": float(bpm_vote),
+        "modal": float(bpm_modal),
+        "b1": float(bpm_b1),
+    }
+    finite = {k: v for k, v in candidates.items() if np.isfinite(v)}
+
+    if variant == "v4":
+        a, b = finite.get("b1"), finite.get("modal")
+        if a is None and b is None:
+            return float(bpm_single), "fallback_single"
+        if a is None:
+            return b, "modal_only"
+        if b is None:
+            return a, "b1_only"
+        if abs(a - b) <= delta:
+            return (a + b) / 2.0, "b1_modal_consensus"
+        return float(bpm_single), "fallback_single"
+
+    if len(finite) == 0:
+        return float(bpm_single), "fallback_single"
+    if len(finite) == 1:
+        key = next(iter(finite))
+        return finite[key], f"{key}_only"
+
+    keys = list(finite.keys())
+    pairs: List[Tuple[str, str, float]] = []
+    for i in range(len(keys)):
+        for j in range(i + 1, len(keys)):
+            ki, kj = keys[i], keys[j]
+            pairs.append((ki, kj, abs(finite[ki] - finite[kj])))
+
+    if variant == "v2":
+        pairs.sort(key=lambda x: x[2])
+        k1, k2, dist = pairs[0]
+        if dist <= delta:
+            return (finite[k1] + finite[k2]) / 2.0, f"{k1}_{k2}_top2"
+        return float(bpm_single), "fallback_single"
+
+    # v1: full G4-style three-candidate rules; v3: fallback to B1 instead of Single
+    all_close = len(finite) == 3 and all(p[2] <= delta for p in pairs)
+    if all_close:
+        return (
+            (finite["vote"] + finite["modal"] + finite["b1"]) / 3.0,
+            "triple_consensus",
+        )
+
+    for k1, k2, dist in sorted(pairs, key=lambda x: (x[2], x[0])):
+        if dist <= delta:
+            return (finite[k1] + finite[k2]) / 2.0, f"{k1}_{k2}_consensus"
+
+    if variant == "v3" and np.isfinite(bpm_b1):
+        return float(bpm_b1), "b1_fallback"
+    return float(bpm_single), "fallback_single"
 
 
 def compute_bimodality_score(
