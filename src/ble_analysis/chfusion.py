@@ -36,6 +36,8 @@ Fusion (doc §1.4 / chfusion_q_energy_peak.md)::
 
 from __future__ import annotations
 
+import hashlib
+import json
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Dict, List, Literal, Optional, Sequence, Tuple
@@ -409,6 +411,33 @@ def _fuse_weighted_spectrum(
     return _bpm_from_fused_spectrum(fused, band_freqs, cfg)
 
 
+def _make_filter_cache_key(
+    frames,
+    segment_config: Dict[str, dict],
+    variable: str,
+    filter_params: Optional[FilterParams],
+) -> str:
+    """Deterministic short hash for frame data + config + variable + filter params."""
+    fp = filter_params or FilterParams()
+    # Fingerprint frames via first 5 timestamps + total count + channel count
+    ts_sample = []
+    for i, f in enumerate(frames):
+        if i >= 5:
+            break
+        ts_sample.append(str(f.get("timestamp", "")))
+    n_frames = len(frames)
+    n_channels = len(get_available_channels(frames))
+    data_fp = "|".join(ts_sample) + f"|n={n_frames}|ch={n_channels}"
+    # Serialize configs deterministically
+    cfg_str = json.dumps(segment_config, sort_keys=True, default=str)
+    fp_str = repr(
+        (fp.median_window, fp.highpass_cutoff, fp.highpass_order,
+         fp.bandpass_lowcut, fp.bandpass_highcut, fp.bandpass_order)
+    )
+    key_str = f"{data_fp}|{cfg_str}|{variable}|{fp_str}"
+    return hashlib.md5(key_str.encode()).hexdigest()[:16]
+
+
 def run_multichannel_segment_filtering(
     frames,
     segment_config: Dict[str, dict],
@@ -416,12 +445,38 @@ def run_multichannel_segment_filtering(
     *,
     filter_params: Optional[FilterParams] = None,
     verbose: bool = True,
+    cache_dir: Optional[str] = None,
 ) -> Tuple[Dict[str, Optional[dict]], float]:
     """Extract and filter **all channels** for one signal variable per segment.
 
     For ``phases``, raw series are **unwrapped** before median/highpass/bandpass.
     Only the requested ``variable`` is extracted (no separate remote/local phase).
+
+    If ``cache_dir`` is provided, filtered results are cached to disk as
+    ``{cache_dir}/{hash}_{variable}_filtered.npy`` and reused on subsequent
+    calls with identical inputs.
     """
+    # --- cache lookup ---
+    if cache_dir is not None:
+        cache_path = Path(cache_dir)
+        cache_path.mkdir(parents=True, exist_ok=True)
+        cache_key = _make_filter_cache_key(frames, segment_config, variable, filter_params)
+        cache_file = cache_path / f"{cache_key}_{variable}_filtered.npy"
+        if cache_file.exists():
+            try:
+                cached = np.load(cache_file, allow_pickle=True).item()
+                if verbose:
+                    tag = _variable_display_name(variable)
+                    n_ok = sum(1 for v in cached["out"].values() if v is not None)
+                    print(
+                        f"✓ [{tag}] 缓存命中 {n_ok}/{len(segment_config)} 段 | "
+                        f"{len(get_available_channels(frames))} 信道 (已缓存)"
+                    )
+                return cached["out"], cached["fs"]
+            except (ValueError, KeyError, OSError):
+                if verbose:
+                    print(f"⚠ 缓存文件损坏，重新计算: {cache_file.name}")
+
     fs = estimate_sampling_rate_from_frames(frames)
     fp = filter_params or FilterParams()
     min_points = max(fp.median_window, 20)
@@ -480,6 +535,15 @@ def run_multichannel_segment_filtering(
             f"✓ [{tag}] 多信道滤波 {n_ok}/{len(segment_config)} 段 | "
             f"{len(channels)} 信道 | fs≈{fs:.2f} Hz"
         )
+
+    # --- cache save ---
+    if cache_dir is not None:
+        try:
+            np.save(cache_file, {"out": out, "fs": fs}, allow_pickle=True)
+        except OSError:
+            if verbose:
+                print(f"⚠ 缓存写入失败: {cache_file}")
+
     return out, fs
 
 

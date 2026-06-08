@@ -611,6 +611,7 @@ def run_gating_benchmark(
     config: Optional[ChFusionConfig] = None,
     plan2_config: Optional[Plan2Config] = None,
     verbose: bool = True,
+    cache_dir: Optional[str] = None,
 ) -> dict:
     """End-to-end gating benchmark: baselines + T0-V3 + G1–G6."""
     cfg = config or ChFusionConfig()
@@ -623,7 +624,8 @@ def run_gating_benchmark(
     fs = None
     for variable in MODAL_VOTING_VARIABLES:
         mc, fs = run_multichannel_segment_filtering(
-            frames, segment_config, variable=variable, filter_params=fp, verbose=verbose
+            frames, segment_config, variable=variable, filter_params=fp, verbose=verbose,
+            cache_dir=cache_dir,
         )
         multichannel_by_var[variable] = mc
 

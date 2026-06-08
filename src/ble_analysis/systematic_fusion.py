@@ -597,6 +597,7 @@ def run_systematic_fusion_benchmark(
     config: Optional[ChFusionConfig] = None,
     plan2_config: Optional[Plan2Config] = None,
     verbose: bool = True,
+    cache_dir: Optional[str] = None,
 ) -> dict:
     """Full systematic fusion benchmark: new methods + baselines."""
     cfg = config or ChFusionConfig()
@@ -608,7 +609,8 @@ def run_systematic_fusion_benchmark(
     multichannel_by_var: Dict[str, Dict[str, Optional[dict]]] = {}
     for variable in MODAL_VOTING_VARIABLES:
         mc, _fs = run_multichannel_segment_filtering(
-            frames, segment_config, variable=variable, filter_params=fp, verbose=verbose
+            frames, segment_config, variable=variable, filter_params=fp, verbose=verbose,
+            cache_dir=cache_dir,
         )
         multichannel_by_var[variable] = mc
 
@@ -632,6 +634,7 @@ def run_systematic_fusion_benchmark(
         config=cfg,
         plan2_config=p2,
         verbose=verbose,
+        cache_dir=cache_dir,
     )
     gating_bench = run_gating_benchmark(
         frames,
@@ -641,6 +644,7 @@ def run_systematic_fusion_benchmark(
         config=cfg,
         plan2_config=p2,
         verbose=verbose,
+        cache_dir=cache_dir,
     )
     phase_baselines = estimate_segment_bpm_methods(
         multichannel_by_var["phases"],

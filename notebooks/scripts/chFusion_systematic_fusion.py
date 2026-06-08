@@ -31,6 +31,7 @@ _env = init_notebook(project_root)
 project_root = _env["project_root"]
 FIGURES_DIR = _env["FIGURES_DIR"]
 REPORTS_DIR = _env["REPORTS_DIR"]
+CACHE_DIR = str(project_root / "outputs" / "cache")
 
 # %%
 from ble_analysis.chfusion import ChFusionConfig, Plan2Config, _overall_rel_error
@@ -75,6 +76,7 @@ for scenario_id in SCENARIO_IDS:
         config=chfusion_config,
         plan2_config=plan2_config,
         verbose=True,
+        cache_dir=CACHE_DIR,
     )
     results_by_scenario[scenario_id] = bench
     tag = scenario.tag

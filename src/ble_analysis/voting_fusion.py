@@ -533,6 +533,7 @@ def run_voting_fusion_benchmark(
     config: Optional[ChFusionConfig] = None,
     plan2_config: Optional[Plan2Config] = None,
     verbose: bool = True,
+    cache_dir: Optional[str] = None,
 ) -> dict:
     """End-to-end voting fusion benchmark with Plan2 baselines."""
     from ble_analysis.chfusion import estimate_segment_bpm_methods
@@ -549,7 +550,8 @@ def run_voting_fusion_benchmark(
     fs = None
     for variable in MODAL_VOTING_VARIABLES:
         mc, fs = run_multichannel_segment_filtering(
-            frames, segment_config, variable=variable, filter_params=fp, verbose=verbose
+            frames, segment_config, variable=variable, filter_params=fp, verbose=verbose,
+            cache_dir=cache_dir,
         )
         multichannel_by_var[variable] = mc
 
