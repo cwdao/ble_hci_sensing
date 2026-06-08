@@ -47,6 +47,8 @@ __all__ = [
     "compute_bimodality_score",
     "compute_tone_persistence",
     "compute_gating_signals",
+    "compute_triplet_consensus_score",
+    "compute_per_tone_eta_stats",
     "gate_three_candidates",
     "apply_gating_segment",
     "run_gating_benchmark",
@@ -170,6 +172,74 @@ def _adaptive_delta(config: GatingConfig, eta_vote: float, eta_modal: float) -> 
         config.delta_bpm_high_eta
         + (config.delta_bpm_low_eta - config.delta_bpm_high_eta) * (1.0 - scale)
     )
+
+
+def compute_triplet_consensus_score(
+    bpm_vote: float,
+    bpm_modal: float,
+    bpm_b1: float,
+) -> float:
+    """Triplet consistency score in [0, 1]; high = one close pair, low = all dispersed."""
+    candidates = {
+        "vote": float(bpm_vote),
+        "modal": float(bpm_modal),
+        "b1": float(bpm_b1),
+    }
+    finite = {k: v for k, v in candidates.items() if np.isfinite(v)}
+    if len(finite) < 2:
+        return 0.0
+    keys = list(finite.keys())
+    diffs = sorted(
+        abs(finite[keys[i]] - finite[keys[j]])
+        for i in range(len(keys))
+        for j in range(i + 1, len(keys))
+    )
+    if not diffs:
+        return 0.0
+    return float(diffs[0] / (diffs[-1] + 1e-6))
+
+
+def compute_per_tone_eta_stats(
+    ch_list: Sequence[Any],
+    ch_map: dict,
+    variable: str,
+    st: int,
+    end: int,
+    fs: float,
+    cfg: ChFusionConfig,
+) -> Dict[str, float]:
+    """Per-window η statistics over 72 tones for one modal variable."""
+    etas: List[float] = []
+    for ch in ch_list:
+        ch_data = ch_map[ch][variable]
+        hp = ch_data["highpass_filtered"]
+        if len(hp) < end:
+            continue
+        etas.append(_energy_ratio(hp[st:end], fs, cfg))
+    arr = np.asarray(etas, dtype=float)
+    arr = arr[np.isfinite(arr)]
+    if arr.size == 0:
+        return {
+            "mean": 0.0,
+            "std": 0.0,
+            "cv": float("inf"),
+            "p10": 0.0,
+            "p50": 0.0,
+            "p90": 0.0,
+            "n_tones": 0,
+        }
+    mean = float(np.mean(arr))
+    std = float(np.std(arr))
+    cv = float(std / (mean + cfg.eps)) if mean > cfg.eps else float("inf")
+    return {
+        "mean": mean,
+        "std": std,
+        "cv": cv,
+        "p10": float(np.percentile(arr, 10)),
+        "p50": float(np.percentile(arr, 50)),
+        "p90": float(np.percentile(arr, 90)),
+        "n_tones": int(arr.size),
+    }
 
 
 def gate_three_candidates(

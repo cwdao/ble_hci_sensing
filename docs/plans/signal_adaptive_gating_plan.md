@@ -463,7 +463,18 @@ P1 的核心输入是三个候选方法在 102621 上的**窗级 BPM 序列**（
 
 ## 9. 验证状态
 
-状态：**待实现**
+状态：**已完成**
+
+| 项目 | 实际产出 |
+|------|----------|
+| **验证状态** | 已完成（P1/P2/P3 全部执行；无 SA 变体跨域 < B1） |
+| 报告 | `docs/reports/signal_adaptive_gating_report.md` |
+| 脚本 | `notebooks/scripts/chFusion_signal_adaptive_gating.py` |
+| 模块 | `src/ble_analysis/signal_adaptive_gating.py` |
+| 跨域结果 | SA-v2 10.66% > B1 8.45%；SA-v1 11.42% |
+| 图表 | `outputs/figures/sa_*.png` |
+
+**结论摘要**：去除硬编码 Remote fallback 的 SA 门控未能超越 B1；P1 在 102621 上 b1_disruptor=0%（H1 未证实）；P3 η 分组 error 非单调（H3 部分/未证实）；best-single 选道跨场景显著不同（验证 remote 非全局最优）。
 
 ---
 
