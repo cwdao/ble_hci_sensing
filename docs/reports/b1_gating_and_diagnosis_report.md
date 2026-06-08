@@ -153,3 +153,116 @@ python notebooks/scripts/chFusion_b1_gating_diagnosis.py
 | 跨域汇总 | `outputs/reports/b1_gating_diagnosis_cross_domain.npy` |
 | 图表 | `outputs/figures/b1_gating_*.png`, `outputs/figures/b1_diag_*.png` |
 | 本报告 | `docs/reports/b1_gating_and_diagnosis_report.md` |
+
+---
+
+## 附录 A：方法代号与信道/模态融合对照
+
+本附录说明报告中各方法代号的 **信道融合** 与 **模态融合** 含义，便于 Review 与成果汇报引用。
+
+### A.1 两层（+ 可选门控）结构
+
+```text
+72 信道 ──[信道融合]──► 每模态一条谱/BPM ──[模态融合]──► 候选 BPM
+                                              ↑
+                              （可选）窗级门控在多个候选 BPM 间选择
+```
+
+三模态固定为：**remote 幅值 / local 幅值 / 总相位**（`remote_amplitudes`, `local_amplitudes`, `phases`）。
+
+### A.2 信道融合（Channel）策略
+
+| 代号 | 名称 | 做法 |
+|------|------|------|
+| **Single** | 单信道 | 每模态选 **η 最大** 的一个信道，只用它的谱/BPM |
+| **Uniform** | 均匀融合 | 每模态 **72 信道谱等权平均** |
+| **Vote (T0-V3)** | Per-tone 投票 | 每个 tone 先算 BPM + η·ρ 权重 → **直方图投票**得 BPM；谱侧用 conf 加权平均（方案 B） |
+| **VoteP** | 持久性投票 | 在 Vote 基础上去掉 **跨窗 BPM 跳变大** 的不稳定 tone，再投票 |
+| **Single-best per modal** | Modal top2 的信道侧 | 每个模态各自选 **能量比最高信道**（Plan2 Single），不做跨信道融合 |
+
+### A.3 模态融合（Modal）策略
+
+| 代号 | 名称 | 做法 |
+|------|------|------|
+| **Equal** | 等权 | remote / local / phase 三条谱 **1:1:1 融合** |
+| **Top2** | 模态 top2 | 按各模态 score（η 或 conf）排序，**保留 top2 模态等权融合**，踢掉最弱模态 |
+| **η-weight** | 能量比加权 | 三模态按 **η score 加权** 融合谱 |
+| **Phase only** | 仅相位 | 只用 phase 模态（A 组实验） |
+
+### A.4 Systematic 系列（Block A/B/C）
+
+| 代号 | 全称 | 信道融合 | 模态融合 |
+|------|------|----------|----------|
+| **A1** | Phase η·ρ voting | Vote（仅 phase） | Phase only |
+| **A2** | Phase persistence voting | VoteP（仅 phase） | Phase only |
+| **B1** | **Vote→Equal modal** | **每模态 Vote → 一条谱** | **三模态 Equal** |
+| **B2** | Vote→η modal | 每模态 Vote → 谱 | 三模态 η 加权 |
+| **B3** | **Vote→Top2 modal** | **每模态 Vote → 谱** | **三模态 Top2** |
+| **B4** | VoteP→Top2 modal | 每模态 VoteP → 谱 | Top2 |
+| **C1** | Uniform→Top2 modal | 每模态 Uniform 平均谱 | Top2 |
+| **C2** | Uniform→η modal | 每模态 Uniform | η 加权 |
+
+> **命名注意**：Systematic **B1**（`b1_vote_modal_equal`）与 Baseline **B1 Uniform Remote**（`b1_uniform_remote`）是不同方法。
+
+### A.5 Baseline 对照组
+
+| 代号 | 全称 | 信道融合 | 模态融合 |
+|------|------|----------|----------|
+| **B0 Single Remote** | 单信道 remote | Single（仅 remote） | 无（单模态） |
+| **B1 Uniform Remote** | remote 均匀 | Uniform（仅 remote） | 无 |
+| **B2 Modal top2 equal** | Plan2 模态 top2 | Single-best per modal | Top2 等权 |
+| **B3 Modal η-weight** | Plan2 模态 η | Single-best per modal | η 加权 |
+| **T0-V3** | Per-Tone η·ρ vote | Vote（**仅 remote**） | 无 |
+| **T3** | Voting+Modal hybrid | Vote + Modal 混合 | 见 `voting_fusion` 模块 |
+
+### A.6 门控系列（G1–G6）
+
+门控 **不再做新的信道/模态融合**，只在每 20 s 滑窗内对已有 BPM 候选做决策：
+
+| 代号 | 候选来源 | 门控逻辑 |
+|------|----------|----------|
+| **G1–G3** | T0-V3 vs Modal top2 | 峰频差 ≤δ 则共识；否则按 conf/η 选择 |
+| **G4** | T0-V3 vs Modal top2 | 共识则平均；**全分歧 → Single Remote** |
+| **G5** | T0-V3 vs Modal top2 | voting 直方图 **双峰** 时选 modal 或 single |
+| **G6** | T0-V3 vs Modal top2 | 仅用 **BPM 稳定 tone** 重投票 |
+
+### A.7 本报告新增：G4-B1 系列
+
+在 G4 上增加第三候选 **B1（Vote→Equal modal）**：
+
+| 代号 | 三个候选 BPM | 门控差异 |
+|------|--------------|----------|
+| **G4-B1-v1** | T0-V3 / Modal top2 / **B1** | 两两或三者 BPM 差 ≤δ 则平均，否则 Single |
+| **G4-B1-v2** | 同上 | 取 **最接近的一对** 共识，否则 Single |
+| **G4-B1-v3** | 同上 | 同 v1，全分歧时 **fallback → B1** |
+| **G4-B1-v4** | **B1 vs Modal top2** | 双候选 G4，去掉 T0-V3 |
+
+各候选内部分别为：T0-V3 = remote Vote；Modal top2 = Single-best per modal + Top2；B1 = 每模态 Vote + Equal。
+
+### A.8 D3 谱构造 Ablation
+
+只改 B1/B3 内 **72 tone 谱如何合成**（信道仍为 Vote，模态仍为 Equal 或 Top2）：
+
+| 代号 | 谱构造 | 含义 |
+|------|--------|------|
+| **conf B（默认）** | conf-weighted 全谱 | 所有 tone 谱按 voting 权重加权平均 |
+| **D3-A winning-bin** | 窄带谱 | voting **最高票 bin ±2 BPM** 内 tone 平均谱 |
+| **D3-C top-K** | Top-K 平均 | voting 权重 **Top-16/24** tone 等权平均谱 |
+
+### A.9 G5-B1（091339 专项）
+
+| 步骤 | 做法 |
+|------|------|
+| 信道+模态 | 同 B1（Vote→Equal） |
+| 额外门控 | 每窗检测三模态 voting 双峰性；**剔除双峰模态** 后对剩余 Equal；多数双峰则 Single |
+
+### A.10 本报告主要方法速查
+
+```text
+B1 (8.45%)       = Vote(每模态) → Equal(三模态)
+B3 (9.92%)       = Vote(每模态) → Top2(三模态)
+G4 (8.65%)       = 窗级: T0-V3 vs Modal_top2 → 分歧则 Single
+G4-B1-v2 (8.05%) = 窗级: T0-V3 vs Modal_top2 vs B1 → 最近一对共识
+Modal top2       = Single(每模态) → Top2
+T0-V3            = Vote(仅 remote，无模态融合)
+```
