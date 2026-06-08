@@ -448,9 +448,9 @@ for seg in breath_segments:
 | 验证报告 | `docs/reports/voting_gating_report.md` |
 | 数值结果 | `outputs/reports/voting_gating_results.npy` |
 | 跨域汇总 | `outputs/reports/voting_gating_cross_domain.npy` |
-| 门控决策分布图 | `outputs/figures/voting_gating_decision_pie.pdf`（四类决策占比） |
-| 对比柱状图 | `outputs/figures/voting_gating_comparison_bars.pdf`（G1–G4 vs T0-V3 vs Modal） |
-| 方法选择准确率热力图 | `outputs/figures/voting_gating_oracle_heatmap.pdf` |
+| 门控决策分布图 | `outputs/figures/voting_gating_decision_pie.png`（四类决策占比） |
+| 对比柱状图 | `outputs/figures/voting_gating_comparison_bars.png`（G1–G4 vs T0-V3 vs Modal） |
+| 方法选择准确率热力图 | `outputs/figures/voting_gating_oracle_heatmap.png` |
 
 ---
 
@@ -523,6 +523,6 @@ for seg in breath_segments:
 >
 > - `docs/reports/voting_gating_report.md`
 > - `outputs/reports/voting_gating_*.npy`
-> - `outputs/figures/voting_gating_*.pdf`
+> - `outputs/figures/voting_gating_*.png`
 > - `src/ble_analysis/consensus_gating.py`
 > - git diff 摘要

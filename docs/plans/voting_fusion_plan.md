@@ -78,10 +78,12 @@ Deng et al. 的核心论证：
 
 ### 3.2 待测方法 T0：Per-Tone Voting BPM（纯投票）
 
+**输入变量**：`remote_amplitudes`（72 tone 的 bandpass_filtered 波形）。
+
 ```
 对每窗:
   对每个有效 tone i (1..M):
-    1. 取该 tone 的 bandpass_filtered 波形
+    1. 取该 tone 的 remote_amplitudes bandpass_filtered 波形
     2. 计算该 tone 的 η_i（从 highpass_filtered 切片）
     3. 对波形做 FFT → 呼吸频带内找 argmax 峰频 → BPM_i
   得到 {BPM_1, BPM_2, ..., BPM_M}（M ≤ 72）
@@ -102,7 +104,7 @@ Deng et al. 的核心论证：
 
 ### 3.3 待测方法 T1：Per-Tone Voting + Top-K 筛选
 
-与 T0 相同，但仅使用 **η 排序前 K 个 tone** 参与投票（K = 16, 8, 4）：
+**输入变量**：`remote_amplitudes`（与 T0 相同）。仅使用 **η 排序前 K 个 tone** 参与投票（K = 16, 8, 4）：
 
 ```
 对每窗:
@@ -116,7 +118,7 @@ Deng et al. 的核心论证：
 
 ### 3.4 待测方法 T2：Cross-Modal Voting（模态间投票）
 
-将 voting 扩展为模态间投票：
+将 voting 扩展为模态间投票。**输入变量**：每模态各自选 max-η 单 tone 的 bandpass_filtered 波形，变量分别为 `remote_amplitudes`、`local_amplitudes`、`phases`。
 
 ```
 对每窗:
@@ -134,6 +136,8 @@ Deng et al. 的核心论证：
 - T2：每模态独立 BPM → 对 3 个 BPM 值做 consensus
 
 ### 3.5 待测方法 T3：Voting + Modal 混合（融合核心候选）
+
+**输入变量**：`remote_amplitudes`、`local_amplitudes`、`phases`（三个变量各自独立做 per-tone voting，再模态间 consensus）。
 
 ```
 对每窗:
@@ -171,20 +175,20 @@ per-tone BPM 估计:
 
 执行 Agent **必须**跑齐下表方法。
 
-| 方法 ID | 说明 | 实现参考 |
-|---------|------|----------|
-| **B0** | Single Remote（max-η 单信道 BPM） | `chfusion.py` 现有 |
-| **B1** | Uniform Remote（72 tone 等权谱融合 BPM） | `chfusion.py` 现有 |
-| **B2** | Modal top2 equal（当前跨域最优） | `chFusion_plan2.py` 现有 |
-| **B3** | Modal η-weight | `chFusion_plan2.py` 现有 |
-| **T0-V1** | Per-Tone Voting — 简单直方图 | 本 plan §3.2 |
-| **T0-V2** | Per-Tone Voting — η 加权直方图 | 本 plan §3.2 |
-| **T0-V3** | Per-Tone Voting — η·ρ 联合加权 | 本 plan §3.2 |
-| **T1-K4-V2** | Top-4 tone η voting | 本 plan §3.3 |
-| **T1-K8-V2** | Top-8 tone η voting | 本 plan §3.3 |
-| **T1-K16-V2** | Top-16 tone η voting | 本 plan §3.3 |
-| **T2** | Cross-Modal Voting（3 模态 median） | 本 plan §3.4 |
-| **T3** | Voting + Modal 混合 | 本 plan §3.5 |
+| 方法 ID | 输入变量 | 说明 | 实现参考 |
+|---------|----------|------|----------|
+| **B0** | `remote_amplitudes`（max-η 单 tone） | Single Remote（max-η 单信道 BPM） | `chfusion.py` 现有 |
+| **B1** | `remote_amplitudes`（72 tone 等权） | Uniform Remote（72 tone 等权谱融合 BPM） | `chfusion.py` 现有 |
+| **B2** | `remote_amplitudes` + `local_amplitudes` + `phases`（各 max-η 单 tone） | Modal top2 equal（当前跨域最优） | `chFusion_plan2.py` 现有 |
+| **B3** | 同上 | Modal η-weight | `chFusion_plan2.py` 现有 |
+| **T0-V1** | `remote_amplitudes`（72 tone） | Per-Tone Voting — 简单直方图 | 本 plan §3.2 |
+| **T0-V2** | `remote_amplitudes`（72 tone） | Per-Tone Voting — η 加权直方图 | 本 plan §3.2 |
+| **T0-V3** | `remote_amplitudes`（72 tone） | Per-Tone Voting — η·ρ 联合加权 | 本 plan §3.2 |
+| **T1-K4-V2** | `remote_amplitudes`（Top-4 tone by η） | Top-4 tone η voting | 本 plan §3.3 |
+| **T1-K8-V2** | `remote_amplitudes`（Top-8 tone by η） | Top-8 tone η voting | 本 plan §3.3 |
+| **T1-K16-V2** | `remote_amplitudes`（Top-16 tone by η） | Top-16 tone η voting | 本 plan §3.3 |
+| **T2** | `remote_amplitudes` + `local_amplitudes` + `phases`（各 max-η 单 tone） | Cross-Modal Voting（3 模态 median） | 本 plan §3.4 |
+| **T3** | `remote_amplitudes` + `local_amplitudes` + `phases`（各 72 tone） | Voting + Modal 混合 | 本 plan §3.5 |
 
 ### 预期相对关系（研究阶段假设，可被实验推翻）
 
@@ -371,9 +375,9 @@ for seg in breath_segments:
 | 验证报告 | `docs/reports/voting_fusion_report.md` |
 | 数值结果 | `outputs/reports/voting_fusion_results.npy` |
 | 跨域汇总 | `outputs/reports/voting_fusion_cross_domain.npy` |
-| 排行榜柱状图 | `outputs/figures/voting_fusion_leaderboard.pdf` |
-| 跨域汇总图 | `outputs/figures/voting_fusion_cross_domain_aggregate_bars.pdf` |
-| Voting 诊断图 | `outputs/figures/voting_fusion_diagnostics.pdf`（per-tone BPM 散点 vs GT、置信度分布、bin 直方图示例） |
+| 排行榜柱状图 | `outputs/figures/voting_fusion_leaderboard.png` |
+| 跨域汇总图 | `outputs/figures/voting_fusion_cross_domain_aggregate_bars.png` |
+| Voting 诊断图 | `outputs/figures/voting_fusion_diagnostics.png`（per-tone BPM 散点 vs GT、置信度分布、bin 直方图示例） |
 
 ### 7.1 建议运行命令
 
@@ -431,7 +435,7 @@ python notebooks/scripts/chFusion_voting_fusion_cross_domain.py
 | **实际脚本** | `notebooks/scripts/chFusion_voting_fusion.py`、`src/ble_analysis/voting_fusion.py` |
 | **报告链接** | `docs/reports/voting_fusion_report.md` |
 | **数值结果** | `outputs/reports/voting_fusion_results.npy`、`voting_fusion_cross_domain.npy` |
-| **图表** | `outputs/figures/voting_fusion_leaderboard.pdf`、`voting_fusion_cross_domain_aggregate_bars.pdf`、`voting_fusion_diagnostics.pdf` |
+| **图表** | `outputs/figures/voting_fusion_leaderboard.png`、`voting_fusion_cross_domain_aggregate_bars.png`、`voting_fusion_diagnostics.png` |
 | **一句话结论** | T0-V3（η·ρ per-tone voting）跨域 mean **9.20%** 略优于 Modal top2 **9.45%**，但 091339 主场景未改善（13.77% vs 13.04%）；T0-V2 未达最低成功标准；不建议替换 Modal top2 为默认策略 |
 
 结论摘要：

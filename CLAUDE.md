@@ -17,6 +17,22 @@ Cursor Composer 侧定位为：
 
 ------
 
+## 项目背景速览
+
+本项目的物理和数据背景（所有模式共享）：
+
+- **BLE CS 感知原理**：72 tone IQ 测量 → 两端 PCT (Phase Correlation Term) 向量乘法抵消 CFO → 获得四种可用变量
+- **四种可用变量**：`remote_amplitudes`、`local_amplitudes`、`amplitudes`（总幅值）、`phases`（总相位，已抵消 LO 漂移）。不使用 remote/local 单端相位（含 LO 漂移，物理上不可靠）
+- **变量质量（场景依赖）**：大致趋势为 remote ≈ phase > total > local，但 remote/local 谁更优取决于具体多径环境，不同场景可能互换
+- **三个验证场景**：`cs_091339` / `cs_095806` / `cs_102621`，均为金属板脚本、不同房间布局。三场景**权重相等，不分主次**（至少目前如此）
+- **呼吸频段**：0.1–0.35 Hz（6–21 BPM）
+- **标准滑窗**：20 s 窗长 / 1 s 步长
+- **核心指标**：分段 BPM 相对误差 %（mean / std）、跨域 mean
+- **核心质量指标**：`η`（呼吸频段能量比）、`ρ`（谱峰峰度）
+- **既有方法命名**：`Single`、`Uniform`、`Modal top2`、`chFusion`、`PCA/SVD`
+
+------
+
 ## 0. 总体工作流
 
 本项目采用如下闭环：
@@ -88,6 +104,8 @@ Claude/DeepSeek 不负责：
   - `outputs/figures/`
 - 验证报告：
   - `docs/reports/{topic}_report.md`
+- 成果汇报：
+  - `docs/achievements/{topic}_achievement_report.md`
 - 报告模板：
   - `docs/templates/algorithm_validation_report.md`
 
@@ -124,10 +142,11 @@ Claude/DeepSeek 不负责：
 
 ## 3. 角色模式
 
-Claude/DeepSeek 侧有两个模式：
+Claude/DeepSeek 侧有三个模式：
 
-1. `Research Mode`
-2. `Review Mode`
+1. `Research Mode` — 读论文、设计方案、写 plan
+2. `Review Mode` — 审报告、判结论、给下一步
+3. `Achievement Report Mode` — 生成图文结合的成果汇报
 
 用户会显式指定当前模式，例如：
 
@@ -141,10 +160,13 @@ Claude/DeepSeek 侧有两个模式：
 启用 Review Mode
 ```
 
+如果用户说"提交一份给我的报告"、"生成成果汇报"，进入 `Achievement Report Mode`。
+
 如果用户没有明确指定模式，应先判断任务性质：
 
 - 如果用户要求读论文、设计方案、写 plan：进入 `Research Mode`。
 - 如果用户要求看报告、判断结论、给下一步：进入 `Review Mode`。
+- 如果用户要求生成综合性的成果汇报（图文结合、给人看的报告）：进入 `Achievement Report Mode`。
 - 如果用户要求写工程代码或运行实验：提醒用户交给 Cursor Composer 执行。
 
 ------
@@ -513,9 +535,124 @@ docs/plans/{next_topic}_plan.md
 
 ------
 
+# 成果汇报模式 (Achievement Report Mode)
+
+当用户说：
+
+- "提交一份给我的报告"
+- "生成成果汇报"
+- "写一份验证成果汇报"
+- "给我一份可以交差的报告"
+
+时，进入 Achievement Report Mode。
+
+当用户说"提交一份给我的报告"但未明确指定 topic 时，应先向用户确认是否为成果汇报类型，以及对应哪个 topic。
+
+------
+
+## 10. Achievement Report Mode 职责
+
+### 10.1 定位
+
+成果汇报面向**人（用户/上级/合作者）**，不是面向 Agent。它应当是一份**图文结合的、论证充分的 Markdown 报告**，每个观点/假设/结论都必须有图表或表格支撑。
+
+与 Cursor Composer 生成的验证报告（`docs/reports/{topic}_report.md`）的区别：
+
+| 维度 | Cursor 验证报告 | Claude 成果汇报 |
+|------|----------------|-----------------|
+| 读者 | Agent（结构化审阅） | 人（阅读与决策） |
+| 风格 | 模板化、checklist | 叙事性、论证性 |
+| 图表 | 列出路径 | 内嵌 `![]()` 引用 |
+| 结论 | 分级标签 | 逐假设讨论 + 部署建议 |
+
+### 10.2 输入
+
+- Cursor Composer 生成的验证报告：`docs/reports/{topic}_report.md`
+- 对应 plan：`docs/plans/{topic}_plan.md`
+- 数值结果：`outputs/reports/`
+- 图表：`outputs/figures/`（**仅使用 `.png` 文件**）
+- 必要时查看脚本：`notebooks/scripts/chFusion_{topic}.py`
+
+### 10.3 输出
+
+报告路径：
+
+```text
+docs/achievements/{topic}_achievement_report.md
+```
+
+图表引用必须使用相对路径（从 `docs/achievements/` 到 `outputs/figures/`）：
+
+```text
+../outputs/figures/{topic}_*.png
+```
+
+### 10.4 报告结构
+
+每份成果汇报必须包含以下章节：
+
+#### 1. 摘要
+
+- 一句话目标
+- 一句话结论
+- 关键数字（跨域 mean、最优方法、vs baseline）
+
+#### 2. 方法与实验设置
+
+- 简要方法描述（不复制 plan 全文）
+- 场景表
+- Baseline 表
+
+#### 3. 核心结果
+
+- **主结果表**（场景 × 方法矩阵）
+- **跨域汇总图**（内嵌 PNG）
+- **排行榜图**（内嵌 PNG）
+- 关键发现（每条配图或表）
+
+#### 4. 假设逐一验证
+
+对 plan 中每个假设：
+
+- 假设内容
+- 支持 / 推翻 / 部分支持
+- 证据图/表
+- 讨论
+
+#### 5. 诊断分析
+
+- 关键失效模式
+- 诊断图解读
+- 机制解释
+
+#### 6. 部署建议
+
+- 推荐方法
+- 条件与限制
+- 不推荐的方法及原因
+
+#### 7. 开放问题与下一步
+
+### 10.5 图表引用规范
+
+- **只用 PNG**，不用 PDF
+- 每个 `![]()` 必须有 alt text
+- 图后必须跟一段解读文字（不能只放图不解释）
+- 表格必须有表头和数据来源说明
+
+### 10.6 约束
+
+- 不得编造数据或图表
+- 不得把仅单场景成立的结论写成全局结论
+- 不得隐藏失败实验
+- 不确定处必须标注 `[待确认]`
+- 所有数字必须来自实际运行结果，不可估算
+
+------
+
 # Git Rules
 
-## 10. Git 角色分工
+## 12. Git 角色分工
 
 默认：
 
@@ -525,7 +662,7 @@ docs/plans/{next_topic}_plan.md
 
 ------
 
-## 11. Commit 格式
+## 13. Commit 格式
 
 阶段性成果完成后，commit 必须满足：
 
@@ -570,7 +707,7 @@ Validate chFusion eta-rho fusion
 
 # Handoff Rules
 
-## 12. Claude/DeepSeek 给 Cursor Composer 的交接
+## 14. Claude/DeepSeek 给 Cursor Composer 的交接
 
 每次 Research Mode 完成后，最后必须给用户一段简短交接说明：
 
@@ -593,7 +730,7 @@ Validate chFusion eta-rho fusion
 
 ------
 
-## 13. Cursor Composer 执行后返回给 Claude/DeepSeek 的材料
+## 15. Cursor Composer 执行后返回给 Claude/DeepSeek 的材料
 
 Review Mode 默认要求用户提供或让 Claude 读取：
 

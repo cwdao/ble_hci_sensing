@@ -129,7 +129,7 @@ BLE CS 一次测量提供 **72 信道 × 4 类观测量**：
 | Uniform Remote | 11.02 | 5.39 |
 | Single Local | 16.99 | 12.05 |
 
-图：`outputs/figures/plan2_cross_domain_aggregate_bars.pdf`
+图：`outputs/figures/plan2_cross_domain_aggregate_bars.png`
 
 ---
 
@@ -166,10 +166,10 @@ BLE CS 一次测量提供 **72 信道 × 4 类观测量**：
 - **PCA + 模态谱融合**（高通 + ch-η）优于带通单变量 PCA；**复 PCA Re(PC1)** 单场景最优但跨域不稳。
 - **已停测：** SVD Complex \|u₁\|、Remote·e^jφ、144 列 Dual-Amp 作部署路线。
 - **§8 重跑（2026-06）：** Modal 仍跨域 **9.45%**；PCA-Modal3 **top16** 为 PCA 系列最优 **10.85%**；top2 模态 PCA **未超越** Plan2 Modal。
-- **091339 诊断：** 段 2b 窗级 **100% 半频**（η-blend/Dual-Amp）；谱图见 `pca_svd_091339_worst_seg_pc1_spectrum.pdf`。
+- **091339 诊断：** 段 2b 窗级 **100% 半频**（η-blend/Dual-Amp）；谱图见 `pca_svd_091339_worst_seg_pc1_spectrum.png`。
 - **快捷脚本：** `chFusion_pca_svd_cross_domain.py`（§8）、`chFusion_pca_svd_p1_diag.py`（P1）。
 
-图：`pca_svd_102621_leaderboard_bars.pdf`、`pca_svd_cross_domain_aggregate_bars.pdf`。
+图：`pca_svd_102621_leaderboard_bars.png`、`pca_svd_cross_domain_aggregate_bars.png`。
 
 ---
 

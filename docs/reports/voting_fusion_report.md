@@ -26,10 +26,25 @@
 
 | 项目 | 内容 |
 |------|------|
-| 观测量 | `remote_amplitudes`（T0/T1 主输入）、`local_amplitudes` / `phases`（T2/T3 模态间） |
+| 观测量 | 见下方各方法变量明细 |
 | 信道融合 | Per-tone 独立 FFT 寻峰 → 直方图投票（V1 等权 / V2 η 加权 / V3 η·ρ 加权）；Top-K 筛选 K=4/8/16 |
 | 模态融合 | T2：每模态 max-η 单 tone BPM → 中位数；T3：每模态 72-tone V2 voting → η 加权中位数 |
 | 滑窗与寻峰 | 20 s 窗 / 1 s 步；呼吸带 0.1–0.35 Hz；Hanning + FFT argmax + parabolic 插值；投票 bin [6, 30] BPM / 1 BPM；τ=0.3 |
+
+### 2.1 各方法变量明细
+
+| 方法 ID | 输入变量 | 说明 |
+|---------|----------|------|
+| B0 Single Remote | `remote_amplitudes`（max-η 单 tone） | 选 η 最大 tone 做 BPM |
+| B1 Uniform Remote | `remote_amplitudes`（72 tone 等权） | 72 tone 等权谱融合后寻峰 |
+| B2 Modal top2 equal | `remote_amplitudes` + `local_amplitudes` + `phases`（各 max-η 单 tone） | top2 模态谱融合等权 |
+| B3 Modal η-weight | 同上 | top2 模态谱融合 η 加权 |
+| T0-V1/V2/V3 | `remote_amplitudes`（72 tone） | Per-tone BPM 直方图投票（V1 等权 / V2 η 加权 / V3 η·ρ 加权） |
+| T1-K4/K8/K16 | `remote_amplitudes`（Top-K tone by η） | 同上，仅前 K 个 tone 参与 V2 投票 |
+| T2 | `remote_amplitudes` + `local_amplitudes` + `phases`（各 max-η 单 tone） | 三模态各自单 tone BPM → 中位数 |
+| T3 | `remote_amplitudes` + `local_amplitudes` + `phases`（各 72 tone） | 每模态 72-tone V2 voting → 三模态 η 加权中位数 |
+
+> **关键区分**：T0-V3（跨域最优 **9.20%**）仅使用 `remote_amplitudes` 的 72 tone per-tone voting。T2/T3 使用了全部三种变量。
 
 实现与 plan 一致；未做半频/倍频谐波处理（plan §3.6 标注 `[待确认]`）。
 
@@ -85,9 +100,9 @@
 - **纯 per-tone voting（T0-V1/V2）在 091339 严重退化**（~16%），说明 72 tone 全量投票在主场景引入大量 outlier BPM，η 加权 alone 不足以抑制。
 - **Top-K 筛选（K=4/8/16）未改善、反而略恶化**跨域表现；K 越小在 091339 误差越大（K4 17.55%），与 plan 风险表一致。
 - **T3 模态内 voting + 模态间 consensus** 在 095806 表现最好（7.94%），跨域 9.70% 接近 Modal top2，结构最接近论文范式但未能稳定超越。
-- 图：`outputs/figures/voting_fusion_leaderboard.pdf`、`voting_fusion_cross_domain_aggregate_bars.pdf`、`voting_fusion_diagnostics.pdf`
+- 图：`outputs/figures/voting_fusion_leaderboard.png`、`voting_fusion_cross_domain_aggregate_bars.png`、`voting_fusion_diagnostics.png`
 
-### 4.4 诊断图解读（`voting_fusion_diagnostics.pdf`）
+### 4.4 诊断图解读（`voting_fusion_diagnostics.png`）
 
 诊断图固定取 **cs_091339 / 段 3（GT = 14.04 BPM）/ T0-V2（η 加权 per-tone voting）**，用于解释 091339 上 voting 退化的机制。三面板含义如下。
 
@@ -172,9 +187,9 @@ python notebooks/scripts/chFusion_voting_fusion.py
 | 数值报告（三场景） | `outputs/reports/voting_fusion_results.npy` |
 | 单场景缓存 | `outputs/reports/voting_fusion_{091339,095806,102621}_results.npy` |
 | 跨域汇总 | `outputs/reports/voting_fusion_cross_domain.npy` |
-| 排行榜图 | `outputs/figures/voting_fusion_leaderboard.pdf` |
-| 跨域柱状图 | `outputs/figures/voting_fusion_cross_domain_aggregate_bars.pdf` |
-| 诊断图 | `outputs/figures/voting_fusion_diagnostics.pdf` |
+| 排行榜图 | `outputs/figures/voting_fusion_leaderboard.png` |
+| 跨域柱状图 | `outputs/figures/voting_fusion_cross_domain_aggregate_bars.png` |
+| 诊断图 | `outputs/figures/voting_fusion_diagnostics.png` |
 | 本报告 | `docs/reports/voting_fusion_report.md` |
 
 ---

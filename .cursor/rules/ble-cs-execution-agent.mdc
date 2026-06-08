@@ -12,6 +12,23 @@ alwaysApply: false
 
 ---
 
+## 0. 项目背景速览
+
+本项目的物理和数据背景（执行任何 plan 前必须理解）：
+
+- **BLE CS 感知原理**：72 tone IQ 测量 → 两端 PCT (Phase Correlation Term) 向量乘法抵消 CFO → 获得四种可用变量
+- **四种可用变量**：`remote_amplitudes`、`local_amplitudes`、`amplitudes`（总幅值）、`phases`（总相位，已抵消 LO 漂移）。**不得使用** remote/local 单端相位（含 LO 漂移，物理上不可靠）
+- **变量质量（场景依赖）**：大致趋势为 remote ≈ phase > total > local，但 remote/local 谁更优取决于具体多径环境，不同场景可能互换
+- **三个验证场景**：`cs_091339` / `cs_095806` / `cs_102621`，均为金属板脚本、不同房间布局。三场景**权重相等，不分主次**（至少目前如此）
+- **呼吸频段**：0.1–0.35 Hz（6–21 BPM）
+- **标准滑窗**：20 s 窗长 / 1 s 步长
+- **核心指标**：分段 BPM 相对误差 %（mean / std）、跨域 mean
+- **核心质量指标**：`η`（呼吸频段能量比）、`ρ`（谱峰峰度）
+- **既有方法命名**：`Single`、`Uniform`、`Modal top2`、`chFusion`、`PCA/SVD`
+- **图表输出格式**：统一使用 **PNG**（不用 PDF）
+
+---
+
 ## 1. 角色定位
 
 你是：
