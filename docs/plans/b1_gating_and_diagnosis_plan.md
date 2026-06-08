@@ -358,10 +358,30 @@ def per_modal_voting_spectrum_variant(
 | **数值结果** | `outputs/reports/b1_gating_diagnosis_*.npy` |
 | **图表** | `outputs/figures/b1_gating_*.png`, `outputs/figures/b1_diag_*.png` |
 | **报告** | `docs/reports/b1_gating_and_diagnosis_report.md` |
+| **成果汇报** | `docs/achievements/b1_gating_and_diagnosis_achievement_report.md` |
 
 **结论摘要**：G4-B1-v2 跨域 8.05% 为当前最优，优于 B1/G4；H2（Voting 谱更相似）已验证；H3/G5-B1 未证实；102621 仍适合 G4。
 
 **遗留问题**：102621 上 v2 弱于 G4；091339 退化根因待查；场景自适应门控需新 plan。
+
+---
+
+## 10. 附录：方法代号与信道/模态融合对照
+
+完整对照表见验证报告 [**附录 A**](../reports/b1_gating_and_diagnosis_report.md#附录-a方法代号与信道模态融合对照) 与成果汇报 [`docs/achievements/b1_gating_and_diagnosis_achievement_report.md`](../achievements/b1_gating_and_diagnosis_achievement_report.md#附录-方法代号与信道模态融合对照)。
+
+**速查**（信道 → 模态 → 可选门控）：
+
+| 代号 | 信道融合 | 模态融合 | 门控 |
+|------|----------|----------|------|
+| B1 Vote→Equal | 每模态 Vote | 三模态 Equal | — |
+| B3 Vote→Top2 | 每模态 Vote | 三模态 Top2 | — |
+| T0-V3 | Vote（仅 remote） | 无 | — |
+| Modal top2 | Single-best per modal | Top2 | — |
+| G4 | （候选内见上） | （候选内见上） | T0-V3 vs Modal → 分歧 Single |
+| G4-B1-v2 | 同上 + B1 候选 | 同上 | 三候选中最近一对共识 |
+
+> Systematic **B1**（`b1_vote_modal_equal`）≠ Baseline **B1 Uniform Remote**（`b1_uniform_remote`）。
 
 ---
 
