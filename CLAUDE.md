@@ -587,7 +587,7 @@ docs/achievements/{topic}_achievement_report.md
 图表引用必须使用相对路径（从 `docs/achievements/` 到 `outputs/figures/`）：
 
 ```text
-../outputs/figures/{topic}_*.png
+../../outputs/figures/{topic}_*.png
 ```
 
 ### 10.4 报告结构
@@ -676,7 +676,21 @@ docs/achievements/{topic}_achievement_report.md
 - 正文中首次提到某方法时，可用 `逐模态 Voting → 三模态等权谱融合（代号 B1）` 同时给出代号；后续引用时以描述性名称为主
 - 诊断实验的方法变体（如 D3-A B1）需说明仅在信道侧或谱构造侧有何变化
 
-### 10.7 约束
+### 10.7 产出前自查
+
+成果汇报写入完成后，必须逐项确认：
+
+| # | 检查项 | 验证方式 |
+|---|--------|----------|
+| 1 | 图片路径正确 | `docs/achievements/` 下所有 `![]()` 路径必须以 `../../outputs/figures/` 开头（非 `../`） |
+| 2 | 方法名称 | 正文/表格/图标题均不得仅用代号（B1/T0-V3/G4 等），必须使用描述性名称 |
+| 3 | 数值来源 | 所有数字均来自实际 .npy 结果文件，无估算/编造 |
+| 4 | 单场景标记 | 仅在单场景有效的结论已明确标注 |
+| 5 | 图表引用 | 每个 `![]()` 有 alt text，图后有解读文字 |
+
+> 图片路径验证口诀：`docs/achievements/` → 上溯两级 `../../` 到项目根 → `outputs/figures/`
+
+### 10.8 约束
 
 - 不得编造数据或图表
 - 不得把仅单场景成立的结论写成全局结论
@@ -684,6 +698,7 @@ docs/achievements/{topic}_achievement_report.md
 - 不确定处必须标注 `[待确认]`
 - 所有数字必须来自实际运行结果，不可估算
 - 方法名称必须使用描述性名称（见 §10.6），不得仅用纯代号
+- 提交前必须完成 §10.7 自查清单
 
 ------
 
