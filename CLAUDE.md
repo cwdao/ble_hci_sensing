@@ -21,15 +21,29 @@ Cursor Composer 侧定位为：
 
 本项目的物理和数据背景（所有模式共享）：
 
-- **BLE CS 感知原理**：72 tone IQ 测量 → 两端 PCT (Phase Correlation Term) 向量乘法抵消 CFO → 获得四种可用变量
-- **四种可用变量**：`remote_amplitudes`、`local_amplitudes`、`amplitudes`（总幅值）、`phases`（总相位，已抵消 LO 漂移）。不使用 remote/local 单端相位（含 LO 漂移，物理上不可靠）
-- **变量质量（场景依赖）**：大致趋势为 remote ≈ phase > total > local，但 remote/local 谁更优取决于具体多径环境，不同场景可能互换
+### 物理层
+
+- **BLE CS 感知原理**：72 tone IQ 测量 → 两端 PCT (Phase Correction Term) 向量乘法抵消 LO 漂移 → 获得三种可用变量
+- **BLE CS 是双向测量**：一次 CS 测量分为两次独立互相测量——你先发我收（local），然后我发你收（remote）。因此 **remote 和 local 只是同一 CS 交换的两个方向，物理上完全对等**，不存在固有的质量差异。哪一方更优完全取决于具体多径环境和设备位置。
+- **可用变量（3 种，非 4 种）**：
+  | 变量 | 物理含义 | 是否使用 |
+  |------|----------|----------|
+  | `remote_amplitudes` | 对方测到本设备发出信号的 PCT 幅值 | ✅ 使用 |
+  | `local_amplitudes` | 本设备测到对方发出信号的 PCT 幅值 | ✅ 使用 |
+  | `phases` | 两端 PCT **向量相乘后**的总相位，已抵消 LO 漂移 | ✅ 使用 |
+  | `amplitudes`（总幅值）| remote × local 的合成幅值，**无独立物理意义**（双方噪声乘积） | ❌ 不使用 |
+- **为何 phases 可用**：单端 PCT 的相位含两边 LO 漂移，几乎是随机数，不可直接使用。只有将两端 PCT 以向量形式相乘，LO 漂移项才能抵消，得到物理上有意义的相位。
+- **变量质量（场景依赖）**：remote 和 local 质量谁更优**没有定论**，完全取决于具体多径环境，不同场景可能互换。phase 的物理机制与幅值不同，也不能预设 phase 总是比幅值好或差。**三种变量应对称对待，按窗级信号质量动态选择。**
+
+### 数据层
+
 - **三个验证场景**：`cs_091339` / `cs_095806` / `cs_102621`，均为金属板脚本、不同房间布局。三场景**权重相等，不分主次**（至少目前如此）
 - **呼吸频段**：0.1–0.35 Hz（6–21 BPM）
 - **标准滑窗**：20 s 窗长 / 1 s 步长
 - **核心指标**：分段 BPM 相对误差 %（mean / std）、跨域 mean
 - **核心质量指标**：`η`（呼吸频段能量比）、`ρ`（谱峰峰度）
 - **既有方法命名**：`Single`、`Uniform`、`Modal top2`、`chFusion`、`PCA/SVD`
+- **总路线**：从 72 tone × 3 变量（remote_amplitudes / local_amplitudes / phases）= 216 维信道信息中提取稳定的呼吸信号
 
 ------
 
@@ -124,6 +138,7 @@ Claude/DeepSeek 不负责：
 - 不得擅自重命名项目已有指标和方法。
 - 公式、符号和术语必须尽量与项目一致。
 - 不确定处必须标记 `[待确认]`，不要编造论文结论或实验结果。
+- **物理约束**：remote/local 物理对等，门控 fallback 不得硬编码为特定模态（如 Remote）；三种可用变量（remote_amplitudes / local_amplitudes / phases）应对称对待，由每窗信号质量动态选择。
 
 项目既有命名包括：
 
