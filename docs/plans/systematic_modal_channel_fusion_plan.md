@@ -392,7 +392,31 @@ for seg in breath_segments:
 
 ## 9. 验证状态
 
-状态：**待实现**
+状态：**已完成**（P0 Block A/B/C）
+
+| 字段 | 内容 |
+|------|------|
+| **验证状态** | 已完成（P0 Block A/B/C；P1 D1–D3 未做） |
+| **实际脚本** | `notebooks/scripts/chFusion_systematic_fusion.py`、`src/ble_analysis/systematic_fusion.py` |
+| **数值结果** | `outputs/reports/systematic_fusion_results.npy`、`systematic_fusion_cross_domain.npy` |
+| **图表** | `outputs/figures/systematic_fusion_*.png`（4 张） |
+| **报告链接** | `docs/reports/systematic_modal_channel_fusion_report.md` |
+| **一句话结论** | B1 Vote→Equal modal 跨域 8.45% 为全局最优（优于 G4 8.65%），达理想标准；Vote→Top2（B3）和 Persistence 模态融合（A2/B4）未达预期。 |
+
+**结论摘要：**
+
+- 跨域最优：**B1 Vote→Equal** 8.45% > G4 8.65% > C2 9.15% > B2 9.16% > T0-V3 9.20% > Modal 9.45%
+- 091339：B1 13.22%（与 T0-V3 13.77% 接近）；G5 12.27% 仍为单场景最优
+- 095806：A1 Phase voting 5.81% 优于 T0-V3 6.84%；B3–B4 ~6.4% 接近 G6 6.55%
+- 102621：B1 5.63% 最优；Modal top2 4.69% 仍单场景最优
+- 理想标准（跨域 < 8.5%）**已达成**；最低标准（B3 < T0-V3 且 < Modal）**未达成**
+
+**遗留问题：**
+
+- Vote→Equal 有效但 Vote→Top2 无效的机制（Q1）
+- Persistence 在模态融合框架下失效（A2/B4）
+- P1 扩展实验（D1–D3）未执行
+- B1 与 G4 门控组合待评估
 
 ---
 
