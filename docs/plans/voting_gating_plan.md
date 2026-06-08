@@ -7,7 +7,7 @@
 >
 > **目标报告**：`docs/reports/voting_gating_report.md`  
 > **日期**：2026-06-07（初稿，文献调研完成后补充 §1.4 / §3.4 / §4.3）  
-> **验证状态**：待实现
+> **验证状态**：已完成（G1–G6）
 
 ---
 
@@ -499,10 +499,26 @@ for seg in breath_segments:
 
 | 字段 | 内容 |
 |------|------|
-| **验证状态** | 待实现（等待文献调研完成后更新 plan，再交给 Cursor Composer） |
-| **实际脚本** | — |
-| **报告链接** | — |
-| **一句话结论** | — |
+| **验证状态** | 已完成（G1–G6；G7–G9 待文献调研） |
+| **实际脚本** | `notebooks/scripts/chFusion_voting_gating.py`、`src/ble_analysis/consensus_gating.py` |
+| **数值结果** | `outputs/reports/voting_gating_results.npy`、`voting_gating_cross_domain.npy`、`voting_gating_oracle_stats.npy` |
+| **图表** | `outputs/figures/voting_gating_decision_pie.png`、`voting_gating_comparison_bars.png`、`voting_gating_oracle_heatmap.png` |
+| **报告链接** | `docs/reports/voting_gating_report.md` |
+| **一句话结论** | G4 跨域 mean 8.65% 优于 Modal（9.45%）和 T0-V3（9.20%），达最低成功标准；G5/G6 分别在 091339/095806 单场景显著改善，无全局最优门控。 |
+
+**结论摘要：**
+
+- 跨域最优：**G4 Single fallback** 8.65% > G5 8.72% > G1 8.95% > T0-V3 9.20% > Modal 9.45%
+- 091339：G5 12.27% 最优（vs Modal 13.04%、T0-V3 13.77%）
+- 095806：G6 6.55% 最优（vs T0-V3 6.84%、Modal 10.61%）
+- 102621：G1/G4 4.51% 最优（vs Modal 4.69%）
+- 理想标准（跨域 < 8.5%）未达成；最低标准达成
+
+**遗留问题：**
+
+- G7–G9 与 PCA 共识门控待文献调研后追加
+- oracle 窗级选对率多数段 < 70%，门控信号仍需优化
+- Fallback Single vs Modal 的场景自适应（Q3）未解决
 
 ---
 
