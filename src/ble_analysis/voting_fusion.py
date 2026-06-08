@@ -534,6 +534,7 @@ def run_voting_fusion_benchmark(
     plan2_config: Optional[Plan2Config] = None,
     verbose: bool = True,
     cache_dir: Optional[str] = None,
+    multichannel_by_var: Optional[Dict[str, Dict[str, Optional[dict]]]] = None,
 ) -> dict:
     """End-to-end voting fusion benchmark with Plan2 baselines."""
     from ble_analysis.chfusion import estimate_segment_bpm_methods
@@ -543,17 +544,21 @@ def run_voting_fusion_benchmark(
     mp = metric_params or BreathMetricParams()
     p2 = plan2_config or Plan2Config(channel_metric="energy_ratio")
 
-    variables = list(MODAL_VOTING_VARIABLES) + ["remote_amplitudes"]
-    variables = list(dict.fromkeys(variables))
-
-    multichannel_by_var: Dict[str, Dict[str, Optional[dict]]] = {}
-    fs = None
-    for variable in MODAL_VOTING_VARIABLES:
-        mc, fs = run_multichannel_segment_filtering(
-            frames, segment_config, variable=variable, filter_params=fp, verbose=verbose,
-            cache_dir=cache_dir,
-        )
-        multichannel_by_var[variable] = mc
+    if multichannel_by_var is None:
+        multichannel_by_var = {}
+        fs = None
+        for variable in MODAL_VOTING_VARIABLES:
+            mc, fs = run_multichannel_segment_filtering(
+                frames,
+                segment_config,
+                variable=variable,
+                filter_params=fp,
+                verbose=verbose,
+                cache_dir=cache_dir,
+            )
+            multichannel_by_var[variable] = mc
+    else:
+        multichannel_by_var = dict(multichannel_by_var)
 
     remote_mc = multichannel_by_var["remote_amplitudes"]
     baselines_remote = estimate_segment_bpm_methods(

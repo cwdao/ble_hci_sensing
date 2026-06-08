@@ -34,8 +34,7 @@ REPORTS_DIR = _env["REPORTS_DIR"]
 CACHE_DIR = str(project_root / "outputs" / "cache")
 
 # %%
-from ble_analysis.chfusion import ChFusionConfig, Plan2Config, _overall_rel_error
-from ble_analysis.data import load_ble_frames
+from ble_analysis.chfusion import ChFusionConfig, Plan2Config, _overall_rel_error, load_multichannel_for_scenario
 from ble_analysis.scenarios import load_scenario, print_scenario_summary
 from ble_analysis.segments import BreathMetricParams, FilterParams
 from ble_analysis.voting_fusion import (
@@ -67,9 +66,15 @@ for scenario_id in SCENARIO_IDS:
     scenario = load_scenario(scenario_id, project_root=project_root)
     print(f"\n{'=' * 60}")
     print_scenario_summary(scenario)
-    _data, frames = load_ble_frames(scenario.resolve_data_path(project_root), verbose=False)
+    multichannel_by_var, _fs, _skipped = load_multichannel_for_scenario(
+        scenario,
+        project_root=project_root,
+        filter_params=filter_params,
+        cache_dir=CACHE_DIR,
+        verbose=True,
+    )
     bench = run_voting_fusion_benchmark(
-        frames,
+        None,
         scenario.segment_config,
         filter_params=filter_params,
         metric_params=metric_params,
@@ -77,6 +82,7 @@ for scenario_id in SCENARIO_IDS:
         plan2_config=plan2_config,
         verbose=True,
         cache_dir=CACHE_DIR,
+        multichannel_by_var=multichannel_by_var,
     )
     results_by_scenario[scenario_id] = bench
     report_path = REPORTS_DIR / f"voting_fusion_{scenario.tag}_results.npy"

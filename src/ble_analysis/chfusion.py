@@ -40,7 +40,9 @@ import hashlib
 import json
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Dict, List, Literal, Optional, Sequence, Tuple
+from typing import Any, Dict, List, Literal, Optional, Sequence, Tuple, Union
+
+PathLike = Union[str, Path]
 
 import numpy as np
 
@@ -411,15 +413,15 @@ def _fuse_weighted_spectrum(
     return _bpm_from_fused_spectrum(fused, band_freqs, cfg)
 
 
-def _make_filter_cache_key(
-    frames,
-    segment_config: Dict[str, dict],
-    variable: str,
-    filter_params: Optional[FilterParams],
-) -> str:
-    """Deterministic short hash for frame data + config + variable + filter params."""
-    fp = filter_params or FilterParams()
-    # Fingerprint frames via first 5 timestamps + total count + channel count
+MODAL_FILTER_VARIABLES: Tuple[str, ...] = (
+    "remote_amplitudes",
+    "local_amplitudes",
+    "phases",
+)
+
+
+def _data_fingerprint_from_frames(frames) -> str:
+    """Fingerprint loaded frames (legacy; used when no scenario path is available)."""
     ts_sample = []
     for i, f in enumerate(frames):
         if i >= 5:
@@ -427,15 +429,193 @@ def _make_filter_cache_key(
         ts_sample.append(str(f.get("timestamp", "")))
     n_frames = len(frames)
     n_channels = len(get_available_channels(frames))
-    data_fp = "|".join(ts_sample) + f"|n={n_frames}|ch={n_channels}"
-    # Serialize configs deterministically
+    return "|".join(ts_sample) + f"|n={n_frames}|ch={n_channels}"
+
+
+def data_fingerprint_from_path(data_path: Path) -> str:
+    """Fingerprint raw data file without loading frames (path + size + mtime)."""
+    path = Path(data_path).resolve()
+    stat = path.stat()
+    return f"file={path}|size={stat.st_size}|mtime={stat.st_mtime_ns}"
+
+
+def _filter_cache_key(
+    data_fp: str,
+    segment_config: Dict[str, dict],
+    variable: str,
+    filter_params: Optional[FilterParams],
+) -> str:
+    """Deterministic short hash for data fingerprint + config + variable + filter params."""
+    fp = filter_params or FilterParams()
     cfg_str = json.dumps(segment_config, sort_keys=True, default=str)
     fp_str = repr(
-        (fp.median_window, fp.highpass_cutoff, fp.highpass_order,
-         fp.bandpass_lowcut, fp.bandpass_highcut, fp.bandpass_order)
+        (
+            fp.median_window,
+            fp.highpass_cutoff,
+            fp.highpass_order,
+            fp.bandpass_lowcut,
+            fp.bandpass_highcut,
+            fp.bandpass_order,
+        )
     )
     key_str = f"{data_fp}|{cfg_str}|{variable}|{fp_str}"
     return hashlib.md5(key_str.encode()).hexdigest()[:16]
+
+
+def _filter_cache_file(
+    cache_dir: str,
+    data_fp: str,
+    segment_config: Dict[str, dict],
+    variable: str,
+    filter_params: Optional[FilterParams],
+) -> Path:
+    cache_key = _filter_cache_key(data_fp, segment_config, variable, filter_params)
+    return Path(cache_dir) / f"{cache_key}_{variable}_filtered.npy"
+
+
+def _try_load_filter_cache(
+    cache_dir: str,
+    data_fp: str,
+    segment_config: Dict[str, dict],
+    variable: str,
+    filter_params: Optional[FilterParams],
+) -> Optional[Tuple[Dict[str, Optional[dict]], float]]:
+    cache_file = _filter_cache_file(
+        cache_dir, data_fp, segment_config, variable, filter_params
+    )
+    if not cache_file.is_file():
+        return None
+    try:
+        cached = np.load(cache_file, allow_pickle=True).item()
+        return cached["out"], cached["fs"]
+    except (ValueError, KeyError, OSError):
+        return None
+
+
+def load_multichannel_filtered(
+    segment_config: Dict[str, dict],
+    variables: Sequence[str],
+    *,
+    frames=None,
+    data_fingerprint: Optional[str] = None,
+    filter_params: Optional[FilterParams] = None,
+    cache_dir: Optional[str] = None,
+    verbose: bool = True,
+) -> Tuple[Dict[str, Dict[str, Optional[dict]]], float, bool]:
+    """Load or compute multichannel filtered segments for ``variables``.
+
+    When ``cache_dir`` and ``data_fingerprint`` are set, tries disk cache first
+    without requiring ``frames``. On full cache hit, returns
+    ``skipped_raw_load=True`` so callers can skip ``load_ble_frames``.
+
+    On any cache miss, ``frames`` must be provided to compute missing variables.
+    """
+    fp = filter_params or FilterParams()
+    multichannel_by_var: Dict[str, Dict[str, Optional[dict]]] = {}
+    fs: Optional[float] = None
+    missing: List[str] = []
+
+    if cache_dir is not None and data_fingerprint is not None:
+        Path(cache_dir).mkdir(parents=True, exist_ok=True)
+        for variable in variables:
+            hit = _try_load_filter_cache(
+                cache_dir, data_fingerprint, segment_config, variable, fp
+            )
+            if hit is not None:
+                multichannel_by_var[variable], fs_hit = hit
+                fs = fs if fs is not None else fs_hit
+                if verbose:
+                    tag = _variable_display_name(variable)
+                    n_ok = sum(
+                        1 for v in multichannel_by_var[variable].values() if v is not None
+                    )
+                    print(
+                        f"✓ [{tag}] 缓存命中 {n_ok}/{len(segment_config)} 段 | "
+                        f"(已缓存，无需原始数据)"
+                    )
+            else:
+                missing.append(variable)
+    else:
+        missing = list(variables)
+
+    if missing:
+        if frames is None:
+            raise ValueError(
+                "Filter cache miss: provide ``frames`` or warm cache via "
+                "``load_multichannel_for_scenario``."
+            )
+        if data_fingerprint is None:
+            data_fingerprint = _data_fingerprint_from_frames(frames)
+        for variable in missing:
+            mc, fs_new = run_multichannel_segment_filtering(
+                frames,
+                segment_config,
+                variable=variable,
+                filter_params=fp,
+                verbose=verbose,
+                cache_dir=cache_dir,
+                data_fingerprint=data_fingerprint,
+            )
+            multichannel_by_var[variable] = mc
+            fs = fs_new
+
+    skipped_raw_load = not missing
+    if skipped_raw_load and verbose:
+        print(
+            f"✓ 全部 {len(variables)} 变量滤波缓存命中，跳过原始数据加载与分段"
+        )
+    if fs is None:
+        raise RuntimeError("Failed to obtain sampling rate fs")
+    return multichannel_by_var, fs, skipped_raw_load
+
+
+def load_multichannel_for_scenario(
+    scenario,
+    *,
+    project_root: Optional[PathLike] = None,
+    variables: Sequence[str] = MODAL_FILTER_VARIABLES,
+    filter_params: Optional[FilterParams] = None,
+    cache_dir: Optional[str] = None,
+    verbose: bool = True,
+) -> Tuple[Dict[str, Dict[str, Optional[dict]]], float, bool]:
+    """Load filtered multichannel data for a scenario, skipping raw JSON when cached."""
+    from ble_analysis.data import load_ble_frames
+
+    data_path = scenario.resolve_data_path(project_root)
+    data_fp = data_fingerprint_from_path(data_path)
+    segment_config = scenario.segment_config
+
+    if cache_dir is not None:
+        fp = filter_params or FilterParams()
+        all_hit = all(
+            _try_load_filter_cache(cache_dir, data_fp, segment_config, var, fp)
+            is not None
+            for var in variables
+        )
+        if all_hit:
+            return load_multichannel_filtered(
+                segment_config,
+                variables,
+                data_fingerprint=data_fp,
+                filter_params=fp,
+                cache_dir=cache_dir,
+                verbose=verbose,
+            )
+
+    if verbose:
+        print(f"缓存未完整命中，加载原始数据: {data_path.name}")
+    _data, frames = load_ble_frames(data_path, verbose=verbose)
+    if not frames:
+        raise RuntimeError(f"No frames loaded from {data_path}")
+    return load_multichannel_filtered(
+        segment_config,
+        variables,
+        frames=frames,
+        data_fingerprint=data_fp,
+        filter_params=filter_params,
+        cache_dir=cache_dir,
+        verbose=verbose,
+    )
 
 
 def run_multichannel_segment_filtering(
@@ -446,6 +626,7 @@ def run_multichannel_segment_filtering(
     filter_params: Optional[FilterParams] = None,
     verbose: bool = True,
     cache_dir: Optional[str] = None,
+    data_fingerprint: Optional[str] = None,
 ) -> Tuple[Dict[str, Optional[dict]], float]:
     """Extract and filter **all channels** for one signal variable per segment.
 
@@ -454,31 +635,45 @@ def run_multichannel_segment_filtering(
 
     If ``cache_dir`` is provided, filtered results are cached to disk as
     ``{cache_dir}/{hash}_{variable}_filtered.npy`` and reused on subsequent
-    calls with identical inputs.
+    calls with identical inputs. Pass ``data_fingerprint`` (from
+    :func:`data_fingerprint_from_path`) to allow cache lookup without ``frames``.
     """
+    fp = filter_params or FilterParams()
+    cache_file: Optional[Path] = None
+
     # --- cache lookup ---
     if cache_dir is not None:
-        cache_path = Path(cache_dir)
-        cache_path.mkdir(parents=True, exist_ok=True)
-        cache_key = _make_filter_cache_key(frames, segment_config, variable, filter_params)
-        cache_file = cache_path / f"{cache_key}_{variable}_filtered.npy"
-        if cache_file.exists():
+        Path(cache_dir).mkdir(parents=True, exist_ok=True)
+        fp_str = data_fingerprint
+        if fp_str is None:
+            if frames is None:
+                raise ValueError(
+                    "``frames`` or ``data_fingerprint`` required for cache lookup"
+                )
+            fp_str = _data_fingerprint_from_frames(frames)
+        cache_file = _filter_cache_file(cache_dir, fp_str, segment_config, variable, fp)
+        if cache_file.is_file():
             try:
                 cached = np.load(cache_file, allow_pickle=True).item()
                 if verbose:
                     tag = _variable_display_name(variable)
                     n_ok = sum(1 for v in cached["out"].values() if v is not None)
+                    n_ch = "—"
+                    if frames is not None:
+                        n_ch = str(len(get_available_channels(frames)))
                     print(
                         f"✓ [{tag}] 缓存命中 {n_ok}/{len(segment_config)} 段 | "
-                        f"{len(get_available_channels(frames))} 信道 (已缓存)"
+                        f"{n_ch} 信道 (已缓存)"
                     )
                 return cached["out"], cached["fs"]
             except (ValueError, KeyError, OSError):
                 if verbose:
                     print(f"⚠ 缓存文件损坏，重新计算: {cache_file.name}")
 
+    if frames is None:
+        raise ValueError("``frames`` required when filter cache misses")
+
     fs = estimate_sampling_rate_from_frames(frames)
-    fp = filter_params or FilterParams()
     min_points = max(fp.median_window, 20)
     channels = get_available_channels(frames)
     out: Dict[str, Optional[dict]] = {}
@@ -537,7 +732,7 @@ def run_multichannel_segment_filtering(
         )
 
     # --- cache save ---
-    if cache_dir is not None:
+    if cache_dir is not None and cache_file is not None:
         try:
             np.save(cache_file, {"out": out, "fs": fs}, allow_pickle=True)
         except OSError:

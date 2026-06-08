@@ -612,6 +612,7 @@ def run_gating_benchmark(
     plan2_config: Optional[Plan2Config] = None,
     verbose: bool = True,
     cache_dir: Optional[str] = None,
+    multichannel_by_var: Optional[Dict[str, Dict[str, Optional[dict]]]] = None,
 ) -> dict:
     """End-to-end gating benchmark: baselines + T0-V3 + G1–G6."""
     cfg = config or ChFusionConfig()
@@ -620,14 +621,22 @@ def run_gating_benchmark(
     p2 = plan2_config or Plan2Config(channel_metric="energy_ratio")
     vcfg = VotingConfig(voting_strategy="eta_rho_weighted")
 
-    multichannel_by_var: Dict[str, Dict[str, Optional[dict]]] = {}
-    fs = None
-    for variable in MODAL_VOTING_VARIABLES:
-        mc, fs = run_multichannel_segment_filtering(
-            frames, segment_config, variable=variable, filter_params=fp, verbose=verbose,
-            cache_dir=cache_dir,
-        )
-        multichannel_by_var[variable] = mc
+    if multichannel_by_var is None:
+        multichannel_by_var = {}
+        fs = None
+        for variable in MODAL_VOTING_VARIABLES:
+            mc, fs = run_multichannel_segment_filtering(
+                frames,
+                segment_config,
+                variable=variable,
+                filter_params=fp,
+                verbose=verbose,
+                cache_dir=cache_dir,
+            )
+            multichannel_by_var[variable] = mc
+    else:
+        multichannel_by_var = dict(multichannel_by_var)
+        fs = None
 
     remote_mc = multichannel_by_var["remote_amplitudes"]
     baselines_remote = estimate_segment_bpm_methods(
