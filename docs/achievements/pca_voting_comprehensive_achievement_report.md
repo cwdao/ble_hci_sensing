@@ -373,7 +373,14 @@ Phase 3 的核心目的不是解锁新方法，而是**诊断物理机制**。
 
 ##### 度量方法
 
-对每个 20 s 滑窗，计算三种模态（remote 幅值 / local 幅值 / 总相位）的归一化呼吸带功率谱两两之间的余弦相似度，再取三对的均值：
+**首先澄清"谱"是什么**。两种路径下被比较的谱向量是**同一类型**：对某个 20 s 时间波形做 FFT，截取呼吸带（0.1–0.35 Hz），归一化到和为 1——一个长度约 10–30 的离散概率分布向量，表示"呼吸频段内功率如何分布"。区别在于这个时间波形从哪来：
+
+- **Vote 路径**：每个 modal 内，72 个 tone 各自独立做 FFT 得到 72 条归一化谱 $\{\mathbf{p}_i\}$，以 $\eta_i \cdot \rho_i$ 为权重加权平均，得到一条「72 tone 共识谱」：$\mathbf{p}_{\text{modal}} = \frac{\sum w_i \mathbf{p}_i}{\sum w_i}$
+- **Single-best 路径**：每个 modal 只选 $\eta$ 最大的**一个** tone，取该 tone 的 20 s bandpass 波形做 FFT 得到归一化谱 $\mathbf{p}_{\text{modal}}$。它仍然是谱——任何时间波形做 FFT 就是谱——只是信息源从 72 tone 聚合降为单 tone
+
+> **关键澄清**：Single-best 的谱不是"72 信道原始频率-能量曲线"（那需要 72 个复 IQ 值），而是**被选中的那一个 tone 的时间波形的 FFT 功率谱**。相当于：你有 72 个"传感器"，Vote 综合了所有传感器的读数再判断呼吸频率；Single-best 只信 η 最高的那个传感器的读数。
+
+对每个 20 s 滑窗，分别用两种路径构造三条谱（remote/local/phase），计算两两余弦相似度并取均值：
 
 $$\text{modal\_sim} = \frac{1}{3}\left[\cos(\mathbf{p}_{\text{rem}}, \mathbf{p}_{\text{loc}}) + \cos(\mathbf{p}_{\text{rem}}, \mathbf{p}_{\text{pha}}) + \cos(\mathbf{p}_{\text{loc}}, \mathbf{p}_{\text{pha}})\right]$$
 
@@ -405,11 +412,9 @@ $$\text{modal\_sim} = \frac{1}{3}\left[\cos(\mathbf{p}_{\text{rem}}, \mathbf{p}_
 
 ##### 物理机制
 
-为什么 Voting 会让模态间频谱更相似？因为**同一个 tone index 在三种模态下经历了相同的多径环境**。
+**Single-best 为什么谱更分化**：remote 选 tone 37（max-η），local 可能选 tone 52，phase 可能选 tone 18——三个模态各自选择了**不同 tone index** 的单根信道。不同 tone 经历了不同的多径衰落，FFT 谱自然不同。模态间相似度低。
 
-在 Per-Tone Voting 中，每个 tone 的信号路径是固定的——tone 37 无论是被 remote 端测量、local 端测量、还是作为相位来源，它始终是同一个频率（同样的波长、同样的反射路径）。所以三种模态各自通过 Voting 聚合 72 tone 产生的频谱天然趋于相似——它们本质上在描述同一个物理信道集合，只是从不同"观测角色"（发送方/接收方/相位）看而已。
-
-相比之下，Single-best 路径给每个模态选了**不同的** max-η 信道——remote 可能选 tone 37（多径条件 A），local 可能选 tone 52（多径条件 B），不同信道经历了不同的多径衰落，频谱自然更分化。
+**Vote 为什么谱更相似**：三种模态的 Vote 谱都在聚合**同一组 tone index（0–71）**。虽然权重 $w_i = \eta_i \cdot \rho_i$ 是 per-modal 独立计算的，但同一个 tone index 在三种模态下经历的是**相同的多径环境**——tone 37 无论被 remote 端测、local 端测、还是作为相位来源，它始终是同一个频率，面对同一组反射路径。因此，在 remote 中是好 tone 的（η 高、BPM 准），在 local 和 phase 中大概率也是好 tone。三种模态的 Vote 谱被**同一组好 tone 主导** → 谱天然趋同。
 
 ##### 这对方法选择意味着什么
 

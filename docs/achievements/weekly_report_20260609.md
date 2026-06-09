@@ -54,9 +54,9 @@ T0-V3（η·ρ 加权投票，仅 remote）跨域 **9.20%**，首次超越 Modal
 
 **问题**：为什么 Voting 下 Equal（8.45%）优于 Top2（9.92%），而 Single-best 下 Top2（9.45%）反而优于 Equal（10.50%）？
 
-**诊断方法**：每窗计算三模态归一化谱的两两余弦相似度，三对取均值：
+**诊断方法**：每窗计算三模态归一化呼吸带功率谱的两两余弦相似度。
 
-$$\text{modal\_sim} = \frac{1}{3}\left[\cos(\mathbf{p}_{\text{rem}}, \mathbf{p}_{\text{loc}}) + \cos(\mathbf{p}_{\text{rem}}, \mathbf{p}_{\text{pha}}) + \cos(\mathbf{p}_{\text{loc}}, \mathbf{p}_{\text{pha}})\right]$$
+> **"谱"是什么**：两种路径下被比较的谱向量是同一类型——对某个 20 s 时间波形做 FFT，截取呼吸带（0.1–0.35 Hz），归一化到和为 1。区别：Vote 谱 = 72 tone 各自 FFT 谱的 η·ρ 加权平均；Single-best 谱 = 被选中的那一个 max-η tone 的 FFT 谱。后者**有谱**——任何时间波形做 FFT 就是谱——只是信息源是单 tone 而非 72 tone 聚合。
 
 | 场景 | Voting 路径 | Single-best 路径 |
 |------|:----------:|:---------------:|
@@ -68,7 +68,7 @@ $$\text{modal\_sim} = \frac{1}{3}\left[\cos(\mathbf{p}_{\text{rem}}, \mathbf{p}_
 
 **图 4**：三场景合并直方图。🟢 Voting 路径（olive）整体偏右——模态间频谱高度一致；🔵 Single-best 路径（steelblue）偏左——模态间更分化。
 
-**物理机制**：同一 tone index 在三种模态（remote/local/phase）下经历**相同的多径环境**。Voting 聚合了 72 tone 的共同模式 → 三模态谱趋于一致。Single-best 给每个模态选了不同的 max-η 信道 → 模态间天然分化。
+**物理机制**：三种模态的 Vote 谱都聚合同一组 tone index（0–71）。同一 tone index 在三种模态下经历相同多径 → 好 tone 在三种模态间高度一致 → 三个 Vote 谱被同一组好 tone 主导 → 天然趋同。Single-best 相反：remote 选 tone 37，local 可能选 tone 52——不同物理信道 → 谱天然分化。
 
 **结论**（本期最重要发现）：
 
