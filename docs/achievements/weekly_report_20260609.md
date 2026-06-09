@@ -82,14 +82,29 @@ B1 的谱构造——逐 tone FFT × 质量权重 → 加权平均——与 Plan
 
 ---
 
+## 固化基线
+
+以下方法固化为后续工作的固定对比基线：
+
+| 基线 | 方法 | 跨域 | 定位 |
+|------|------|------|------|
+| **Deng et al. (2024)** | T0-V3：每 tone 独立 BPM → η·ρ 直方图投票（仅 remote） | 9.20% | 论文原始 Voting；后续 Voting 变种以论文名区分 |
+| Single Remote | max-η 选单 tone | 10.45% | 最简基线 |
+| Modal top2 | 逐模态 max-η 单 tone → Top2 等权 | 9.45% | Plan2 最优 |
+| PCA-Modal3 | PCA per modal → η 加权 | ~10.92% | 失败参照 |
+
+---
+
 ## 下一步
+
+后续计划待阅读文献后确定。已安排的方向：
 
 | 方向 | 内容 |
 |------|------|
-| **权重函数系统对比** | 在 B1 架构下 ablation：raw η·ρ vs log-mapped q vs η only vs ρ only vs 学习权重 |
-| **多径诊断** | 091339 退化根因（>12%），已排除双峰性和 η 质量假设 |
-| **泛化验证** | 新场景（非金属板、体动）上验证 B1 和 Equal>Top2 机制 |
-| **早期方法公平对比** | 将 fft_q_energy_peak 扩展为三变量 + raw 权重，量化各改进的独立贡献 |
+| **权重函数系统对比** | 在 B1 架构下 ablation：raw η·ρ vs log-mapped q vs η only vs ρ only |
+| **多径诊断** | 091339 退化根因（>12%） |
+| **泛化验证** | 新场景上验证 B1 和 Equal>Top2 机制 |
+| **文献阅读** | [`docs/plans/literature_review_plan.md`](../plans/literature_review_plan.md) — 读完后确定新 Voting 变种 |
 
 ---
 
