@@ -33,6 +33,7 @@ REPORTS_DIR = _env["REPORTS_DIR"]
 paths = plot_all_achievement_figures(
     reports_dir=REPORTS_DIR,
     figures_dir=FIGURES_DIR,
+    include_pca=True,
 )
 
 print("\n=== Achievement figures generated ===")
