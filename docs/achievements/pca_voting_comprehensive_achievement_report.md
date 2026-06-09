@@ -261,7 +261,13 @@ $$\text{confident} = \begin{cases} \text{True}, & \text{if } \max_k \text{bin\_w
 | 6 | T0-V2 η 加权投票 | 16.00 | 8.82 | 8.08 | 10.96% |
 | 7 | Uniform Remote（72 tone 等权） | 17.09 | 9.15 | 6.82 | 11.02% |
 
-> **注**：Phase 1 排行榜图现存为 PDF 格式（`voting_fusion_leaderboard.pdf`、`voting_fusion_cross_domain_aggregate_bars.pdf`）。PNG 版本待 Cursor 补充生成，见 §9.3 待补充图表清单。
+![Phase 1 跨域排行榜](../../outputs/figures/voting_fusion_leaderboard.png)
+
+**图 3**：Phase 1 Per-Tone 投票跨域排行榜。T0-V3（η·ρ 联合加权）以 9.20% 排名第一，略优于 Modal top2（9.45%）。
+
+![Phase 1 各场景 Top-8 对比](../../outputs/figures/voting_fusion_cross_domain_aggregate_bars.png)
+
+**图 4**：Phase 1 各场景 Top-8 方法 BPM 误差对比。T0-V3 在 095806 极强（6.84%），但在 091339 弱于 Single Remote（13.77% vs 10.91%），揭示场景互补性。
 
 **关键发现**：
 
@@ -333,15 +339,15 @@ $$\mathbf{p}_{\text{modal}} = \frac{\sum_{i=1}^{N} w_i \cdot \mathbf{p}_i}{\sum_
 
 ![Phase 2 跨域排行榜](../../outputs/figures/systematic_fusion_leaderboard.png)
 
-**图 3**：Systematic Fusion 跨域排行榜。**逐模态 Voting → 三模态等权谱融合（B1）以 8.45% 登顶**，为所有已验证方法中的全局最优，首次突破理想标准（< 8.5%）。
+**图 5**：Systematic Fusion 跨域排行榜。**逐模态 Voting → 三模态等权谱融合（B1）以 8.45% 登顶**，为所有已验证方法中的全局最优，首次突破理想标准（< 8.5%）。
 
 ![Phase 2 二维热力图](../../outputs/figures/systematic_fusion_2d_heatmap.png)
 
-**图 4**：信道策略 × 模态策略二维热力图。**关键交互效应**：Voting（信道策略）下 Equal（模态融合）有效（8.45%），但 Top2（模态融合）无效（9.92%）。而在 Single-best（信道策略）下恰恰是 Top2 有效（9.45%）。最优模态策略**取决于信道策略**——这是一个重要的方法论发现。
+**图 6**：信道策略 × 模态策略二维热力图。**关键交互效应**：Voting（信道策略）下 Equal（模态融合）有效（8.45%），但 Top2（模态融合）无效（9.92%）。而在 Single-best（信道策略）下恰恰是 Top2 有效（9.45%）。最优模态策略**取决于信道策略**——这是一个重要的方法论发现。
 
 ![Phase 2 消融瀑布图](../../outputs/figures/systematic_fusion_ablation_waterfall.png)
 
-**图 5**：从 baseline T0-V3（9.20%）开始的消融瀑布图。将 Voting 从仅 remote 扩展为 per-modal + Equal 融合（即 B1），获得 −0.75pp 改善。而将 Equal 改为 Top2（即 B3），反增 +0.72pp。消融清晰指明了改善方向和退化方向。
+**图 7**：从 baseline T0-V3（9.20%）开始的消融瀑布图。将 Voting 从仅 remote 扩展为 per-modal + Equal 融合（即 B1），获得 −0.75pp 改善。而将 Equal 改为 Top2（即 B3），反增 +0.72pp。消融清晰指明了改善方向和退化方向。
 
 **关键发现**：
 
@@ -359,9 +365,23 @@ Phase 2 最重要的**负结果**是 B3（Voting→Top2, 9.92%）系统性差于
 
 Phase 3 的核心目的不是解锁新方法，而是**诊断物理机制**。
 
-#### 4.6.2 核心机制发现 D1：Voting 降低模态间频谱差异性（✅ 已验证）
+#### 4.6.2 ⭐ 核心机制发现 D1：Voting 降低模态间频谱差异性（✅ 已验证）
 
 这是整个项目最重要的机制发现。
+
+**背景**：Phase 2 的核心 puzzle 是——为什么 Voting 信道策略下 Equal（B1: 8.45%）显著优于 Top2（B3: 9.92%），而在 Single-best 信道策略下恰恰相反（Modal top2 = 9.45% 优于 Modal equal = 10.50%）？
+
+##### 度量方法
+
+对每个 20 s 滑窗，计算三种模态（remote 幅值 / local 幅值 / 总相位）的归一化呼吸带功率谱两两之间的余弦相似度，再取三对的均值：
+
+$$\text{modal\_sim} = \frac{1}{3}\left[\cos(\mathbf{p}_{\text{rem}}, \mathbf{p}_{\text{loc}}) + \cos(\mathbf{p}_{\text{rem}}, \mathbf{p}_{\text{pha}}) + \cos(\mathbf{p}_{\text{loc}}, \mathbf{p}_{\text{pha}})\right]$$
+
+其中每对余弦相似度 $\cos(\mathbf{a}, \mathbf{b}) = \frac{\mathbf{a} \cdot \mathbf{b}}{\|\mathbf{a}\| \|\mathbf{b}\|}$，值域为 $[0, 1]$（谱向量各分量非负，因此不会出现负值）。
+
+余弦相似度度量的是两个谱的**形状相似性**（能量集中在哪个频率），而非总功率大小——这恰好是我们需要的：我们不关心 remote 幅值是否整体比 phase 强（那是信道增益差异），只关心它们是否一致地指向同一个呼吸频率。
+
+##### 主结果
 
 | 场景 | Voting 路径（B1/B3 所用） | Single-best 路径（Modal top2 所用） |
 |------|--------------------------|-----------------------------------|
@@ -371,14 +391,56 @@ Phase 3 的核心目的不是解锁新方法，而是**诊断物理机制**。
 
 ![模态频谱相似度对比](../../outputs/figures/b1_diag_spectral_similarity.png)
 
-**图 6**：Voting 与 Single-best 两种信道策略下，三模态（remote/local/phase）频谱的互相余弦相似度对比。Voting 路径的模态间相似度**系统性地高于** Single-best 路径——在三场景上均一致。
+**图 8**：D1 诊断图 — 模态间频谱余弦相似度直方图。三场景所有滑窗合并统计。
 
-**物理直觉**：当每个 tone 独立估计 BPM 再投票时，不同模态（remote/local/phase）中相同 tone index 的物理信道是共享的——同一个频率 tone 在三种模态下的信号经历了相同的多径环境。因此 per-modal Voting 产生的频谱天然趋于相似。
+##### 图 8 读法
 
-**这解释了为什么 Equal 优于 Top2**：
-- Voting 让 remote、local、phase 三种模态的频谱变得**更相似**。
-- Top2（保留前二、踢出最弱模态）失去意义——被踢出的模态和被保留的模态几乎一样，踢不踢差别不大。
-- Equal（等权融合三个相似的谱）只是三份相同信息的平均，反而更稳定（降低估计方差）。
+- **图表类型**：堆叠直方图（overlapping histogram），横轴分 30 个等宽 bin
+- **横轴**：Mean pairwise spectral cosine similarity — 每窗三模态两两余弦相似度的均值（0–1），越接近 1 说明三个模态的频谱越一致
+- **纵轴**：Window count — 落入该 bin 的滑窗数
+- **🟢 绿色分布（olive）**：Vote spectrum (B1 path) — 信道策略为 Per-Tone Voting 时，各窗的模态间相似度分布
+- **🔵 蓝色分布（steelblue）**：Single-best spectrum (Modal path) — 信道策略为逐模态 max-η 单信道时，各窗的模态间相似度分布
+
+核心读法：看两条分布的**相对偏移**。绿色分布整体**偏右**（集中在 0.85–1.0），蓝色分布整体**偏左**（更多分布在 0.7–0.9）。Voting 路径下三模态"说同一件事"的概率系统性地更高。
+
+##### 物理机制
+
+为什么 Voting 会让模态间频谱更相似？因为**同一个 tone index 在三种模态下经历了相同的多径环境**。
+
+在 Per-Tone Voting 中，每个 tone 的信号路径是固定的——tone 37 无论是被 remote 端测量、local 端测量、还是作为相位来源，它始终是同一个频率（同样的波长、同样的反射路径）。所以三种模态各自通过 Voting 聚合 72 tone 产生的频谱天然趋于相似——它们本质上在描述同一个物理信道集合，只是从不同"观测角色"（发送方/接收方/相位）看而已。
+
+相比之下，Single-best 路径给每个模态选了**不同的** max-η 信道——remote 可能选 tone 37（多径条件 A），local 可能选 tone 52（多径条件 B），不同信道经历了不同的多径衰落，频谱自然更分化。
+
+##### 这对方法选择意味着什么
+
+**这张图直接解释了「为什么 Equal 优于 Top2」**：
+
+- Voting 让三种模态的频谱高度相似 → Top2（保留前二、踢出最弱模态）失去意义——被踢出的和被保留的几乎一样
+- Equal（等权融合三个相似的谱）是三分相同信息的平均，降低了估计方差
+- 相反，在 Single-best 路径下模态间有差异 → Top2 可以筛掉被多径严重污染的模态，有真实的选择收益
+
+##### 这张图不能证明什么
+
+需要澄清一个重要边界：**图 8 证明的是「Voting 改变了模态间关系 → 改变了最优模态融合策略」，但它并不直接证明「Voting 的信道融合效果优于 Single-best」。**
+
+Voting 优于 Single-best 的证据来自 BPM 误差数字：
+
+| 对比 | 信道策略 | 跨域 mean | 证据 |
+|------|----------|-----------|------|
+| T0-V3 vs Single Remote | Vote vs Single（均仅 remote） | 9.20% vs 10.45% | Voting −1.25pp |
+| B1 vs Modal top2 | Vote+Equal vs Single+Top2 | 8.45% vs 9.45% | Voting+Equal −1.00pp |
+
+这是 Deng et al. (2024) 核心论点的直接验证：**信道间噪声不独立，因此先独立估计再投票（Voting）优于先融合/先选单信道再估计**。图 8 揭示的是 Voting 的一个**附加且非直观的效应**——它不仅提升了 BPM 估计精度，还改变了模态间关系，使得最优模态融合策略从 Top2 变为 Equal。
+
+**二者的关系**：
+
+```text
+Voting 信道策略
+    ├── 效应 A：抑制信道间相关噪声 → 提升 per-modal BPM 精度（Deng et al. 论证）
+    └── 效应 B：降低模态间频谱差异性 → Equal 优于 Top2（本发现，图 8）
+                                                      ↓
+                                          B1 = 8.45%（效应 A + B 叠加）
+```
 
 这是一个有明确物理直觉支撑的、可跨场景复现的机制级解释——不再只是「数字上 B1 > B3」。
 
@@ -403,7 +465,7 @@ Phase 3 的核心目的不是解锁新方法，而是**诊断物理机制**。
 
 ![单模态三场景对比](../../outputs/figures/sa_single_modality_comparison.png)
 
-**图 7**：三场景上 remote/local/phase 各自作为单模态 max-η 选道的 BPM 误差对比。**最优模态是场景依赖的**——102621 上 local 最优（7.32%），091339 上 remote 最优（10.91%），095806 上 phase 最优（11.12%）。这从数据上确认了：**G4 的硬编码 Remote fallback 确实缺乏物理依据**——Remote 在 102621 仅被选中 33%，在 095806 仅 27%。
+**图 9**：三场景上 remote/local/phase 各自作为单模态 max-η 选道的 BPM 误差对比。**最优模态是场景依赖的**——102621 上 local 最优（7.32%），091339 上 remote 最优（10.91%），095806 上 phase 最优（11.12%）。这从数据上确认了：**G4 的硬编码 Remote fallback 确实缺乏物理依据**——Remote 在 102621 仅被选中 33%，在 095806 仅 27%。
 
 ---
 
@@ -421,7 +483,15 @@ Phase 2 (06/08)  逐模态 Voting → 三模态等权谱融合     8.45%   (−0
 Phase 3 (06/08)  物理机制确认                       —      （解释 Equal > Top2）
 ```
 
-> **注**：方法演进时间线图和全阶段排行榜柱状图为待补充图表，见 §9.3。
+> **注**：全阶段排行榜柱状图见下方。
+
+![方法演进时间线](../../outputs/figures/method_evolution_timeline.png)
+
+**图 10**：方法演进时间线。横轴为阶段顺序（P0→P1→P2→P3），纵轴为跨域 mean BPM 相对误差。从 PCA/SVD（~10.92%）到 Per-Tone 投票（9.20%）再到逐模态 Voting→等权融合（8.45%），共降低 2.47pp。
+
+![全阶段排行榜](../../outputs/figures/method_evolution_full_leaderboard.png)
+
+**图 11**：全阶段主线 8 方法排行榜，按跨域 mean 升序排列。颜色标记阶段。**逐模态 Voting → 三模态等权谱融合（P2，绿色）以 8.45% 登顶**。PCA-Modal3（P0，蓝色）位列末位（~10.92%）。
 
 ### 5.2 全阶段排行榜（主线方法）
 
@@ -551,22 +621,22 @@ Phase 3 的 D1 诊断揭示了 Voting 的一个非直观行为：
 |------|------|------|
 | PCA/SVD 跨域排行榜 | `outputs/figures/pca_svd_cross_domain_aggregate_bars.pdf` | P0 |
 | PCA/SVD PC1 方差占比 | `outputs/figures/pca_svd_pc1_variance_ratio.pdf` | P0 |
-| Voting 门控跨域对比 | `outputs/figures/voting_gating_comparison_bars.png` | 旁注 |
-| Voting 门控窗级决策饼图 | `outputs/figures/voting_gating_decision_pie.png` | 旁注 |
+| Phase 1 Voting 跨域排行榜 | `outputs/figures/voting_fusion_leaderboard.png` | P1 |
+| Phase 1 Voting 各场景对比 | `outputs/figures/voting_fusion_cross_domain_aggregate_bars.png` | P1 |
 | 系统性融合跨域排行榜 | `outputs/figures/systematic_fusion_leaderboard.png` | P2 |
 | 系统性融合二维热力图 | `outputs/figures/systematic_fusion_2d_heatmap.png` | P2 |
 | 系统性融合消融瀑布图 | `outputs/figures/systematic_fusion_ablation_waterfall.png` | P2 |
 | 模态频谱相似度对比 | `outputs/figures/b1_diag_spectral_similarity.png` | P3 |
 | SA 单模态三场景对比 | `outputs/figures/sa_single_modality_comparison.png` | SA |
+| 方法演进时间线 | `outputs/figures/method_evolution_timeline.png` | 汇总 |
+| 全阶段排行榜 | `outputs/figures/method_evolution_full_leaderboard.png` | 汇总 |
 
 ### 9.3 待补充图表清单（建议交由 Cursor Composer 生成）
 
+以下图表对于完整展示各阶段成果是必要的，但当前尚未生成：
+
 | 图表 | 建议路径 | 数据来源 | 优先级 |
 |------|----------|----------|--------|
-| Phase 1 Voting 跨域排行榜（PNG） | `outputs/figures/voting_fusion_leaderboard.png` | `outputs/reports/voting_fusion_results.npy` | 高 |
-| Phase 1 Voting 跨域汇总柱状图（PNG） | `outputs/figures/voting_fusion_cross_domain_aggregate_bars.png` | `outputs/reports/voting_fusion_cross_domain.npy` | 高 |
-| 方法演进时间线图 | `outputs/figures/method_evolution_timeline.png` | 各阶段跨域汇总 | 高 |
-| 全阶段排行榜柱状图（主线 8 方法 × 跨域 mean） | `outputs/figures/method_evolution_full_leaderboard.png` | 各阶段跨域汇总 | 高 |
 | 全阶段场景×方法热力图 | `outputs/figures/method_evolution_heatmap.png` | 各阶段三场景结果 | 中 |
 | PCA/SVD 与 Voting 双线对比图 | `outputs/figures/pca_vs_voting_comparison.png` | pca_svd + voting 跨域 | 中 |
 | PCA/SVD 系列 PNG 版（从 PDF 转） | `outputs/figures/pca_svd_*.png` | 现有 PDF | 低 |
@@ -577,8 +647,8 @@ Phase 3 的 D1 诊断揭示了 Voting 的一个非直观行为：
 
 | # | 检查项 | 状态 |
 |---|--------|------|
-| 1 | 图片路径正确（`../../outputs/figures/` 开头） | ✅ 已验证（部分图为 PDF，已在正文标注） |
-| 2 | 方法名称：正文/表格/图标题均使用描述性名称（非纯代号） | ✅ 已执行（代号仅在附录对照表中出现） |
+| 1 | 图片路径正确（`../../outputs/figures/` 开头） | ✅ 已验证（Phase 1/演进/排行榜已补充 PNG） |
+| 2 | 方法名称：正文/表格/图标题均使用描述性名称（非纯代号） | ✅ 已执行（代码和图表均使用描述性名称） |
 | 3 | 数值来源：所有数字均来自实际 .npy 结果文件 | ✅ 均来自各阶段 report 中的实际数值 |
 | 4 | 单场景标记：仅在单场景有效的结论已明确标注 | ✅ 已标注 |
 | 5 | 图表引用：每个 `![]()` 有 alt text，图后有解读文字 | ✅ 已执行 |
@@ -589,22 +659,12 @@ Phase 3 的 D1 诊断揭示了 Voting 的一个非直观行为：
 
 请在 Cursor Composer 中启用 `BLE CS 执行 Agent`，完成以下图表补充任务：
 
-### 任务：生成成果汇报所需的汇总图表
+### 任务：生成 §9.3 中优先级图表（可选）
 
-**目标**：根据本报告 §9.3 的待补充图表清单，生成高优先级图表（至少前 4 项）。
+**目标**：根据本报告 §9.3 的待补充图表清单，可选择生成中低优先级图表（全阶段热力图、PCA vs Voting 双线对比图、PCA/SVD PNG 转换）。
 
-**数据来源**：
-- Phase 1: `outputs/reports/voting_fusion_results.npy`、`voting_fusion_cross_domain.npy`
-- Phase 2: `outputs/reports/systematic_fusion_results.npy`、`systematic_fusion_cross_domain.npy`
-- Phase 3/SA: `outputs/reports/b1_gating_diagnosis_results.npy`、`signal_adaptive_gating_results.npy`
+**数据来源**：各阶段 `outputs/reports/` 下 cross_domain npy 文件。
 
-**要求**：
-1. 所有图表输出 PNG 格式到 `outputs/figures/`
-2. 图表标题和坐标轴标签使用**描述性方法名称**（参照本报告 §5.2 全阶段排行榜），不得使用纯代号
-3. 全阶段排行榜需包含主线 8 个方法，按跨域 mean 升序排列，用颜色标记阶段
-4. 方法演进时间线图的横轴为阶段顺序（P0→P1→P2→P3），纵轴为跨域 mean err%
+**要求**：图表标题和坐标轴标签使用描述性方法名称，输出 PNG 格式到 `outputs/figures/`。
 
-执行完成后，请返回以下材料：
-- 生成的 PNG 图表路径
-- 对应的绘图脚本路径
-- git commit message 建议
+执行完成后，请返回生成的 PNG 图表路径和 git commit message 建议。
