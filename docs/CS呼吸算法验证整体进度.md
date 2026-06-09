@@ -315,6 +315,7 @@ G4-B1-v2（三候选最近对共识门控）跨域 **8.05%** 为当前全局最�
 
 - **阶段性进展汇报**（Phase 0–4）：[`docs/achievements/method_evolution_progress_report.md`](achievements/method_evolution_progress_report.md)
 - **综合技术报告**（PCA + Voting 双主线，含公式推导）：[`docs/achievements/pca_voting_comprehensive_achievement_report.md`](achievements/pca_voting_comprehensive_achievement_report.md)
+- **工作周报**（1–2 页精简版）：[`docs/achievements/weekly_report_20260609.md`](achievements/weekly_report_20260609.md)
 
 ---
 

@@ -164,13 +164,13 @@ $$\mathbf{w}_{\text{PC1}}^{(c)} = \mathbf{Z}_c \cdot \mathbf{v}_1^{(c)}$$
 | 同期 baseline: Modal top2 | 逐模态最优信道（max-η 选道） | Top2 等权 | **9.45%** |
 | 同期 baseline: Single Remote | 单信道 Remote 幅值（max-η 选道） | 无 | 10.45% |
 
-![PCA/SVD 跨域排行榜](../../outputs/figures/pca_svd_cross_domain_aggregate_bars.pdf)
+![PCA/SVD 跨域排行榜](../../outputs/figures/pca_svd_cross_domain_aggregate_bars.png)
 
 **图 1**：PCA/SVD 系列方法跨域汇总。PCA-Modal3（~10.92%）未超越 Modal top2（9.45%），且未超越 Single Remote（10.45%）。
 
-![PCA/SVD PC1 方差占比](../../outputs/figures/pca_svd_pc1_variance_ratio.pdf)
+![PCA/SVD PC1 方差占比](../../outputs/figures/pca_svd_pc1_variance_ratio.png)
 
-**图 2**：各段各窗 PC1 方差占比分布。多数窗 PC1 方差占比在 0.3–0.6 范围，说明第一主成分并未压倒性地主导数据方差——多径噪声成分也被纳入了主成分。
+**图 2**：各段各窗 PC1 方差占比分布。多数窗 PC1 方差占比在 0.3–0.6 范围，第一主成分并未压倒性主导数据方差。多数窗 PC1 方差占比在 0.3–0.6 范围，说明第一主成分并未压倒性地主导数据方差——多径噪声成分也被纳入了主成分。
 
 ### 3.4 失败原因分析
 
@@ -619,8 +619,8 @@ Phase 3 的 D1 诊断揭示了 Voting 的一个非直观行为：
 
 | 图表 | 路径 | 阶段 |
 |------|------|------|
-| PCA/SVD 跨域排行榜 | `outputs/figures/pca_svd_cross_domain_aggregate_bars.pdf` | P0 |
-| PCA/SVD PC1 方差占比 | `outputs/figures/pca_svd_pc1_variance_ratio.pdf` | P0 |
+| PCA/SVD 跨域排行榜 | `outputs/figures/pca_svd_cross_domain_aggregate_bars.png` | P0 |
+| PCA/SVD PC1 方差占比 | `outputs/figures/pca_svd_pc1_variance_ratio.png` | P0 |
 | Phase 1 Voting 跨域排行榜 | `outputs/figures/voting_fusion_leaderboard.png` | P1 |
 | Phase 1 Voting 各场景对比 | `outputs/figures/voting_fusion_cross_domain_aggregate_bars.png` | P1 |
 | 系统性融合跨域排行榜 | `outputs/figures/systematic_fusion_leaderboard.png` | P2 |
