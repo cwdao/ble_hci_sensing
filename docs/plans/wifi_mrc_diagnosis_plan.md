@@ -313,11 +313,21 @@ python notebooks/scripts/chFusion_wifi_mrc_diagnosis.py --all
 
 | 字段 | 内容 |
 |------|------|
-| **验证状态** | 待实现 |
-| **实际脚本** | — |
-| **核心模块** | `src/ble_analysis/wifi_mrc.py`（扩展） |
-| **报告链接** | — |
-| **一句话结论** | — |
+| **验证状态** | 已完成 |
+| **实际脚本** | `notebooks/scripts/chFusion_wifi_mrc_diagnosis.py` |
+| **核心模块** | `src/ble_analysis/wifi_mrc.py`（扩展诊断 + A1/A2） |
+| **报告链接** | `docs/reports/wifi_mrc_diagnosis_report.md` |
+| **数值结果** | `outputs/reports/wifi_mrc_diagnosis_diagnostics.npy`、`wifi_mrc_diagnosis_ablation.npy` |
+| **图表** | `outputs/figures/wifi_mrc_diagnosis_*.png` |
+| **一句话结论** | η·ρ MRC 缩小 Fan 与 B1 差距至 2.33 pp，确认 Voting 独立优势；091339 失效不由 η/模态切换/PCA 不稳定解释。 |
+
+### 保留问题
+
+| ID | 问题 | 备注 |
+|----|------|------|
+| Q091 | cs_091339 MRC 失效主因 | D1–D3 均未支持原假设；η CV 偏高待深入 |
+| Q-Vote | Voting 优势机制 | 谱域保留 per-tone 结构 vs 时域加权合并 |
+| Q-B2 | 波形方向是否仍有价值 | BPM 超越 B1 预期有限 |
 
 ---
 
