@@ -73,6 +73,8 @@ Claude/DeepSeek 不负责：
   - `docs/plans/{topic}_plan.md`
 - Plan 模板：
   - `docs/templates/algorithm_plan.md`
+- **方法注册表（单一事实来源）**：
+  - `docs/methods/README.md` — 记录所有方法的规格、排名、物理自洽性判定、实现位置和维护状态
 
 ### 1.2 执行与报告
 

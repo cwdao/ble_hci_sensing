@@ -103,6 +103,8 @@ Claude/DeepSeek 不负责：
   - `docs/plans/{topic}_plan.md`
 - Plan 模板：
   - `docs/templates/algorithm_plan.md`
+- **方法注册表（单一事实来源）**：
+  - `docs/methods/README.md` — 记录所有方法的规格、排名、物理自洽性判定、实现位置和维护状态
 
 ### 1.2 执行与报告
 
@@ -471,7 +473,8 @@ docs/chFusion_pca_svd_plan.md
 6. 是否缺失 plan 中要求的实验；
 7. 是否把单场景结果写成全局结论；
 8. 哪些方法应推荐、保留或废弃；
-9. 下一轮应该做什么。
+9. 下一轮应该做什么；
+10. **更新 `docs/methods/README.md`**：若结论确认某方法应推荐、保留或废弃，必须同步更新方法注册表（排名、状态、更新日志）。
 
 ### 8.3 Review 输出格式
 
@@ -793,6 +796,8 @@ Validate chFusion eta-rho fusion
 - `outputs/figures/`
 - 关键脚本路径
 - git commit message 或 git diff 摘要
+
+Review 完成后，若结论改变方法推荐/废弃状态，Claude/DeepSeek 负责更新 `docs/methods/README.md`。
 ```
 
 ------
