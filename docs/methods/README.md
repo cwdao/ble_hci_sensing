@@ -48,7 +48,8 @@
 | 4 | T0-V3 | Per-Tone η·ρ 加权直方图投票（仅 Remote） | 9.20% | 13.77 | 6.84 | 6.99 | ⚠️ 仅 Remote 单模态 | Baseline |
 | 5 | Modal top2 | 逐模态 max-η 最优信道 → Top2 等权谱融合 | 9.45% | 13.04 | 10.61 | 4.69 | ✅ | Baseline |
 | 6 | B0 Single Remote | max-η 单信道（Remote 幅值） | 10.45% | 10.91 | 12.16 | 8.29 | ✅ | Baseline |
-| 7 | B1 Uniform Remote | 72 tone 等权谱平均（Remote 幅值） | 11.02% | 17.09 | 9.15 | 6.82 | ✅ | Baseline |
+| 7 | MRC-PCA-η-equal | √η-MRC + PCA 符号校正 → 三模态等权 | 10.78% | 17.63 | 7.29 | 7.41 | ✅ | 实验（不推荐部署） |
+| 8 | B1 Uniform Remote | 72 tone 等权谱平均（Remote 幅值） | 11.02% | 17.09 | 9.15 | 6.82 | ✅ | Baseline |
 
 > **物理自洽判定标准**（来自 CLAUDE.md）：  
 > ✅ remote/local 物理对等，不得硬编码偏好；三种变量对称对待；决策由 per-window 信号质量动态驱动。  
@@ -200,6 +201,34 @@
 | **不推荐原因** | Voting 降低模态间频谱相似度 → Top2 选择退化为随机剔除 → Equal (B1) 严格优于 Top2 (B3) |
 | **诊断发现** | B1 的模态间频谱余弦相似度 0.864 vs Single-best 0.772（091339）— 机制级解释见 [`b1_gating_and_diagnosis_achievement_report.md`](../achievements/b1_gating_and_diagnosis_achievement_report.md) §D1 |
 
+### 4.7 WiFi MRC 迁移 — 外部 baseline 验证 ← 已结案
+
+WiFi 呼吸感知文献（Fan 2024 / Yu 2021 WiFi-Sleep）中的时域 MRC 方法迁移到 BLE CS。BPM 估计全部劣于 B1（8.45%）。
+
+| 代号 | 描述性名称 | 跨域 mean | 091339 | 095806 | 102621 | 物理自洽 |
+|------|-----------|-----------|--------|--------|--------|----------|
+| MRC-PCA-η-equal | √η-MRC + PCA 符号校正 → 三模态等权 | 10.78% | 17.63 | 7.29 | 7.41 | ✅ |
+| MRC-PCA-η-sqrt | √η-MRC + PCA 符号校正 → Best modal | 11.95% | 19.09 | 8.41 | 8.33 | ✅ |
+| Fan-η-equal | η-MRC + 三模态等权 | 13.51% | 18.78 | 11.79 | 9.97 | ✅ |
+| Fan-η-linear | η-MRC → Best modal（Fan 2024 原文） | 15.21% | 20.31 | 13.37 | 11.95 | ✅ |
+| Fan-η-sqrt / MRC-PCA-no-sign | √η-MRC → Best modal | 15.82% | 21.17 | 14.06 | 12.23 | ✅ |
+
+> **收尾结论**：
+>
+> - 时域 MRC 在 BLE ~2 Hz 低采样率下可运行，**PCA 符号校正确实有效**（no-sign 15.82% → η-sqrt 11.95%，+3.9 pp），确认 BLE tone 间存在呼吸波形反相。
+> - 但最优 MRC（10.78%）仍差 B1（8.45%）**2.33 pp**，时域相干融合未能复现 WiFi 文献中的相对优势。
+> - B1 的优势来自两方面：① **η·ρ 质量指标**（vs 纯 η）引入峰度抑制假峰 tone；② **Voting 谱域信道融合**保留了 tone 间相位差异信息，而 MRC 时域平均丢失了这些信息。两者贡献尚未定量分解（见诊断 plan `docs/plans/wifi_mrc_diagnosis_plan.md` A1）。
+> - **部署建议**：不推荐将 Fan-BLE / MRC-PCA-BLE 作为默认 BPM pipeline。PCA 符号校正思路可保留供未来 B2 波形融合参考。
+> - **论文意义**：本实验确认 BLE CS + Voting 谱域融合（B1, 8.45%）在 BPM 估计上**系统性地优于** WiFi MRC 方法（Fan 2024: 13.51–15.82%, Yu 2021: 10.78–15.82%），三个场景一致，不存在单场景巧合。
+
+| 字段 | 内容 |
+|------|------|
+| **Plan** | [`docs/plans/wifi_mrc_baselines_plan.md`](../plans/wifi_mrc_baselines_plan.md) |
+| **Report** | [`docs/reports/wifi_mrc_baselines_report.md`](../reports/wifi_mrc_baselines_report.md) |
+| **诊断 Plan** | [`docs/plans/wifi_mrc_diagnosis_plan.md`](../plans/wifi_mrc_diagnosis_plan.md)（待执行） |
+| **实现** | `src/ble_analysis/wifi_mrc.py` |
+| **状态** | ❌ **已结案——BPM 全局劣于 B1，不推荐部署。** 可作论文中「proposed vs SOTA WiFi baseline」引用 |
+
 ---
 
 ## 5. 物理自洽性判定细则
@@ -251,6 +280,7 @@
 | `b1_gating_diagnosis.py` | G4-B1-v1/v2/v3/v4, G5-B1, D1–D3 诊断 |
 | `signal_adaptive_gating.py` | SA-v1, SA-v2 |
 | `cross_spectrum.py` | X0–X7（互谱合并系列） |
+| `wifi_mrc.py` | Fan-η-linear/√η/equal, MRC-PCA-η-sqrt/equal/no-sign（WiFi MRC 外部 baseline） |
 | `pca_svd.py` | PCA/SVD 降维系列 |
 | `segments.py` | 滑窗、分段、滤波参数 |
 | `metrics.py` | 评估指标（`_overall_rel_error`, `_seg_bpm_stats`） |
@@ -261,6 +291,7 @@
 
 | 日期 | 变更 | 原因 |
 |------|------|------|
+| 2026-06-16 | 新增 §4.7 WiFi MRC 外部 baseline（Fan-η-linear/√η/equal, MRC-PCA-η-sqrt/equal/no-sign），全部劣于 B1，标记为已结案不推荐 | Review 确认 MRC-PCA-η-equal 10.78% vs B1 8.45%（差 2.33 pp） |
 | 2026-06-16 | 初版 | 汇总 Voting → Gating → Systematic → Cross-Spectrum 全部实验结论 |
 | 2026-06-16 | B1 标记为推荐；G4/G4-B1-v2 标记为实验（不推荐） | 物理自洽性审查——硬编码 Remote fallback |
 | 2026-06-16 | 互谱 X1–X7 标记为已废弃 | 跨域 12.25–14.95%，全局劣于 B1 |
