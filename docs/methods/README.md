@@ -150,16 +150,37 @@
 | **跨域 mean** | 8.72% |
 | **备注** | 091339 最优（12.27%）— 双峰检测命中了 voting 多簇竞争模式。但 102621 退化。物理上无硬编码问题，但跨域未超越 B1 |
 
-### 4.4 X1–X7 — 互谱合并 (12.25–14.95%)
+### 4.4 X1–X7 — 互谱合并 (12.25–14.95%) ← 已结案
 
 | 字段 | 内容 |
 |------|------|
 | **描述** | 将 B1 的功率谱加权平均替换为 tone 间互功率谱合并（magnitude/real/coherent × 全对/Δk=1/Δk=5） |
-| **跨域最优** | 12.25%（X3 coherent） |
-| **不推荐原因** | 全局劣于 B1 — tone 间 cos(φᵢ−φⱼ) 在多径下不满足同相假设 |
+| **跨域最优** | 12.25%（X3 coherent）vs B1 8.45%（X0 功率谱） |
+| **不推荐原因** | 全局劣于 B1。**失效机制已确认——寻峰不匹配 (B)，非频谱质量下降 (A)**：互谱 `peak_significance` 系统性高于功率谱（median 高 2–4×），噪声平台降低的同时假峰更尖锐，argmax 被劫持；cs_091339 上 44–48% tone 对 cos(φᵢ−φⱼ) < 0，缺乏全局相位相干性 |
 | **Plan** | [`docs/plans/cross_spectrum_combining_plan.md`](../plans/cross_spectrum_combining_plan.md) |
 | **Report** | [`docs/reports/cross_spectrum_combining_report.md`](../reports/cross_spectrum_combining_report.md) |
-| **状态** | ❌ 已废弃方向。待 [`cross_spectrum_failure_diagnosis_plan.md`](../plans/cross_spectrum_failure_diagnosis_plan.md) 确认失效机制 |
+| **诊断 Plan** | [`docs/plans/cross_spectrum_failure_diagnosis_plan.md`](../plans/cross_spectrum_failure_diagnosis_plan.md) |
+| **诊断 Report** | [`docs/reports/cross_spectrum_failure_diagnosis_report.md`](../reports/cross_spectrum_failure_diagnosis_report.md) |
+| **状态** | ❌ **已结案——永久废弃。** 可作未来 baseline 负对照引用 |
+
+**收尾结论**：
+
+互谱合并路线经两轮实验（combining + failure diagnosis）已完整闭环：
+
+```text
+第一轮（combining）：X1–X7 七种互谱变体，全局最优 X3 = 12.25%，vs B1 8.45%（+3.80 pp）
+    ↓ 问题：无法区分是频谱质量差 (A) 还是寻峰失效 (B)
+第二轮（diagnosis）：四项诊断（D1–D4）确认：
+    D1: X3 peak_sig 系统性高于 X0（73–95% 窗），091339 上 59% 窗「更高 peak_sig + 更差 BPM」
+    D2: n_effective_pairs median 1540（≠ 样本不足）
+    D3: cs_091339 呼吸峰处 44–48% tone 对 cos(φᵢ−φⱼ) < 0，全局缺乏相位相干性
+    D4: 互谱呼吸峰存在但非全局最高——尖锐假峰劫持 argmax
+    → 结论：寻峰不匹配 (B)，非频谱质量下降 (A)
+```
+
+**互谱的根本问题**是物理层面而非工程层面：BLE CS 72 tone 跨越 72 MHz 带宽，室内多径相干带宽仅 ~1–3 MHz——tone 间缺乏天然相位相干性的场景（如 cs_091339）下，互谱的"噪声平台降低"同时放大了假峰，而 argmax 寻峰没有区分呼吸峰与假峰的机制。修复方案（多峰检测 + 先验约束）在缺乏相位相干性的场景仍无理论优势——互谱合并的上限仍取决于 tone 间 cos(φᵢ−φⱼ)，而这是由多径环境决定的，不可控。
+
+**后续引用时**：若未来新方法需要互谱作为 baseline 负对照，直接引用 X3 = 12.25%（跨域）即可，无需重跑实验。
 
 ### 4.5 SA 系列 — 信号自适应门控 (10.66%)
 
@@ -243,3 +264,4 @@
 | 2026-06-16 | 初版 | 汇总 Voting → Gating → Systematic → Cross-Spectrum 全部实验结论 |
 | 2026-06-16 | B1 标记为推荐；G4/G4-B1-v2 标记为实验（不推荐） | 物理自洽性审查——硬编码 Remote fallback |
 | 2026-06-16 | 互谱 X1–X7 标记为已废弃 | 跨域 12.25–14.95%，全局劣于 B1 |
+| 2026-06-16 | **互谱 X1–X7 正式结案**：失效机制已确认 → 寻峰不匹配 (B)，非频谱质量下降 (A)；附收尾结论 | diagnosis plan (D1–D4) 确认：互谱 peak_sig 更高但假峰劫持 argmax；cos(φᵢ−φⱼ) 随机相位背景不可控 |

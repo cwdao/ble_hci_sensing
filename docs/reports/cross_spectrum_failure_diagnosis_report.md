@@ -196,3 +196,18 @@ python notebooks/scripts/chFusion_cross_spectrum_diagnosis.py
 - **验证状态**：已完成
 - **实际脚本**：`notebooks/scripts/chFusion_cross_spectrum_diagnosis.py`
 - **结论一句话**：互谱失败主因是寻峰不匹配 (B)，非频谱质量下降 (A)；091339 存在 tone 间随机相位背景。
+
+---
+
+## 9. 收尾：互谱路线已结案
+
+经两轮实验（[combining](cross_spectrum_combining_report.md) + 本 diagnosis），互谱合并路线已完成闭环：
+
+| 阶段 | 结论 |
+|------|------|
+| 第一轮 combining | X1–X7 全局劣于 B1 功率谱（最优 X3 12.25% vs 8.45%） |
+| 第二轮 diagnosis | 确认失效机制：(B) 寻峰不匹配 — 互谱 peak_sig 更高但假峰劫持 argmax |
+
+**互谱的物理上限受限于 tone 间相位相干性（cos(φᵢ−φⱼ)），这是多径环境的固有属性，不可通过工程手段改变。** 
+
+此方向已正式结案。若未来新方法需引用互谱作为 baseline 负对照，直接使用 **X3 CrossSpec-coh-all = 12.25%（跨域 mean）** 即可，无需重跑。方法注册表（[`docs/methods/README.md`](../methods/README.md) §4.4）已更新为结案状态。
