@@ -23,6 +23,7 @@
 | **Plan** | [`docs/plans/systematic_modal_channel_fusion_plan.md`](../plans/systematic_modal_channel_fusion_plan.md) |
 | **Report** | [`docs/reports/systematic_modal_channel_fusion_report.md`](../reports/systematic_modal_channel_fusion_report.md) |
 | **成果汇报** | [`docs/achievements/systematic_modal_channel_fusion_achievement_report.md`](../achievements/systematic_modal_channel_fusion_achievement_report.md) |
+| **实现指南** | [`docs/methods/b1_implementation_guide.md`](b1_implementation_guide.md) — 从原始信号到 BPM 的完整教程 |
 | **状态** | ✅ **推荐部署（跨域默认）** |
 
 **为何是"物理自洽最优"**：
