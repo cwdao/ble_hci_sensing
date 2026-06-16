@@ -4,7 +4,7 @@
 > **目标报告**：`docs/reports/cross_spectrum_combining_report.md`（模板：`docs/templates/algorithm_validation_report.md`）  
 > **建议 plan 路径**：`docs/plans/cross_spectrum_combining_plan.md`  
 > **日期**：2026-06-16  
-> **验证状态**：待实现
+> **验证状态**：已完成
 
 ---
 
@@ -457,12 +457,12 @@ def run_cross_spectrum_benchmark(
 
 | 字段 | 内容 |
 |------|------|
-| **验证状态** | 待实现 |
-| **实际脚本** | — |
-| **报告链接** | — |
-| **数值结果** | — |
-| **图表** | — |
-| **一句话结论** | — |
+| **验证状态** | 已完成 |
+| **实际脚本** | `notebooks/scripts/chFusion_cross_spectrum.py` |
+| **报告链接** | `docs/reports/cross_spectrum_combining_report.md` |
+| **数值结果** | `outputs/reports/cross_spectrum_results.npy`、`cross_spectrum_cross_domain.npy` |
+| **图表** | `outputs/figures/cross_spectrum_*.png`（4 张） |
+| **一句话结论** | 全部互谱变体（X1–X7）跨域 mean 12.25%–14.95%，显著劣于 X0/B1 功率谱 8.45%；互谱合并在当前实信号框架下无效。 |
 
 ---
 
