@@ -5,7 +5,7 @@
 > **目标报告**：`docs/reports/cross_spectrum_failure_diagnosis_report.md`（模板：`docs/templates/algorithm_validation_report.md`）  
 > **建议 plan 路径**：`docs/plans/cross_spectrum_failure_diagnosis_plan.md`  
 > **日期**：2026-06-16  
-> **验证状态**：待实现
+> **验证状态**：已完成
 
 ---
 
@@ -264,10 +264,16 @@ cos_mat = np.real(cross) / (np.abs(cross) + eps)
 
 | 字段 | 内容 |
 |------|------|
-| **验证状态** | 待实现 |
-| **实际脚本** | — |
-| **报告链接** | — |
-| **一句话结论** | — |
+| **验证状态** | 已完成 |
+| **实际脚本** | `notebooks/scripts/chFusion_cross_spectrum_diagnosis.py` |
+| **报告链接** | `docs/reports/cross_spectrum_failure_diagnosis_report.md` |
+| **诊断摘要** | `outputs/reports/cross_spectrum_failure_diagnosis_summary.npy` |
+| **图表** | `outputs/figures/cross_spectrum_diag_*.png`（6 张） |
+| **一句话结论** | 互谱失败主因是寻峰不匹配 (B)：X3 peak_sig 系统性高于 X0，但 091339 上 59% 窗 BPM 更差；非频谱质量下降 (A) |
+
+遗留问题：
+- 互谱专用寻峰是否可挽回 091339 → 需新 plan
+- diversity combining 其他分支 → `diversity_combining_exploration_plan.md`
 
 ---
 
