@@ -559,6 +559,14 @@ def run_voting_fusion_benchmark(
             multichannel_by_var[variable] = mc
     else:
         multichannel_by_var = dict(multichannel_by_var)
+        fs = None
+        for var_mc in multichannel_by_var.values():
+            for seg in var_mc.values():
+                if seg is not None:
+                    fs = seg["metadata"]["sampling_rate"]
+                    break
+            if fs is not None:
+                break
 
     remote_mc = multichannel_by_var["remote_amplitudes"]
     baselines_remote = estimate_segment_bpm_methods(

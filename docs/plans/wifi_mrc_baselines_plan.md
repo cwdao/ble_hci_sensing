@@ -8,7 +8,7 @@
 >
 > **目标报告**：`docs/reports/wifi_mrc_baselines_report.md`（模板：`docs/templates/algorithm_validation_report.md`）
 > **日期**：2026-06-16
-> **验证状态**：待实现
+> **验证状态**：已完成（2026-06-16，见 §9）
 
 ---
 
@@ -549,19 +549,22 @@ Zhuo 2023 的方法（复平面投影 + BNR/Variance 联合评分 + PCA-VMD）�
 
 | 字段 | 内容 |
 |------|------|
-| **验证状态** | 待实现 |
-| **实际脚本** | — |
-| **报告链接** | — |
-| **一句话结论** | — |
+| **验证状态** | 已完成 |
+| **实际脚本** | `notebooks/scripts/chFusion_wifi_mrc_baselines.py`、`notebooks/scripts/chFusion_wifi_mrc_cross_domain.py` |
+| **核心模块** | `src/ble_analysis/wifi_mrc.py` |
+| **报告链接** | `docs/reports/wifi_mrc_baselines_report.md` |
+| **数值结果** | `outputs/reports/wifi_mrc_baselines_results.npy` |
+| **图表** | `outputs/figures/wifi_mrc_baselines_*.png` |
+| **一句话结论** | WiFi 时域 MRC 可运行且 PCA 符号校正有效，但跨域 BPM 最优仍为 B1（8.45%）；最优 MRC MRC-PCA-η-equal 为 10.78%。 |
 
 ### 保留问题
 
 | ID | 问题 | 备注 |
 |----|------|------|
-| Q1 | BLE CS tone 间反相存在性 | 由 MRC-PCA-no-sign 消融实验回答 |
-| Q2 | 时域相干 vs 谱域非相干 在 BLE 上孰优 | 本 plan 核心问题 |
-| Q3 | Zhuo 2023 的复平面投影是否值得后续尝试 | 取决于本 plan 结果 |
-| Q4 | B2 Coherent-MRC Waveform Fusion 的优先级 | 本 plan 完成后，根据时域 MRC 效果决定 |
+| Q1 | BLE CS tone 间反相存在性 | **已支持**：MRC-PCA-η-sqrt 11.95% vs no-sign 15.82% |
+| Q2 | 时域相干 vs 谱域非相干 在 BLE 上孰优 | **谱域 B1 仍优**；MRC-PCA-η-equal 10.78% |
+| Q3 | Zhuo 2023 是否值得后续尝试 | 取决于 B2；本 plan 未证实时域 MRC BPM 优势 |
+| Q4 | B2 Coherent-MRC Waveform Fusion 优先级 | 可继续波形方向，BPM 超越 B1 预期有限 |
 
 ---
 
