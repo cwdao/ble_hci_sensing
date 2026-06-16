@@ -56,6 +56,11 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="WiFi MRC diagnosis + ablation")
     parser.add_argument("--scenario", type=str, default=None)
     parser.add_argument("--all", action="store_true", help="Run all three scenarios")
+    parser.add_argument(
+        "--figures-only",
+        action="store_true",
+        help="Regenerate figures from saved diagnosis .npy (no re-run)",
+    )
     return parser.parse_args()
 
 
@@ -398,6 +403,45 @@ if __name__ == "__main__":
         enable_consensus=False,
     )
 
+    diag_path = REPORTS_DIR / "wifi_mrc_diagnosis_diagnostics.npy"
+    abl_path = REPORTS_DIR / "wifi_mrc_diagnosis_ablation.npy"
+
+    if args.figures_only:
+        if not diag_path.exists() or not abl_path.exists():
+            raise FileNotFoundError(
+                f"Missing {diag_path} or {abl_path}. Run with --all first."
+            )
+        diag_pack = np.load(diag_path, allow_pickle=True).item()
+        d1_by_scenario = diag_pack["d1"]
+        d2_fan_by_scenario = diag_pack["d2_fan"]
+        d2_mrc_by_scenario = diag_pack["d2_mrc"]
+        d3_by_scenario = diag_pack["d3"]
+        ablation_by_scenario = np.load(abl_path, allow_pickle=True).item()
+        if BASELINES_PATH.exists():
+            baselines = np.load(BASELINES_PATH, allow_pickle=True).item()
+            reference = _reference_cross_domain(baselines)
+            reference_rows = _reference_rows(reference)
+        else:
+            reference = {}
+            reference_rows = []
+        ablation_rows = compute_ablation_decomposition(ablation_by_scenario, reference)
+        fig_paths = plot_wifi_mrc_diagnosis_figures(
+            d1_by_scenario,
+            d2_fan_by_scenario,
+            d2_mrc_by_scenario,
+            d3_by_scenario,
+            ablation_rows,
+            reference_rows,
+            figures_dir=FIGURES_DIR,
+            scenario_ids=DEFAULT_SCENARIOS,
+            show=False,
+            save=True,
+        )
+        for name, path in fig_paths.items():
+            print(f"Saved figure: {path}")
+        print("\nDone (figures-only).")
+        raise SystemExit(0)
+
     if args.all or args.scenario is None:
         scenario_ids = list(DEFAULT_SCENARIOS)
     else:
@@ -432,7 +476,6 @@ if __name__ == "__main__":
         d3_by_scenario[sid] = pack["d3"]
         ablation_by_scenario[sid] = pack["ablation"]
 
-    diag_path = REPORTS_DIR / "wifi_mrc_diagnosis_diagnostics.npy"
     np.save(
         diag_path,
         {
@@ -443,7 +486,6 @@ if __name__ == "__main__":
         },
         allow_pickle=True,
     )
-    abl_path = REPORTS_DIR / "wifi_mrc_diagnosis_ablation.npy"
     np.save(abl_path, ablation_by_scenario, allow_pickle=True)
     print(f"Saved: {diag_path}")
     print(f"Saved: {abl_path}")

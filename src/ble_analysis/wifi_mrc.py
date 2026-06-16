@@ -1259,18 +1259,18 @@ def compute_ablation_decomposition(
 
     rows.append(
         {
-            "label": "η·ρ vs η contribution (Fan equal)",
+            "label": "η·ρ vs η (quality metric)",
             "method_key": "_eta_rho_contrib",
-            "color": "gray",
+            "color": "steelblue",
             "cross_domain_mean": eta_rho_contrib,
             "per_scenario": {},
         }
     )
     rows.append(
         {
-            "label": "Voting vs MRC contribution (η·ρ equal)",
+            "label": "Voting vs MRC (channel fusion)",
             "method_key": "_voting_contrib",
-            "color": "gray",
+            "color": "darkorange",
             "cross_domain_mean": voting_contrib,
             "per_scenario": {},
         }
@@ -1427,12 +1427,12 @@ def plot_wifi_mrc_diagnosis_figures(
     if decomp:
         dl = [r["label"] for r in decomp]
         dv = [r["cross_domain_mean"] for r in decomp]
-        ax.barh(np.arange(len(dl)), dv, color="gray", alpha=0.85)
+        ax.barh(np.arange(len(dl)), dv, color=[r["color"] for r in decomp], alpha=0.85)
         ax.set_yticks(np.arange(len(dl)))
         ax.set_yticklabels(dl, fontsize=9)
         ax.invert_yaxis()
-        ax.set_xlabel("Cross-domain mean err % gap vs reference")
-        ax.set_title("Ablation decomposition (η·ρ: Fan η→ηρ; Voting: B1→Fan ηρ)")
+        ax.set_xlabel("Contribution to B1 advantage over Fan-η-equal (pp)")
+        ax.set_title("Ablation decomposition")
         ax.axvline(0, color="k", lw=0.8)
         ax.grid(True, axis="x", alpha=0.3)
     fig.tight_layout()

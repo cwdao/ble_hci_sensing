@@ -217,7 +217,7 @@ WiFi 呼吸感知文献（Fan 2024 / Yu 2021 WiFi-Sleep）中的时域 MRC 方�
 >
 > - 时域 MRC 在 BLE ~2 Hz 低采样率下可运行，**PCA 符号校正确实有效**（no-sign 15.82% → η-sqrt 11.95%，+3.9 pp），确认 BLE tone 间存在呼吸波形反相。
 > - 但最优 MRC（10.78%）仍差 B1（8.45%）**2.33 pp**，时域相干融合未能复现 WiFi 文献中的相对优势。
-> - B1 的优势来自两方面：① **η·ρ 质量指标**（vs 纯 η）引入峰度抑制假峰 tone；② **Voting 谱域信道融合**保留了 tone 间相位差异信息，而 MRC 时域平均丢失了这些信息。两者贡献尚未定量分解（见诊断 plan `docs/plans/wifi_mrc_diagnosis_plan.md` A1）。
+> - B1 的优势来自两方面，已由 A1 消融定量分解：① **η·ρ 质量指标**贡献 **+2.73 pp**（Fan-η-equal 13.51% → Fan-ηρ-equal 10.78%），峰度抑制假峰 tone；② **Voting 谱域信道融合**贡献 **+2.33 pp**（Fan-ηρ-equal 10.78% vs B1 8.45%），保留了 tone 间相位差异信息，MRC 时域平均丢失了这些信息。
 > - **部署建议**：不推荐将 Fan-BLE / MRC-PCA-BLE 作为默认 BPM pipeline。PCA 符号校正思路可保留供未来 B2 波形融合参考。
 > - **论文意义**：本实验确认 BLE CS + Voting 谱域融合（B1, 8.45%）在 BPM 估计上**系统性地优于** WiFi MRC 方法（Fan 2024: 13.51–15.82%, Yu 2021: 10.78–15.82%），三个场景一致，不存在单场景巧合。
 
@@ -225,7 +225,7 @@ WiFi 呼吸感知文献（Fan 2024 / Yu 2021 WiFi-Sleep）中的时域 MRC 方�
 |------|------|
 | **Plan** | [`docs/plans/wifi_mrc_baselines_plan.md`](../plans/wifi_mrc_baselines_plan.md) |
 | **Report** | [`docs/reports/wifi_mrc_baselines_report.md`](../reports/wifi_mrc_baselines_report.md) |
-| **诊断 Plan** | [`docs/plans/wifi_mrc_diagnosis_plan.md`](../plans/wifi_mrc_diagnosis_plan.md)（待执行） |
+| **诊断 Plan** | [`docs/plans/wifi_mrc_diagnosis_plan.md`](../plans/wifi_mrc_diagnosis_plan.md) |
 | **实现** | `src/ble_analysis/wifi_mrc.py` |
 | **状态** | ❌ **已结案——BPM 全局劣于 B1，不推荐部署。** 可作论文中「proposed vs SOTA WiFi baseline」引用 |
 
