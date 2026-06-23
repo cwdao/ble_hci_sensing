@@ -56,6 +56,8 @@ B2_ALL_SPECS: Tuple[Tuple[str, str, str], ...] = B2_PHASE1_SPECS + (
     ("B2-C FFT cross-spectrum → equal modal", "b2_c_fft_cross", "purple"),
     ("B2-D Two-level Hilbert-MRC", "b2_d_two_level", "crimson"),
     ("B2-D-eq Two-level equal modal", "b2_d_eq", "indianred"),
+    ("B2-A0-D PCA sign → two-level Hilbert modal align", "b2_a0_d_two_level", "darkorange"),
+    ("B2-A1-D Corr sign → two-level Hilbert modal align", "b2_a1_d_two_level", "orange"),
 )
 
 B2_METHOD_KEYS: Tuple[str, ...] = tuple(key for _l, key, _c in B2_ALL_SPECS)
@@ -80,6 +82,7 @@ __all__ = [
     "run_b2_benchmark",
     "compute_b2_cross_domain",
     "plot_b2_figures",
+    "plot_b2_achievement_figures",
 ]
 
 
@@ -681,6 +684,22 @@ def estimate_b2_segment(
             "f0_from_b1": False,
             "min_coherence": min_coherence,
         },
+        "b2_a0_d_two_level": {
+            "phase_method": "pca_sign",
+            "weight_mode": "eta_rho",
+            "use_two_level": True,
+            "use_modal_phase_align": True,
+            "modal_weight_mode": "eta_coherence",
+            "f0_from_b1": False,
+        },
+        "b2_a1_d_two_level": {
+            "phase_method": "corr_sign",
+            "weight_mode": "eta_rho",
+            "use_two_level": True,
+            "use_modal_phase_align": True,
+            "modal_weight_mode": "eta_coherence",
+            "f0_from_b1": False,
+        },
     }
 
     active_methods = list(methods) if methods else list(method_configs.keys())
@@ -1043,5 +1062,143 @@ def plot_b2_figures(
     paths["cross_domain_summary"] = sum_path
     if not show:
         plt.close(fig3)
+
+    return paths
+
+
+def plot_b2_achievement_figures(
+    cross_domain: List[dict],
+    *,
+    figures_dir,
+    scenario_ids: Sequence[str] = ("cs_091339", "cs_095806", "cs_102621"),
+    prefix: str = "b2_coherent_mrc",
+    show: bool = False,
+    save: bool = True,
+) -> dict:
+    """Generate achievement-report figures: two-level contribution + waterfall."""
+    import matplotlib.pyplot as plt
+
+    figures_dir = Path(figures_dir)
+    paths: dict = {}
+
+    def _lookup(key: str) -> dict:
+        for row in cross_domain:
+            if row["method_key"] == key:
+                return row
+        raise KeyError(f"Method key not in cross_domain: {key}")
+
+    # --- Figure 1: two-level contribution (Bγ / D-eq / D) ---
+    contrib_keys = ("b2_b_gamma", "b2_d_eq", "b2_d_two_level")
+    contrib_labels = [
+        "B2-Bγ\n(single-level)",
+        "B2-D-eq\n(two-level, no align)",
+        "B2-D\n(two-level, Hilbert+ηγ)",
+    ]
+    contrib_colors = ["darkcyan", "lightblue", "crimson"]
+    panel_ids = list(scenario_ids) + ["cross_domain"]
+
+    fig1, axes1 = plt.subplots(1, len(panel_ids), figsize=(4 * len(panel_ids), 5), sharey=True)
+    if len(panel_ids) == 1:
+        axes1 = [axes1]
+
+    for ax, panel in zip(axes1, panel_ids):
+        vals = []
+        for key in contrib_keys:
+            row = _lookup(key)
+            if panel == "cross_domain":
+                vals.append(row["cross_domain_mean"])
+            else:
+                vals.append(row["per_scenario"][panel])
+        x = np.arange(len(contrib_keys))
+        bars = ax.bar(x, vals, color=contrib_colors, alpha=0.85, width=0.65)
+        ax.set_xticks(x)
+        ax.set_xticklabels(contrib_labels, fontsize=7)
+        title = "cross-domain" if panel == "cross_domain" else panel.replace("cs_", "")
+        ax.set_title(title)
+        ax.set_ylabel("BPM err %")
+        ax.grid(True, axis="y", alpha=0.3)
+        if panel == "cross_domain":
+            ax.text(
+                bars[-1].get_x() + bars[-1].get_width() / 2,
+                bars[-1].get_height() + 0.15,
+                f"{vals[-1]:.2f}%",
+                ha="center",
+                va="bottom",
+                fontsize=8,
+                fontweight="bold",
+            )
+        delta = vals[-1] - vals[0]
+        ax.annotate(
+            f"Δ={delta:+.2f}pp",
+            xy=(x[-1], vals[-1]),
+            xytext=(x[-1] + 0.35, (vals[-1] + vals[0]) / 2),
+            fontsize=7,
+            arrowprops=dict(arrowstyle="->", color="gray", lw=0.8),
+        )
+
+    fig1.suptitle("B2 second-level contribution: Bγ → D-eq → D", y=1.02)
+    fig1.tight_layout()
+    p1 = figures_dir / f"{prefix}_two_level_contribution.png"
+    if save:
+        fig1.savefig(p1, dpi=150, bbox_inches="tight")
+    paths["two_level_contribution"] = p1
+    if not show:
+        plt.close(fig1)
+
+    # --- Figure 2: waterfall A0 → A1 → B → Bγ → D ---
+    steps = [
+        ("A0\nPCA sign", "b2_a0_pca_sign"),
+        ("A1\nCorr sign", "b2_a1_corr_sign"),
+        ("B\nHilbert η·ρ", "b2_b_hilbert"),
+        ("Bγ\n+coherence gate", "b2_b_gamma"),
+        ("D\n+modal Hilbert align", "b2_d_two_level"),
+    ]
+    values = [_lookup(key)["cross_domain_mean"] for _, key in steps]
+    deltas = [None] + [values[i] - values[i - 1] for i in range(1, len(values))]
+
+    fig2, ax2 = plt.subplots(figsize=(10, 6))
+    b1_ref = _lookup("b1_vote_modal_equal")["cross_domain_mean"]
+    ax2.axhline(b1_ref, color="olive", linestyle="--", linewidth=1.2, label=f"B1 ref {b1_ref:.2f}%")
+
+    running = values[0]
+    for i, ((label, _key), val, delta) in enumerate(zip(steps, values, deltas)):
+        if i == 0:
+            color = "steelblue"
+            bottom = 0
+            height = val
+            ax2.bar(i, height, bottom=bottom, color=color, alpha=0.85, width=0.55)
+            ax2.text(i, val + 0.15, f"{val:.2f}%", ha="center", fontsize=9)
+        else:
+            color = "#2ca02c" if delta < -0.05 else ("#d62728" if delta > 0.05 else "#aaaaaa")
+            if delta >= 0:
+                bottom = running
+                height = delta
+            else:
+                bottom = val
+                height = -delta
+            ax2.bar(i, height, bottom=bottom, color=color, alpha=0.85, width=0.55)
+            ax2.text(
+                i,
+                val + (0.2 if delta <= 0 else 0.2),
+                f"{val:.2f}%\nΔ{delta:+.2f}",
+                ha="center",
+                va="bottom",
+                fontsize=8,
+            )
+            running = val
+
+    ax2.set_xticks(range(len(steps)))
+    ax2.set_xticklabels([s[0] for s in steps], fontsize=9)
+    ax2.set_ylabel("Cross-domain mean BPM err %")
+    ax2.set_title(f"B2 improvement path (A0→D total {values[-1] - values[0]:+.2f} pp)")
+    ax2.legend(loc="upper right")
+    ax2.grid(True, axis="y", alpha=0.3)
+    fig2.tight_layout()
+    p2 = figures_dir / f"{prefix}_waterfall_decomposition.png"
+    if save:
+        fig2.savefig(p2, dpi=150, bbox_inches="tight")
+    paths["waterfall_decomposition"] = p2
+    if not show:
+        plt.close(fig2)
 
     return paths

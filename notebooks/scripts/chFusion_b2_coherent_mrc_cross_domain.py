@@ -28,7 +28,7 @@ _env = init_notebook(project_root)
 FIGURES_DIR = _env["FIGURES_DIR"]
 REPORTS_DIR = _env["REPORTS_DIR"]
 
-from ble_analysis.coherent_mrc import B2_ALL_SPECS, compute_b2_cross_domain, plot_b2_figures
+from ble_analysis.coherent_mrc import B2_ALL_SPECS, compute_b2_cross_domain, plot_b2_figures, plot_b2_achievement_figures
 
 SCENARIO_IDS = ("cs_091339", "cs_095806", "cs_102621")
 RESULTS_PATH = REPORTS_DIR / "b2_coherent_mrc_all_results.npy"
@@ -62,5 +62,15 @@ fig_paths = plot_b2_figures(
 )
 for name, path in fig_paths.items():
     print(f"Saved figure: {path}")
+
+ach_paths = plot_b2_achievement_figures(
+    cross_domain,
+    figures_dir=FIGURES_DIR,
+    scenario_ids=SCENARIO_IDS,
+    show=False,
+    save=True,
+)
+for name, path in ach_paths.items():
+    print(f"Saved achievement figure: {path}")
 
 print("\nDone.")

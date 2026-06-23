@@ -52,7 +52,7 @@
 | cs_102621 | `sampleData/CS_frames_all_20260116_102621.jsonl` | 跨域对照 |
 
 - **Baseline**：B0 Single Remote、B1 Uniform Remote、Modal top2 equal、B1 Vote→Equal modal、MRC-PCA-η-equal  
-- **待测**：B2-A0 / A1 / B / Bγ / C / D / D-eq（共 7 变体）  
+- **待测**：B2-A0 / A1 / B / Bγ / C / D / D-eq / **A0-D / A1-D**（共 9 变体）  
 - **指标**：分段 BPM 相对误差 % mean/std、跨域 mean
 
 ---
@@ -72,7 +72,9 @@
 | 7 | B2-Bγ / B2-D-eq | 17.85 | 5.67 | 9.17 | 10.89% |
 | 8 | B2-B Hilbert η·ρ | 17.80 | 5.75 | 9.19 | 10.91% |
 | 9 | B2-A1 Corr sign | 18.61 | 5.89 | 8.68 | 11.06% |
-| 10 | B2-A0 PCA sign | 20.57 | 6.74 | 9.69 | 12.33% |
+| 10 | B2-A0-D PCA sign → two-level Hilbert modal | 20.31 | 6.06 | 6.89 | 11.09% |
+| 11 | B2-A1-D Corr sign → two-level Hilbert modal | 20.72 | 5.86 | 6.87 | 11.15% |
+| 12 | B2-A0 PCA sign | 20.57 | 6.74 | 9.69 | 12.33% |
 
 数据来源：`outputs/reports/b2_coherent_mrc_all_results.npy`
 
@@ -86,6 +88,7 @@
 | Q4 两级 > 单级 | **已验证（微弱）** | D (9.43%) 优于 Bγ (10.89%)，Δ ≈ 1.46 pp |
 | Q5 Modal 相位对齐有增益 | **已验证（微弱）** | D (9.43%) 优于 D-eq (10.89%)，Δ ≈ 1.46 pp |
 | Q6 B2 ≤ B1 8.45% | **未证实** | 最优 B2-D 9.43%，仍差 B1 0.98 pp |
+| Q7 符号校正第一级 + 第二级 Hilbert 对齐 ≈ 全 Hilbert（D） | **未证实** | A1-D 11.15% 仅略优于 A1 11.06%（+0.09 pp 更差）；A0-D 11.09% 优于 A0 12.33%（−1.24 pp）但远劣于 D 9.43%（−1.88 pp） |
 
 ### 4.3 成功标准判定
 
@@ -111,6 +114,7 @@
 4. **A1 corr sign 优于 A0 PCA sign**（11.06% vs 12.33%）：Phase 1 结论——pairwise 相关符号略优于全局 PCA。
 5. **Coherence gating 几乎无跨域收益**：Bγ 与 B 差异 < 0.02 pp，硬门控 min_coherence=0.2 未带来 measurable 改善。
 6. **B1 coarse f₀ 引导的 FFT 互谱（C）为次优 B2**（9.50%）：频域相位估计 + B1 初始化在 102621 上达 6.83%，接近 B1 的 5.63%。
+7. **符号校正第一级 + 第二级 Hilbert 对齐无法复现全 Hilbert 路线增益**：A1-D（11.15%）几乎等于 A1（11.06%），第二级在符号校正第一级上仅 +0.09 pp 退化；A0-D（11.09%）相对 A0 改善 −1.24 pp，但仍远劣于 B2-D（9.43%）。**第二级 modal Hilbert 对齐的 −1.46 pp 增益依赖第一级 Hilbert 连续相位，符号校正不足以作为前提。**
 
 ---
 
@@ -122,6 +126,7 @@
 - **两级级联 + modal 相位对齐**相对单级有 measurable 增益（D vs D-eq：9.43% vs 10.89%）。
 - **Corr sign（A1）优于 PCA sign（A0）** 作为符号校正路线（11.06% vs 12.33%）。
 - **FFT 互谱 + B1 f₀ 引导（C）** 优于纯 Hilbert（B）（9.50% vs 10.91%）。
+- **第二级 Hilbert 对齐增益依赖第一级连续相位**：A1-D ≈ A1，符号校正 + 第二级对齐无法达到 B2-D 水平。
 
 ### 仅单场景
 
@@ -133,6 +138,7 @@
 - **B2 整体超越 B1（8.45%）**：最优 B2-D 9.43%，差距 0.98 pp。
 - **Coherence gating 跨域正向贡献**（Bγ ≈ B）。
 - **连续相位补偿显著优于符号校正**（B 与 A1 跨域接近）。
+- **符号校正第一级 + 第二级 Hilbert 对齐可替代全 Hilbert 路线**（A1-D 11.15% vs D 9.43%）。
 
 ### 已废弃
 
@@ -254,6 +260,24 @@ B2 最差（A0）→ B2 最优（D）跨域：12.33% → 9.43% = **−2.90 pp**�
 | 第二级在 B2 内贡献多少？ | 跨域 **−1.46 pp**（固定第一阶段 Bγ）；占 A0→D 总提升约一半 |
 | 是否「明显提升」？ | B2 内部：**是主要增益来源**；全项目：**不够**（未超 B1）；稳定性：**场景依赖** |
 
+### 6.2.5 补充消融：符号校正第一级 + 第二级 Hilbert 对齐（A0-D / A1-D）
+
+> 来源：`docs/plans/b2_sign_first_level_hilbert_second_ablation.md`（2026-06-23 补充执行）
+
+| 变体 | 第一级 | 第二级 | cs_091339 | cs_095806 | cs_102621 | **跨域 mean** |
+|------|--------|--------|-----------|-----------|-----------|---------------|
+| B2-A1 | Corr sign | 无 | 18.61 | 5.89 | 8.68 | 11.06% |
+| **B2-A1-D** | Corr sign | Hilbert 对齐 + η·γ | 20.72 | 5.86 | 6.87 | **11.15%** |
+| B2-A0 | PCA sign | 无 | 20.57 | 6.74 | 9.69 | 12.33% |
+| **B2-A0-D** | PCA sign | Hilbert 对齐 + η·γ | 20.31 | 6.06 | 6.89 | **11.09%** |
+| B2-D（对照） | Hilbert η·ρ·γ | Hilbert 对齐 + η·γ | 15.01 | 5.82 | 7.45 | **9.43%** |
+
+**结论**：
+
+1. **A1-D ≈ A1**（11.15% vs 11.06%）：在 Corr sign 第一级上，第二级 Hilbert 对齐**几乎无净增益**（跨域 +0.09 pp 退化）。
+2. **A0-D 部分改善 A0**（11.09% vs 12.33%，−1.24 pp），但远劣于 B2-D（−1.88 pp 差距）——第二级在 PCA sign 第一级上仅保留约 **43%** 的 Bγ→D 增益（−1.24 / −1.46）。
+3. **推翻「符号校正 + 第二级对齐已足够」假设**：第二级 −1.46 pp 增益**依赖第一级 Hilbert 连续相位**；0/π 符号校正无法为模态间 Hilbert 对齐提供足够精确的 tone 级相位信息。
+
 ---
 
 ## 7. 保留问题
@@ -277,7 +301,7 @@ B2 最差（A0）→ B2 最优（D）跨域：12.33% → 9.43% = **−2.90 pp**�
 | 跨域脚本 | `notebooks/scripts/chFusion_b2_coherent_mrc_cross_domain.py` |
 | 数值结果 | `outputs/reports/b2_coherent_mrc_all_results.npy` |
 | 跨域汇总 | `outputs/reports/b2_coherent_mrc_all_cross_domain.npy` |
-| 图表 | `outputs/figures/b2_coherent_mrc_*.png` |
+| 图表 | `outputs/figures/b2_coherent_mrc_*.png`（含 `two_level_contribution`、`waterfall_decomposition`） |
 | 报告 | 本文件 |
 
 ---

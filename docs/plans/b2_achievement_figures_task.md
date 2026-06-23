@@ -88,3 +88,12 @@ deltas = [None, -1.27, -0.15, -0.02, -1.46]
 - `outputs/figures/b2_coherent_mrc_waterfall_decomposition.png`
 
 完成后在成果汇报 `docs/achievements/b2_coherent_mrc_waveform_fusion_achievement_report.md` 中将 `📊 需要新图` 占位符替换为实际 `![]()` 引用。
+
+---
+
+## 验证状态
+
+| 字段 | 内容 |
+|------|------|
+| **状态** | 已完成（2026-06-23） |
+| **产出** | `b2_coherent_mrc_two_level_contribution.png`、`b2_coherent_mrc_waterfall_decomposition.png` |

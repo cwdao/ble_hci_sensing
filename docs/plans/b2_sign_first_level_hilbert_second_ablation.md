@@ -117,3 +117,13 @@ python notebooks/scripts/chFusion_b2_coherent_mrc_cross_domain.py
 - 更新 `outputs/reports/b2_coherent_mrc_all_results.npy`（重跑后三场景 + 跨域均会新增两列）
 - 更新 `outputs/figures/b2_coherent_mrc_leaderboard.png`（+2 方法）
 - 更新 `docs/reports/b2_coherent_mrc_waveform_fusion_report.md`
+
+---
+
+## 验证状态
+
+| 字段 | 内容 |
+|------|------|
+| **状态** | 已完成（2026-06-23） |
+| **跨域结果** | A0-D 11.09%，A1-D 11.15%（均远劣于 B2-D 9.43%） |
+| **结论** | **实际结果接近「A1-D 明显劣于 D」分支**：第二级 Hilbert 对齐增益依赖第一级连续相位；A1-D ≈ A1（+0.09 pp），符号校正 + 第二级对齐无法复现 B2-D |
