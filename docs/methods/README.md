@@ -46,10 +46,14 @@
 | 2 | **B1** | **逐模态 Voting → 三模态等权谱融合** | **8.45%** | 13.22 | 6.50 | 5.63 | ✅ | **推荐** |
 | 3 | G4 | 窗级门控：双候选共识→分歧回退 Single Remote | 8.65% | 12.39 | 9.05 | 4.51 | ❌ fallback 硬编码 Remote | 实验（不推荐） |
 | 4 | T0-V3 | Per-Tone η·ρ 加权直方图投票（仅 Remote） | 9.20% | 13.77 | 6.84 | 6.99 | ⚠️ 仅 Remote 单模态 | Baseline |
-| 5 | Modal top2 | 逐模态 max-η 最优信道 → Top2 等权谱融合 | 9.45% | 13.04 | 10.61 | 4.69 | ✅ | Baseline |
-| 6 | B0 Single Remote | max-η 单信道（Remote 幅值） | 10.45% | 10.91 | 12.16 | 8.29 | ✅ | Baseline |
-| 7 | MRC-PCA-η-equal | √η-MRC + PCA 符号校正 → 三模态等权 | 10.78% | 17.63 | 7.29 | 7.41 | ✅ | 实验（不推荐部署） |
-| 8 | B1 Uniform Remote | 72 tone 等权谱平均（Remote 幅值） | 11.02% | 17.09 | 9.15 | 6.82 | ✅ | Baseline |
+| 5 | **B2-D** | **两级 Hilbert-MRC：tone 级相干 + modal 级 Hilbert 对齐** | **9.43%** | 15.01 | 5.82 | 7.45 | ✅ | 挂起（波形路线保留） |
+| 6 | Modal top2 | 逐模态 max-η 最优信道 → Top2 等权谱融合 | 9.45% | 13.04 | 10.61 | 4.69 | ✅ | Baseline |
+| 7 | B2-C | FFT 互谱相位 MRC + B1 f₀ 引导 → 三模态等权 | 9.50% | 15.98 | 5.69 | 6.83 | ✅ | 实验（不推荐部署） |
+| 8 | B0 Single Remote | max-η 单信道（Remote 幅值） | 10.45% | 10.91 | 12.16 | 8.29 | ✅ | Baseline |
+| 9 | MRC-PCA-η-equal | √η-MRC + PCA 符号校正 → 三模态等权 | 10.78% | 17.63 | 7.29 | 7.41 | ✅ | 实验（不推荐部署） |
+| 10 | B2-Bγ | Hilbert 连续相位 + coherence gating → 三模态等权 | 10.89% | 17.85 | 5.67 | 9.17 | ✅ | 实验（不推荐部署） |
+| 11 | B1 Uniform Remote | 72 tone 等权谱平均（Remote 幅值） | 11.02% | 17.09 | 9.15 | 6.82 | ✅ | Baseline |
+| 12 | B2-A0 | PCA 符号校正 MRC → 三模态等权 | 12.33% | 20.57 | 6.74 | 9.69 | ✅ | 实验（不推荐部署） |
 
 > **物理自洽判定标准**（来自 CLAUDE.md）：  
 > ✅ remote/local 物理对等，不得硬编码偏好；三种变量对称对待；决策由 per-window 信号质量动态驱动。  
@@ -201,7 +205,23 @@
 | **不推荐原因** | Voting 降低模态间频谱相似度 → Top2 选择退化为随机剔除 → Equal (B1) 严格优于 Top2 (B3) |
 | **诊断发现** | B1 的模态间频谱余弦相似度 0.864 vs Single-best 0.772（091339）— 机制级解释见 [`b1_gating_and_diagnosis_achievement_report.md`](../achievements/b1_gating_and_diagnosis_achievement_report.md) §D1 |
 
-### 4.7 WiFi MRC 迁移 — 外部 baseline 验证 ← 已结案
+### 4.8 B2 Coherent-MRC 系列 — 时域波形融合（B2-D 9.43%）← 挂起
+
+| 字段 | 内容 |
+|------|------|
+| **描述** | 时域相干 MRC 波形融合：Hilbert 连续相位补偿 + coherence gating + 两级级联（tone 级 → modal 级），输出可用呼吸波形 |
+| **跨域最优** | **B2-D 9.43%**（两级 Hilbert-MRC：tone 级 Hilbert + coherence gating → modal 级 Hilbert 相位对齐 + η·γ 加权） |
+| **跨域次优** | B2-C 9.50%（FFT 互谱相位 + B1 f₀ 引导）、B2-Bγ/B/D-eq 10.89–10.91%、B2-A1 11.06%、B2-A0 12.33% |
+| **vs B1 (8.45%)** | 差 0.98 pp — BPM 精度未超越谱域 B1 |
+| **vs WiFi MRC (10.78%)** | 优 1.35 pp — 时域路线实质性进展 |
+| **关键发现** | ① 第二级 modal Hilbert 相位对齐贡献 −1.46 pp（跨域），占 B2 总提升 ~50%，但场景依赖（091339 −2.84 pp, 095806 +0.15 pp）；② Coherence gating 跨域几乎无增益（Bγ ≈ B, Δ < 0.02 pp）；③ B2-D-eq 与 B2-Bγ 三场景数值完全相同——仅加二级结构不做相位对齐 = 零增益 |
+| **不推荐原因** | BPM 精度未超越 B1；091339 退化严重（所有 B2 > 15%）。但 **B2 输出可用呼吸波形**，保留供未来真人场景波形验证（与呼吸带 ground truth 做波形相关性分析） |
+| **实现** | `src/ble_analysis/coherent_mrc.py` |
+| **Plan** | [`docs/plans/b2_coherent_mrc_waveform_fusion_plan.md`](../plans/b2_coherent_mrc_waveform_fusion_plan.md) |
+| **Report** | [`docs/reports/b2_coherent_mrc_waveform_fusion_report.md`](../reports/b2_coherent_mrc_waveform_fusion_report.md) |
+| **状态** | ⏸️ **挂起 — BPM 路线不推荐部署，波形路线保留供未来探索** |
+
+### 4.9 WiFi MRC 迁移 — 外部 baseline 验证 ← 已结案
 
 WiFi 呼吸感知文献（Fan 2024 / Yu 2021 WiFi-Sleep）中的时域 MRC 方法迁移到 BLE CS。BPM 估计全部劣于 B1（8.45%）。
 
@@ -281,6 +301,7 @@ WiFi 呼吸感知文献（Fan 2024 / Yu 2021 WiFi-Sleep）中的时域 MRC 方�
 | `signal_adaptive_gating.py` | SA-v1, SA-v2 |
 | `cross_spectrum.py` | X0–X7（互谱合并系列） |
 | `wifi_mrc.py` | Fan-η-linear/√η/equal, MRC-PCA-η-sqrt/equal/no-sign（WiFi MRC 外部 baseline） |
+| `coherent_mrc.py` | B2-A0/A1/B/Bγ/C/D/D-eq（时域相干 MRC + 两层级联波形融合） |
 | `pca_svd.py` | PCA/SVD 降维系列 |
 | `segments.py` | 滑窗、分段、滤波参数 |
 | `metrics.py` | 评估指标（`_overall_rel_error`, `_seg_bpm_stats`） |
@@ -291,6 +312,7 @@ WiFi 呼吸感知文献（Fan 2024 / Yu 2021 WiFi-Sleep）中的时域 MRC 方�
 
 | 日期 | 变更 | 原因 |
 |------|------|------|
+| 2026-06-23 | 新增 §4.8 B2 Coherent-MRC 系列（B2-D 9.43%），标记为挂起（波形路线保留）；新增 `coherent_mrc.py` 到模块索引；更新 §2 排行榜 | Review B2 报告：B2-D 跨域 9.43% 未超越 B1（8.45%），但全面优于 WiFi MRC（10.78%）；BPM 不推荐部署，波形输出保留供未来真人验证 |
 | 2026-06-16 | 新增 §4.7 WiFi MRC 外部 baseline（Fan-η-linear/√η/equal, MRC-PCA-η-sqrt/equal/no-sign），全部劣于 B1，标记为已结案不推荐 | Review 确认 MRC-PCA-η-equal 10.78% vs B1 8.45%（差 2.33 pp） |
 | 2026-06-16 | 初版 | 汇总 Voting → Gating → Systematic → Cross-Spectrum 全部实验结论 |
 | 2026-06-16 | B1 标记为推荐；G4/G4-B1-v2 标记为实验（不推荐） | 物理自洽性审查——硬编码 Remote fallback |

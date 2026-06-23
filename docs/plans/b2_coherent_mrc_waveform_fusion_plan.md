@@ -644,24 +644,25 @@ python notebooks/scripts/chFusion_b2_coherent_mrc_cross_domain.py
 
 | 字段 | 内容 |
 |------|------|
-| **验证状态** | 已完成 |
+| **验证状态** | 已完成（Review 2026-06-23：挂起——BPM 不推荐部署，波形路线保留供未来真人验证） |
 | **实际脚本** | `notebooks/scripts/chFusion_b2_coherent_mrc.py`、`chFusion_b2_coherent_mrc_cross_domain.py` |
 | **实际模块** | `src/ble_analysis/coherent_mrc.py` |
 | **数值结果** | `outputs/reports/b2_coherent_mrc_all_results.npy` |
 | **图表** | `outputs/figures/b2_coherent_mrc_leaderboard.png` 等 |
 | **报告链接** | `docs/reports/b2_coherent_mrc_waveform_fusion_report.md` |
-| **一句话结论** | B2-D 跨域 9.43% 为 B2 最优，但未超越 B1（8.45%）；091339 仍 >15% |
+| **一句话结论** | B2-D 跨域 9.43% 为 B2 最优，全面优于 WiFi MRC（10.78%）但未超越 B1（8.45%）；BPM 不推荐部署，波形输出保留 |
 
 结论摘要：
 - Phase 1：A1 corr sign（11.06%）优于 A0 PCA sign（12.33%）
 - Phase 2：Hilbert 连续相位（B 10.91%）略优于 A1；coherence gating（Bγ）几乎无增益
 - Phase 3：FFT 互谱 + B1 f₀（C 9.50%）优于 B
-- Phase 4：两级 Hilbert-MRC（D 9.43%）为 B2 全局最优，modal 相位对齐有微弱增益
+- Phase 4：两级 Hilbert-MRC（D 9.43%）为 B2 全局最优，modal Hilbert 相位对齐 −1.46 pp（占 A0→D 总提升 ~50%）
 
 遗留问题：
 - 091339 tone 间 γ 分布诊断（coherence 热力图）未生成
 - B2 融合波形 η vs 单 tone 对比未输出
-- B2 不推荐替代谱域 B1 的 BPM 替代方案
+- B2 挂起保留供未来真人场景波形验证
+- 后续可探索：B1+B2 per-window 动态选择器（B2 在 095806 5.82% 优于 B1 6.50%，存在互补性）
 
 ### 保留问题
 

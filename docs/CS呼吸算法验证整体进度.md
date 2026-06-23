@@ -317,7 +317,7 @@ G4-B1-v2（三候选最近对共识门控）跨域 **8.05%** 为当前全局最�
 **Report**：[`docs/reports/b2_coherent_mrc_waveform_fusion_report.md`](reports/b2_coherent_mrc_waveform_fusion_report.md)  
 **脚本**：`notebooks/scripts/chFusion_b2_coherent_mrc.py`  
 **模块**：`src/ble_analysis/coherent_mrc.py`  
-**状态**：✅ 已完成
+**状态**：⏸️ 挂起（BPM 不推荐部署，波形路线保留）
 
 ### 核心思路
 
@@ -332,11 +332,13 @@ G4-B1-v2（三候选最近对共识门控）跨域 **8.05%** 为当前全局最�
 | 3 | B2-C FFT cross-spectrum | 15.98 | 5.69 | 6.83 | 9.50% |
 | 4 | MRC-PCA-η-equal | 17.63 | 7.29 | 7.41 | 10.78% |
 
-### 结论
+### Review 结论（2026-06-23）
 
-- B2-D（9.43%）为 B2 系列最优，优于 WiFi MRC（10.78%），但**未超越 B1（8.45%）**
-- 091339 仍是瓶颈（B2-D 15.01%）；coherence gating 跨域几乎无增益
-- 两级 modal 相位对齐相对单级有微弱增益（D vs D-eq：−1.46 pp）
+- B2-D（9.43%）为 B2 系列最优，全面优于 WiFi MRC（10.78%，领先 1.35 pp），但未超越 B1（8.45%，差 0.98 pp）
+- 第二级 modal Hilbert 相位对齐跨域贡献 −1.46 pp（Bγ 10.89% → D 9.43%），占 A0→D 总提升 ~50%，但场景依赖（091339 −2.84 pp, 095806 +0.15 pp）
+- Coherence gating 跨域几乎无增益（Bγ ≈ B, Δ < 0.02 pp）
+- **B2 输出可用呼吸波形**——这是 B1 不具备的能力。**挂起、保留供未来真人场景波形验证**，不作为 BPM 默认 pipeline
+- 后续可探索：B1+B2 per-window 动态选择器（B2 在 095806 5.82% 优于 B1 6.50%，存在互补性）、091339 tone 间 coherence 退化根因诊断
 
 ---
 
