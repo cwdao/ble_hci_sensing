@@ -2,7 +2,7 @@
 
 > **用途**：记录当前已验证的全部方法，标注物理自洽性、实现位置、实验结论和维护状态。  
 > **更新规则**：新实验产生可部署的方法或推翻既有结论时，更新本文档对应条目。  
-> **最后更新**：2026-06-16
+> **最后更新**：2026-06-23
 
 ---
 
@@ -211,10 +211,11 @@
 |------|------|
 | **描述** | 时域相干 MRC 波形融合：Hilbert 连续相位补偿 + coherence gating + 两级级联（tone 级 → modal 级），输出可用呼吸波形 |
 | **跨域最优** | **B2-D 9.43%**（两级 Hilbert-MRC：tone 级 Hilbert + coherence gating → modal 级 Hilbert 相位对齐 + η·γ 加权） |
-| **跨域次优** | B2-C 9.50%（FFT 互谱相位 + B1 f₀ 引导）、B2-Bγ/B/D-eq 10.89–10.91%、B2-A1 11.06%、B2-A0 12.33% |
+| **跨域次优** | B2-C 9.50%（FFT 互谱相位 + B1 f₀ 引导）、B2-Bγ/B/D-eq 10.89–10.91%、B2-A1 11.06%、B2-A0-D 11.09%（PCA sign + 二级 Hilbert 对齐）、B2-A1-D 11.15%（Corr sign + 二级 Hilbert 对齐）、B2-A0 12.33% |
+| **补充消融** | A0-D/A1-D（符号校正第一级 + Hilbert 模态对齐第二级）均远劣于 B2-D（9.43%），证实第二级 Hilbert 对齐增益依赖第一级连续相位 |
 | **vs B1 (8.45%)** | 差 0.98 pp — BPM 精度未超越谱域 B1 |
 | **vs WiFi MRC (10.78%)** | 优 1.35 pp — 时域路线实质性进展 |
-| **关键发现** | ① 第二级 modal Hilbert 相位对齐贡献 −1.46 pp（跨域），占 B2 总提升 ~50%，但场景依赖（091339 −2.84 pp, 095806 +0.15 pp）；② Coherence gating 跨域几乎无增益（Bγ ≈ B, Δ < 0.02 pp）；③ B2-D-eq 与 B2-Bγ 三场景数值完全相同——仅加二级结构不做相位对齐 = 零增益 |
+| **关键发现** | ① 第二级 modal Hilbert 相位对齐贡献 −1.46 pp（跨域），占 B2 总提升 ~50%，但场景依赖（091339 −2.84 pp, 095806 +0.15 pp）；② Coherence gating 跨域几乎无增益（Bγ ≈ B, Δ < 0.02 pp）；③ B2-D-eq 与 B2-Bγ 三场景数值完全相同——仅加二级结构不做相位对齐 = 零增益；④ **两阶段交互效应**：第一阶段 Hilbert 单独仅优 Corr sign 0.15 pp，但在两级架构中差距放大至 1.72 pp——第一阶段 Hilbert 是第二阶段 −1.46 pp 增益的"解锁器"（A1-D ≈ A1, 11.15% vs 11.06%，第二阶段在符号校正上无效）；⑤ 计算量：Hilbert 比 PCA 便宜 ~30×，绝对值 < 1 ms/窗 |
 | **不推荐原因** | BPM 精度未超越 B1；091339 退化严重（所有 B2 > 15%）。但 **B2 输出可用呼吸波形**，保留供未来真人场景波形验证（与呼吸带 ground truth 做波形相关性分析） |
 | **实现** | `src/ble_analysis/coherent_mrc.py` |
 | **Plan** | [`docs/plans/b2_coherent_mrc_waveform_fusion_plan.md`](../plans/b2_coherent_mrc_waveform_fusion_plan.md) |
@@ -312,6 +313,7 @@ WiFi 呼吸感知文献（Fan 2024 / Yu 2021 WiFi-Sleep）中的时域 MRC 方�
 
 | 日期 | 变更 | 原因 |
 |------|------|------|
+| 2026-06-23 | 补充 B2 消融数据（A0-D 11.09%, A1-D 11.15%）到 §4.8；更新 header 日期 | 补充消融确认：第二级 Hilbert 对齐增益依赖第一级连续相位，符号校正+二级对齐无法复现 B2-D |
 | 2026-06-23 | 新增 §4.8 B2 Coherent-MRC 系列（B2-D 9.43%），标记为挂起（波形路线保留）；新增 `coherent_mrc.py` 到模块索引；更新 §2 排行榜 | Review B2 报告：B2-D 跨域 9.43% 未超越 B1（8.45%），但全面优于 WiFi MRC（10.78%）；BPM 不推荐部署，波形输出保留供未来真人验证 |
 | 2026-06-16 | 新增 §4.7 WiFi MRC 外部 baseline（Fan-η-linear/√η/equal, MRC-PCA-η-sqrt/equal/no-sign），全部劣于 B1，标记为已结案不推荐 | Review 确认 MRC-PCA-η-equal 10.78% vs B1 8.45%（差 2.33 pp） |
 | 2026-06-16 | 初版 | 汇总 Voting → Gating → Systematic → Cross-Spectrum 全部实验结论 |
