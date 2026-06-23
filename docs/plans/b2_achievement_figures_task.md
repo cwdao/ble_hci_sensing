@@ -2,8 +2,22 @@
 
 > **给**：Cursor Composer `BLE CS 执行 Agent`  
 > **来源**：Claude/DeepSeek Review — B2 成果汇报需要 2 张新图  
-> **数据源**：`outputs/reports/b2_coherent_mrc_all_cross_domain.npy`（已存在，11 条含 per_scenario）  
+> **数据源**：`outputs/reports/b2_coherent_mrc_all_cross_domain.npy`（含补充消融后共 13 条）  
 > **日期**：2026-06-23
+
+---
+
+## ⚠️ 执行顺序
+
+```
+第一步 → docs/plans/b2_sign_first_level_hilbert_second_ablation.md
+          补充 B2-A0-D / B2-A1-D 两个消融变体，重跑三场景 + 跨域
+
+第二步 → 本文件（制图任务）
+          基于更新后的 cross_domain.npy（含 A0-D/A1-D），生成 2 张成果图
+```
+
+**本文件应在第一步完成后执行。**
 
 ---
 
