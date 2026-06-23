@@ -311,6 +311,35 @@ G4-B1-v2（三候选最近对共识门控）跨域 **8.05%** 为当前全局最�
 
 ---
 
+## 改进方案7：B2 Coherent-MRC Waveform Fusion（b2_coherent_mrc_waveform_fusion）
+
+**Plan**：[`docs/plans/b2_coherent_mrc_waveform_fusion_plan.md`](plans/b2_coherent_mrc_waveform_fusion_plan.md)  
+**Report**：[`docs/reports/b2_coherent_mrc_waveform_fusion_report.md`](reports/b2_coherent_mrc_waveform_fusion_report.md)  
+**脚本**：`notebooks/scripts/chFusion_b2_coherent_mrc.py`  
+**模块**：`src/ble_analysis/coherent_mrc.py`  
+**状态**：✅ 已完成
+
+### 核心思路
+
+从谱域非相干融合（B1）推进到时域相干 MRC：Hilbert 连续相位补偿 + coherence gating + 两级级联（tone 级 → modal 级），同时输出可用呼吸波形。
+
+### 主结果
+
+| 排名 | 方法 | cs_091339 | cs_095806 | cs_102621 | **跨域 mean** |
+|------|------|-----------|-----------|-----------|---------------|
+| **1** | **B1 Vote→Equal** | 13.22 | 6.50 | 5.63 | **8.45%** |
+| 2 | **B2-D Two-level Hilbert-MRC** | 15.01 | 5.82 | 7.45 | **9.43%** |
+| 3 | B2-C FFT cross-spectrum | 15.98 | 5.69 | 6.83 | 9.50% |
+| 4 | MRC-PCA-η-equal | 17.63 | 7.29 | 7.41 | 10.78% |
+
+### 结论
+
+- B2-D（9.43%）为 B2 系列最优，优于 WiFi MRC（10.78%），但**未超越 B1（8.45%）**
+- 091339 仍是瓶颈（B2-D 15.01%）；coherence gating 跨域几乎无增益
+- 两级 modal 相位对齐相对单级有微弱增益（D vs D-eq：−1.46 pp）
+
+---
+
 ## 阶段性进展汇报
 
 - **阶段性进展汇报**（Phase 0–4）：[`docs/achievements/method_evolution_progress_report.md`](achievements/method_evolution_progress_report.md)
@@ -337,4 +366,6 @@ B1 Vote→Equal (8.45%)       ← systematic_fusion: 逐模态Voting + 三模态
 G4-B1-v2 (8.05%)            ← b1_gating_diagnosis: 三候选最近对共识 ++ H2机制验证
     ↓
 SA 自适应门控 (10.66%)       ← signal_adaptive_gating: SA-v2 未超越 B1
+    ↓
+B2 Coherent-MRC (9.43%)      ← b2_coherent_mrc: B2-D 两级 Hilbert，未超越 B1
 ```

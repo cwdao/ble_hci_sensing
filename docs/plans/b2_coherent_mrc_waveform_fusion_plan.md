@@ -3,7 +3,7 @@
 > **来源**：`docs/suggestions/B2波形与呼吸规划.md`（GPT 5.5 Pro 研究建议）  
 > **目标报告**：`docs/reports/b2_coherent_mrc_waveform_fusion_report.md`（模板：`docs/templates/algorithm_validation_report.md`）  
 > **日期**：2026-06-23  
-> **验证状态**：待实现
+> **验证状态**：已完成（2026-06-23）
 
 ---
 
@@ -644,10 +644,24 @@ python notebooks/scripts/chFusion_b2_coherent_mrc_cross_domain.py
 
 | 字段 | 内容 |
 |------|------|
-| **验证状态** | 待实现 |
-| **实际脚本** | — |
-| **报告链接** | — |
-| **一句话结论** | — |
+| **验证状态** | 已完成 |
+| **实际脚本** | `notebooks/scripts/chFusion_b2_coherent_mrc.py`、`chFusion_b2_coherent_mrc_cross_domain.py` |
+| **实际模块** | `src/ble_analysis/coherent_mrc.py` |
+| **数值结果** | `outputs/reports/b2_coherent_mrc_all_results.npy` |
+| **图表** | `outputs/figures/b2_coherent_mrc_leaderboard.png` 等 |
+| **报告链接** | `docs/reports/b2_coherent_mrc_waveform_fusion_report.md` |
+| **一句话结论** | B2-D 跨域 9.43% 为 B2 最优，但未超越 B1（8.45%）；091339 仍 >15% |
+
+结论摘要：
+- Phase 1：A1 corr sign（11.06%）优于 A0 PCA sign（12.33%）
+- Phase 2：Hilbert 连续相位（B 10.91%）略优于 A1；coherence gating（Bγ）几乎无增益
+- Phase 3：FFT 互谱 + B1 f₀（C 9.50%）优于 B
+- Phase 4：两级 Hilbert-MRC（D 9.43%）为 B2 全局最优，modal 相位对齐有微弱增益
+
+遗留问题：
+- 091339 tone 间 γ 分布诊断（coherence 热力图）未生成
+- B2 融合波形 η vs 单 tone 对比未输出
+- B2 不推荐替代谱域 B1 的 BPM 替代方案
 
 ### 保留问题
 
