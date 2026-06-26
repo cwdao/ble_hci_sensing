@@ -33,18 +33,23 @@ from ble_analysis.voting_fusion import (
 )
 
 MrcWeightMode = Literal["linear", "sqrt", "eta_rho"]
+FanEqualMode = Literal["bpm_avg", "waveform_avg"]
+MrcEqualMode = Literal["bpm_avg", "pca3"]
 
 WIFI_MRC_METHOD_SPECS: Tuple[Tuple[str, str, str], ...] = (
     ("B0 Single Remote", "b0_single_remote", "steelblue"),
     ("B1 Uniform Remote", "b1_uniform_remote", "seagreen"),
     ("Modal top2 equal", "b2_modal_top2_equal", "mediumpurple"),
     ("B1 Vote→Equal modal", "b1_vote_modal_equal", "olive"),
-    ("Fan-η-linear", "fan_eta_linear", "coral"),
-    ("Fan-η-sqrt", "fan_eta_sqrt", "tomato"),
-    ("Fan-η-equal", "fan_eta_equal", "darkorange"),
-    ("MRC-PCA-η-sqrt", "mrc_pca_eta_sqrt", "indianred"),
-    ("MRC-PCA-η-equal", "mrc_pca_eta_equal", "crimson"),
-    ("MRC-PCA-no-sign", "mrc_pca_no_sign", "gray"),
+    ("Fan-η-linear (best)", "fan_eta_linear", "coral"),
+    ("Fan-η-sqrt (best)", "fan_eta_sqrt", "tomato"),
+    ("Fan-η-equal (BPM avg, legacy)", "fan_eta_equal", "darkorange"),
+    ("MRC-PCA-η-sqrt (best)", "mrc_pca_eta_sqrt", "indianred"),
+    ("MRC-PCA-η-equal (BPM avg, legacy)", "mrc_pca_eta_equal", "crimson"),
+    ("MRC-PCA-no-sign (best)", "mrc_pca_no_sign", "gray"),
+    ("Fan-η-equal-wf (waveform avg)", "fan_eta_equal_wf", "darkgoldenrod"),
+    ("Fan-Hilbert-equal (Hilbert+wf)", "fan_hilbert_equal", "goldenrod"),
+    ("MRC-PCA-η-equal-pca (PCA3→1)", "mrc_pca_eta_equal_pca", "firebrick"),
 )
 
 MRC_METHOD_KEYS: Tuple[str, ...] = tuple(
@@ -52,9 +57,11 @@ MRC_METHOD_KEYS: Tuple[str, ...] = tuple(
 )
 
 WIFI_MRC_ABLATION_SPECS: Tuple[Tuple[str, str, str], ...] = (
-    ("Fan-ηρ-linear", "fan_eta_rho_linear", "chocolate"),
-    ("Fan-ηρ-equal", "fan_eta_rho_equal", "saddlebrown"),
-    ("MRC-PCA-η-linear", "mrc_pca_eta_linear", "firebrick"),
+    ("Fan-ηρ-linear (best)", "fan_eta_rho_linear", "chocolate"),
+    ("Fan-ηρ-equal (BPM avg, legacy)", "fan_eta_rho_equal", "saddlebrown"),
+    ("MRC-PCA-η-linear (BPM avg, legacy)", "mrc_pca_eta_linear", "firebrick"),
+    ("Fan-ηρ-equal-wf (waveform avg)", "fan_eta_rho_equal_wf", "sienna"),
+    ("MRC-PCA-η-linear-pca (PCA3→1)", "mrc_pca_eta_linear_pca", "maroon"),
 )
 
 MODAL_SHORT_NAMES = {
@@ -276,6 +283,49 @@ def _nanmean_bpm(values: Sequence[float]) -> float:
     return float(np.nanmean(arr))
 
 
+def _demean_modal_waveforms(modal_waveforms: Dict[str, np.ndarray]) -> List[np.ndarray]:
+    return [wf - np.mean(wf) for wf in modal_waveforms.values()]
+
+
+def _fuse_modal_waveforms_equal(modal_waveforms: Dict[str, np.ndarray]) -> Optional[np.ndarray]:
+    if len(modal_waveforms) < 2:
+        return None
+    wf_list = _demean_modal_waveforms(modal_waveforms)
+    min_len = min(len(w) for w in wf_list)
+    return np.mean([w[:min_len] for w in wf_list], axis=0)
+
+
+def _fuse_modal_waveforms_pca3(modal_waveforms: Dict[str, np.ndarray]) -> Optional[np.ndarray]:
+    if len(modal_waveforms) < 2:
+        return None
+    wf_list = _demean_modal_waveforms(modal_waveforms)
+    min_len = min(len(w) for w in wf_list)
+    x_wf = np.column_stack([w[:min_len] for w in wf_list])
+    n_samples = x_wf.shape[0]
+    if n_samples < 2:
+        return None
+    z = x_wf - np.mean(x_wf, axis=0)
+    cov = (z.T @ z) / max(n_samples - 1, 1)
+    _evals, evecs = np.linalg.eigh(cov)
+    return z @ evecs[:, -1]
+
+
+def _bpm_from_modal_waveforms(
+    modal_waveforms: Dict[str, np.ndarray],
+    fs: float,
+    cfg: ChFusionConfig,
+    equal_mode: Literal["waveform_avg", "pca3"],
+) -> float:
+    if equal_mode == "waveform_avg":
+        wf_fused = _fuse_modal_waveforms_equal(modal_waveforms)
+    else:
+        wf_fused = _fuse_modal_waveforms_pca3(modal_waveforms)
+    if wf_fused is None:
+        return float("nan")
+    bpm, _, _, _ = estimate_bpm_from_waveform(wf_fused, fs, cfg=cfg)
+    return bpm
+
+
 def _fan_window_bpms(
     multichannel_by_var: Dict[str, Dict[str, Optional[dict]]],
     seg_name: str,
@@ -285,10 +335,12 @@ def _fan_window_bpms(
     fs: float,
     cfg: ChFusionConfig,
     weight_mode: MrcWeightMode,
+    equal_mode: FanEqualMode = "bpm_avg",
 ) -> Tuple[float, float, dict]:
     """Fan MRC per modal; return best-modal BPM, equal-modal BPM, diagnostics."""
     modal_bpms: Dict[str, float] = {}
     modal_etas: Dict[str, float] = {}
+    modal_waveforms: Dict[str, np.ndarray] = {}
     for variable in MODAL_VOTING_VARIABLES:
         ref_seg = multichannel_by_var[variable].get(seg_name)
         if ref_seg is None:
@@ -301,14 +353,19 @@ def _fan_window_bpms(
         bpm, _fp, _f, _p = estimate_bpm_from_waveform(y, fs, cfg=cfg)
         modal_bpms[variable] = bpm
         modal_etas[variable] = eta_fused
+        modal_waveforms[variable] = y
 
     if not modal_bpms:
         return float("nan"), float("nan"), {"modal_etas": {}, "best_modal": None}
 
     best_modal = max(modal_etas, key=lambda k: modal_etas[k])
+    if equal_mode == "waveform_avg":
+        bpm_equal = _bpm_from_modal_waveforms(modal_waveforms, fs, cfg, "waveform_avg")
+    else:
+        bpm_equal = _nanmean_bpm(list(modal_bpms.values()))
     return (
         modal_bpms[best_modal],
-        _nanmean_bpm(list(modal_bpms.values())),
+        bpm_equal,
         {"modal_etas": modal_etas, "best_modal": best_modal, "modal_bpms": modal_bpms},
     )
 
@@ -325,9 +382,11 @@ def _mrc_pca_window_bpms(
     weight_mode: MrcWeightMode = "sqrt",
     use_pca_sign: bool = True,
     pca_top_k: int = 36,
+    equal_mode: MrcEqualMode = "bpm_avg",
 ) -> Tuple[float, float, dict]:
     modal_bpms: Dict[str, float] = {}
     modal_etas: Dict[str, float] = {}
+    modal_waveforms: Dict[str, np.ndarray] = {}
     pca_info: Dict[str, dict] = {}
     for variable in MODAL_VOTING_VARIABLES:
         ref_seg = multichannel_by_var[variable].get(seg_name)
@@ -348,6 +407,7 @@ def _mrc_pca_window_bpms(
         bpm, _fp, _f, _p = estimate_bpm_from_waveform(y, fs, cfg=cfg)
         modal_bpms[variable] = bpm
         modal_etas[variable] = eta_fused
+        modal_waveforms[variable] = y
         info["eta_fused"] = eta_fused
         pca_info[variable] = info
 
@@ -355,9 +415,13 @@ def _mrc_pca_window_bpms(
         return float("nan"), float("nan"), {"modal_etas": {}, "best_modal": None}
 
     best_modal = max(modal_etas, key=lambda k: modal_etas[k])
+    if equal_mode == "pca3":
+        bpm_equal = _bpm_from_modal_waveforms(modal_waveforms, fs, cfg, "pca3")
+    else:
+        bpm_equal = _nanmean_bpm(list(modal_bpms.values()))
     return (
         modal_bpms[best_modal],
-        _nanmean_bpm(list(modal_bpms.values())),
+        bpm_equal,
         {
             "modal_etas": modal_etas,
             "best_modal": best_modal,
@@ -365,6 +429,48 @@ def _mrc_pca_window_bpms(
             "pca_info": pca_info,
         },
     )
+
+
+def _fan_hilbert_window_bpms(
+    multichannel_by_var: Dict[str, Dict[str, Optional[dict]]],
+    seg_name: str,
+    ch_list: Sequence[Any],
+    st: int,
+    end: int,
+    fs: float,
+    cfg: ChFusionConfig,
+    weight_mode: MrcWeightMode = "linear",
+) -> Tuple[float, dict]:
+    """Per-modal Hilbert phase-align → η-MRC; modal equal-weight waveform fusion."""
+    from scipy.signal import hilbert
+
+    modal_waveforms: Dict[str, np.ndarray] = {}
+    modal_etas: Dict[str, float] = {}
+    for variable in MODAL_VOTING_VARIABLES:
+        ref_seg = multichannel_by_var[variable].get(seg_name)
+        if ref_seg is None:
+            continue
+        ch_map = ref_seg["channels"]
+        X, eta, rho = _collect_modal_window_matrix(
+            ch_list, ch_map, variable, st, end, fs, cfg
+        )
+        analytic = hilbert(X, axis=1)
+        phases = np.angle(analytic)
+        ref_idx = int(np.argmax(eta))
+        ref_phase = phases[ref_idx]
+        x_aligned = np.zeros_like(X)
+        for i in range(X.shape[0]):
+            delta_phi = np.mean(ref_phase - phases[i])
+            x_aligned[i] = X[i] * np.cos(delta_phi)
+        g = compute_mrc_weights(eta, mode=weight_mode, rho=rho, eps=cfg.eps)
+        y = np.sum(g[:, None] * x_aligned, axis=0)
+        modal_waveforms[variable] = y
+        modal_etas[variable] = _energy_ratio(y, fs, cfg)
+
+    if len(modal_waveforms) < 2:
+        return float("nan"), {}
+    bpm = _bpm_from_modal_waveforms(modal_waveforms, fs, cfg, "waveform_avg")
+    return bpm, {"modal_etas": modal_etas}
 
 
 def estimate_wifi_mrc_segment(
@@ -407,8 +513,11 @@ def estimate_wifi_mrc_segment(
     fan_linear: List[float] = []
     fan_sqrt: List[float] = []
     fan_equal: List[float] = []
+    fan_equal_wf: List[float] = []
+    fan_hilbert: List[float] = []
     mrc_sqrt: List[float] = []
     mrc_equal: List[float] = []
+    mrc_equal_pca: List[float] = []
     mrc_no_sign: List[float] = []
     best_modals_fan: List[Optional[str]] = []
     best_modals_mrc: List[Optional[str]] = []
@@ -455,6 +564,38 @@ def estimate_wifi_mrc_segment(
         )
         mrc_no_sign.append(b_no)
 
+        _, b_fan_wf, _ = _fan_window_bpms(
+            multichannel_by_var,
+            seg_name,
+            ch_list,
+            st,
+            end,
+            fs,
+            cfg,
+            "linear",
+            equal_mode="waveform_avg",
+        )
+        fan_equal_wf.append(b_fan_wf)
+
+        b_hb, _ = _fan_hilbert_window_bpms(
+            multichannel_by_var, seg_name, ch_list, st, end, fs, cfg
+        )
+        fan_hilbert.append(b_hb)
+
+        _, b_mrc_pca, _ = _mrc_pca_window_bpms(
+            multichannel_by_var,
+            seg_name,
+            ch_list,
+            st,
+            end,
+            fs,
+            cfg,
+            use_pca_sign=True,
+            pca_top_k=pca_top_k,
+            equal_mode="pca3",
+        )
+        mrc_equal_pca.append(b_mrc_pca)
+
     return {
         "segment": seg_name,
         "bpm_gt": bpm_gt,
@@ -462,8 +603,11 @@ def estimate_wifi_mrc_segment(
         "fan_eta_linear": _seg_bpm_stats(np.asarray(fan_linear), bpm_gt, len(starts)),
         "fan_eta_sqrt": _seg_bpm_stats(np.asarray(fan_sqrt), bpm_gt, len(starts)),
         "fan_eta_equal": _seg_bpm_stats(np.asarray(fan_equal), bpm_gt, len(starts)),
+        "fan_eta_equal_wf": _seg_bpm_stats(np.asarray(fan_equal_wf), bpm_gt, len(starts)),
+        "fan_hilbert_equal": _seg_bpm_stats(np.asarray(fan_hilbert), bpm_gt, len(starts)),
         "mrc_pca_eta_sqrt": _seg_bpm_stats(np.asarray(mrc_sqrt), bpm_gt, len(starts)),
         "mrc_pca_eta_equal": _seg_bpm_stats(np.asarray(mrc_equal), bpm_gt, len(starts)),
+        "mrc_pca_eta_equal_pca": _seg_bpm_stats(np.asarray(mrc_equal_pca), bpm_gt, len(starts)),
         "mrc_pca_no_sign": _seg_bpm_stats(np.asarray(mrc_no_sign), bpm_gt, len(starts)),
         "fan_best_modal_per_window": best_modals_fan,
         "mrc_best_modal_per_window": best_modals_mrc,
@@ -509,7 +653,9 @@ def estimate_wifi_mrc_ablation_segment(
     starts = _sliding_window_indices(ref_len, win_len, step_len)
     fan_rho_linear: List[float] = []
     fan_rho_equal: List[float] = []
+    fan_rho_equal_wf: List[float] = []
     mrc_linear_equal: List[float] = []
+    mrc_linear_equal_pca: List[float] = []
 
     for st in starts:
         end = st + win_len
@@ -518,6 +664,19 @@ def estimate_wifi_mrc_ablation_segment(
         )
         fan_rho_linear.append(b_best)
         fan_rho_equal.append(b_equal)
+
+        _, b_equal_wf, _ = _fan_window_bpms(
+            multichannel_by_var,
+            seg_name,
+            ch_list,
+            st,
+            end,
+            fs,
+            cfg,
+            "eta_rho",
+            equal_mode="waveform_avg",
+        )
+        fan_rho_equal_wf.append(b_equal_wf)
 
         _b_mrc, b_mrc_eq, _info_m = _mrc_pca_window_bpms(
             multichannel_by_var,
@@ -533,13 +692,32 @@ def estimate_wifi_mrc_ablation_segment(
         )
         mrc_linear_equal.append(b_mrc_eq)
 
+        _, b_mrc_pca, _ = _mrc_pca_window_bpms(
+            multichannel_by_var,
+            seg_name,
+            ch_list,
+            st,
+            end,
+            fs,
+            cfg,
+            weight_mode="linear",
+            use_pca_sign=True,
+            pca_top_k=pca_top_k,
+            equal_mode="pca3",
+        )
+        mrc_linear_equal_pca.append(b_mrc_pca)
+
     return {
         "segment": seg_name,
         "bpm_gt": bpm_gt,
         "metadata": metadata,
         "fan_eta_rho_linear": _seg_bpm_stats(np.asarray(fan_rho_linear), bpm_gt, len(starts)),
         "fan_eta_rho_equal": _seg_bpm_stats(np.asarray(fan_rho_equal), bpm_gt, len(starts)),
+        "fan_eta_rho_equal_wf": _seg_bpm_stats(np.asarray(fan_rho_equal_wf), bpm_gt, len(starts)),
         "mrc_pca_eta_linear": _seg_bpm_stats(np.asarray(mrc_linear_equal), bpm_gt, len(starts)),
+        "mrc_pca_eta_linear_pca": _seg_bpm_stats(
+            np.asarray(mrc_linear_equal_pca), bpm_gt, len(starts)
+        ),
     }
 
 
@@ -862,10 +1040,13 @@ def plot_wifi_mrc_figures(
             plt.close(fig_s)
 
     ablation_keys = [
-        ("MRC-PCA-η-sqrt", "mrc_pca_eta_sqrt", "indianred"),
-        ("MRC-PCA-no-sign", "mrc_pca_no_sign", "gray"),
-        ("Fan-η-linear", "fan_eta_linear", "coral"),
-        ("Fan-η-equal", "fan_eta_equal", "darkorange"),
+        ("MRC-PCA-η-sqrt (best)", "mrc_pca_eta_sqrt", "indianred"),
+        ("MRC-PCA-no-sign (best)", "mrc_pca_no_sign", "gray"),
+        ("Fan-η-linear (best)", "fan_eta_linear", "coral"),
+        ("Fan-η-equal (legacy)", "fan_eta_equal", "darkorange"),
+        ("Fan-η-equal-wf", "fan_eta_equal_wf", "darkgoldenrod"),
+        ("Fan-Hilbert-equal", "fan_hilbert_equal", "goldenrod"),
+        ("MRC-PCA-η-equal-pca", "mrc_pca_eta_equal_pca", "firebrick"),
         ("B1 Vote→Equal", "b1_vote_modal_equal", "olive"),
     ]
     fig_a, ax_a = plt.subplots(figsize=(8, 5))

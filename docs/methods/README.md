@@ -226,13 +226,18 @@
 
 WiFi 呼吸感知文献（Fan 2024 / Yu 2021 WiFi-Sleep）中的时域 MRC 方法迁移到 BLE CS。BPM 估计全部劣于 B1（8.45%）。
 
+**2026-06-26 修正**（[`wifi_mrc_equal_fix_plan`](../plans/wifi_mrc_equal_fix_plan.md)）：原 `Fan-η-equal` / `MRC-PCA-η-equal` 对三模态做 BPM 标量平均（非时域波形融合）。Legacy key 保留不动；新增波形融合变体独立排名。结论：**波形 equal 融合跨域更差**，legacy BPM avg 意外在困难场景更稳。
+
 | 代号 | 描述性名称 | 跨域 mean | 091339 | 095806 | 102621 | 物理自洽 |
 |------|-----------|-----------|--------|--------|--------|----------|
-| MRC-PCA-η-equal | √η-MRC + PCA 符号校正 → 三模态等权 | 10.78% | 17.63 | 7.29 | 7.41 | ✅ |
-| MRC-PCA-η-sqrt | √η-MRC + PCA 符号校正 → Best modal | 11.95% | 19.09 | 8.41 | 8.33 | ✅ |
-| Fan-η-equal | η-MRC + 三模态等权 | 13.51% | 18.78 | 11.79 | 9.97 | ✅ |
-| Fan-η-linear | η-MRC → Best modal（Fan 2024 原文） | 15.21% | 20.31 | 13.37 | 11.95 | ✅ |
-| Fan-η-sqrt / MRC-PCA-no-sign | √η-MRC → Best modal | 15.82% | 21.17 | 14.06 | 12.23 | ✅ |
+| MRC-PCA-η-equal (legacy) | √η-MRC + PCA 符号校正 → 三模态 BPM 等权 | **10.78%** | 17.63 | 7.29 | 7.41 | ✅ |
+| MRC-PCA-η-equal-pca | √η-MRC + PCA 符号 → 三波形 PCA(3→1) | 12.79% | 24.43 | 6.84 | 7.10 | ✅ |
+| MRC-PCA-η-sqrt (best) | √η-MRC + PCA 符号校正 → Best modal | 11.95% | 19.09 | 8.41 | 8.33 | ✅ |
+| Fan-η-equal (legacy) | η-MRC → 三模态 BPM 等权 | **13.51%** | 18.78 | 11.79 | 9.97 | ✅ |
+| Fan-η-equal-wf | η-MRC → 三波形时域等权 | 16.60% | 23.09 | 11.00 | 15.72 | ✅ |
+| Fan-Hilbert-equal | Hilbert 对齐 + η-MRC → 三波形等权 | 16.31% | 22.49 | 10.86 | 15.57 | ✅ |
+| Fan-η-linear (best) | η-MRC → Best modal（Fan 2024 原文） | 15.21% | 20.31 | 13.37 | 11.95 | ✅ |
+| Fan-η-sqrt / MRC-PCA-no-sign (best) | √η-MRC → Best modal | 15.82% | 21.17 | 14.06 | 12.23 | ✅ |
 
 > **收尾结论**：
 >
@@ -245,7 +250,9 @@ WiFi 呼吸感知文献（Fan 2024 / Yu 2021 WiFi-Sleep）中的时域 MRC 方�
 | 字段 | 内容 |
 |------|------|
 | **Plan** | [`docs/plans/wifi_mrc_baselines_plan.md`](../plans/wifi_mrc_baselines_plan.md) |
+| **Equal 修正 Plan** | [`docs/plans/wifi_mrc_equal_fix_plan.md`](../plans/wifi_mrc_equal_fix_plan.md) |
 | **Report** | [`docs/reports/wifi_mrc_baselines_report.md`](../reports/wifi_mrc_baselines_report.md) |
+| **Equal 修正 Report** | [`docs/reports/wifi_mrc_equal_fix_report.md`](../reports/wifi_mrc_equal_fix_report.md) |
 | **诊断 Plan** | [`docs/plans/wifi_mrc_diagnosis_plan.md`](../plans/wifi_mrc_diagnosis_plan.md) |
 | **实现** | `src/ble_analysis/wifi_mrc.py` |
 | **状态** | ❌ **已结案——BPM 全局劣于 B1，不推荐部署。** 可作论文中「proposed vs SOTA WiFi baseline」引用 |
@@ -301,7 +308,7 @@ WiFi 呼吸感知文献（Fan 2024 / Yu 2021 WiFi-Sleep）中的时域 MRC 方�
 | `b1_gating_diagnosis.py` | G4-B1-v1/v2/v3/v4, G5-B1, D1–D3 诊断 |
 | `signal_adaptive_gating.py` | SA-v1, SA-v2 |
 | `cross_spectrum.py` | X0–X7（互谱合并系列） |
-| `wifi_mrc.py` | Fan-η-linear/√η/equal, MRC-PCA-η-sqrt/equal/no-sign（WiFi MRC 外部 baseline） |
+| `wifi_mrc.py` | Fan-η/MRC-PCA 外部 baseline；含 legacy BPM-avg equal 与 waveform/PCA(3→1) 修正变体 |
 | `coherent_mrc.py` | B2-A0/A1/B/Bγ/C/D/D-eq（时域相干 MRC + 两层级联波形融合） |
 | `pca_svd.py` | PCA/SVD 降维系列 |
 | `segments.py` | 滑窗、分段、滤波参数 |
@@ -313,6 +320,7 @@ WiFi 呼吸感知文献（Fan 2024 / Yu 2021 WiFi-Sleep）中的时域 MRC 方�
 
 | 日期 | 变更 | 原因 |
 |------|------|------|
+| 2026-06-26 | §4.9 追加 Fan-η-equal-wf / Fan-Hilbert-equal / MRC-PCA-η-equal-pca；legacy equal 标注 BPM avg | `wifi_mrc_equal_fix_plan` 执行：波形融合跨域劣于 legacy BPM 平均 |
 | 2026-06-23 | 补充 B2 消融数据（A0-D 11.09%, A1-D 11.15%）到 §4.8；更新 header 日期 | 补充消融确认：第二级 Hilbert 对齐增益依赖第一级连续相位，符号校正+二级对齐无法复现 B2-D |
 | 2026-06-23 | 新增 §4.8 B2 Coherent-MRC 系列（B2-D 9.43%），标记为挂起（波形路线保留）；新增 `coherent_mrc.py` 到模块索引；更新 §2 排行榜 | Review B2 报告：B2-D 跨域 9.43% 未超越 B1（8.45%），但全面优于 WiFi MRC（10.78%）；BPM 不推荐部署，波形输出保留供未来真人验证 |
 | 2026-06-16 | 新增 §4.7 WiFi MRC 外部 baseline（Fan-η-linear/√η/equal, MRC-PCA-η-sqrt/equal/no-sign），全部劣于 B1，标记为已结案不推荐 | Review 确认 MRC-PCA-η-equal 10.78% vs B1 8.45%（差 2.33 pp） |

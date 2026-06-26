@@ -3,7 +3,7 @@
 > **来源**：Review 发现 `wifi_mrc.py` 中 Fan-η-equal 和 MRC-PCA-η-equal 对三模态做 BPM 标量平均，未在时域波形层面融合  
 > **目标**：将 "equal" 变体改为时域波形融合（Fan: 波形等权平均; MRC+PCA: PCA(3→1)），并新增 Fan-Hilbert 对照变体  
 > **日期**：2026-06-26  
-> **验证状态**：待实现
+> **验证状态**：已完成
 
 ---
 
@@ -351,9 +351,16 @@ python notebooks/scripts/chFusion_wifi_mrc_cross_domain.py
 
 | 字段 | 内容 |
 |------|------|
-| **验证状态** | 待实现 |
-| **实际脚本** | — |
-| **报告链接** | — |
+| **验证状态** | 已完成 |
+| **实际脚本** | `notebooks/scripts/chFusion_wifi_mrc_baselines.py`、`chFusion_wifi_mrc_cross_domain.py` |
+| **报告链接** | [`docs/reports/wifi_mrc_equal_fix_report.md`](../reports/wifi_mrc_equal_fix_report.md) |
+
+**结论摘要**：
+- Legacy key（`fan_eta_equal` 13.51%、`mrc_pca_eta_equal` 10.78%）数值与修正前完全一致。
+- 新波形融合变体跨域均劣于 legacy：Fan-η-equal-wf 16.60%（+3.09 pp）、MRC-PCA-η-equal-pca 12.79%（+2.01 pp）、Fan-Hilbert-equal 16.31%。
+- 全部仍劣于 B1（8.45%）；WiFi MRC BPM 路线结论不变。
+
+**遗留问题**：cs_091339 上 waveform/PCA(3→1) 退化明显，机制待后续诊断。
 
 ---
 
