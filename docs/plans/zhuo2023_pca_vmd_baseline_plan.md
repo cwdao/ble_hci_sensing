@@ -3,7 +3,7 @@
 > **来源**：`docs/papers/zhuo2023position.md` — Zhuo et al., "Position-Free Breath Detection During Sleep via Commodity WiFi", IEEE Sensors Journal, 2023  
 > **目标报告**：`docs/reports/zhuo2023_pca_vmd_baseline_report.md`  
 > **日期**：2026-06-26  
-> **验证状态**：待实现
+> **验证状态**：已完成
 
 ---
 
@@ -642,11 +642,13 @@ python notebooks/scripts/chFusion_zhuo2023_pca_vmd_cross_domain.py
 
 | 字段 | 内容 |
 |------|------|
-| **验证状态** | 待实现 |
-| **实际脚本** | — |
-| **报告链接** | — |
-| **一句话结论** | — |
-| **VMD 最优参数** | K=[待确认], α=[待确认] |
+| **验证状态** | 已完成 |
+| **实际脚本** | `notebooks/scripts/chFusion_zhuo2023_pca_vmd.py`、`chFusion_zhuo2023_pca_vmd_cross_domain.py` |
+| **报告链接** | [`docs/reports/zhuo2023_pca_vmd_baseline_report.md`](../reports/zhuo2023_pca_vmd_baseline_report.md) |
+| **一句话结论** | PCA-VMD 跨域 11.31% 劣于 B1（8.45%）；VMD 无实质增益（Δ≈0.10 pp） |
+| **VMD 最优参数** | K=2, α=2000（cs_095806 消融） |
+
+**遗留问题**：091339 退化机制待诊断；095806 单场景 FFT 变体略优 B1 不可推广。
 
 ---
 

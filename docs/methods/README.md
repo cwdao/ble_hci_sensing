@@ -257,6 +257,32 @@ WiFi 呼吸感知文献（Fan 2024 / Yu 2021 WiFi-Sleep）中的时域 MRC 方�
 | **实现** | `src/ble_analysis/wifi_mrc.py` |
 | **状态** | ❌ **已结案——BPM 全局劣于 B1，不推荐部署。** 可作论文中「proposed vs SOTA WiFi baseline」引用 |
 
+### 4.10 Zhuo 2023 PCA-VMD — 外部 baseline 验证 ← 已结案
+
+Zhuo et al. 2023 WiFi CSI 的 PCA(72)→PCA(3)→VMD→峰值检测路线迁移到 BLE CS。VMD 参数 K=2、α=2000（cs_095806 消融选定）。
+
+| 代号 | 描述性名称 | 跨域 mean | 091339 | 095806 | 102621 | 物理自洽 |
+|------|-----------|-----------|--------|--------|--------|----------|
+| Z1-no-VMD | PCA(72)→PCA(3)→峰值检测 | **11.21%** | 18.70 | 7.71 | 7.23 | ✅ |
+| **Z1** | PCA(72)→PCA(3)→VMD→峰值检测 | **11.31%** | 17.49 | 8.20 | 8.22 | ✅ |
+| Z1-proj | 复平面投影→PCA→VMD→峰值 | 11.47% | 18.02 | 8.17 | 8.22 | ✅ |
+| PCA modal equal | 现有 PCA 模态等权谱融合 | 11.37% | 20.65 | 7.02 | 6.45 | ✅ |
+| Z1-FFT | PCA→PCA→VMD→FFT | 12.19% | 22.60 | 5.99 | 7.98 | ✅ |
+
+> **收尾结论**：
+>
+> - 跨域最优 Z1-no-VMD（11.21%）仍差 B1（8.45%）**2.76 pp**；VMD 增益 Δ≈**0.10 pp**（低于 0.5 pp 阈值），结论为 **VMD 在 BLE ~2 Hz 下无额外增益**。
+> - 投影 / Hilbert 对齐无跨域改善；091339 拖高跨域 mean（Z1 17.49%）。
+> - cs_095806 单场景 Z1_no_vmd_fft（5.91%）略优于 B1（6.50%），**不可推广**。
+> - **部署建议**：不推荐部署；与 WiFi MRC 并列作外部 baseline 引用。
+
+| 字段 | 内容 |
+|------|------|
+| **Plan** | [`docs/plans/zhuo2023_pca_vmd_baseline_plan.md`](../plans/zhuo2023_pca_vmd_baseline_plan.md) |
+| **Report** | [`docs/reports/zhuo2023_pca_vmd_baseline_report.md`](../reports/zhuo2023_pca_vmd_baseline_report.md) |
+| **实现** | `src/ble_analysis/pca_vmd.py` |
+| **状态** | ❌ **已结案——BPM 全局劣于 B1，VMD 无增益，不推荐部署** |
+
 ---
 
 ## 5. 物理自洽性判定细则
@@ -309,6 +335,7 @@ WiFi 呼吸感知文献（Fan 2024 / Yu 2021 WiFi-Sleep）中的时域 MRC 方�
 | `signal_adaptive_gating.py` | SA-v1, SA-v2 |
 | `cross_spectrum.py` | X0–X7（互谱合并系列） |
 | `wifi_mrc.py` | Fan-η/MRC-PCA 外部 baseline；含 legacy BPM-avg equal 与 waveform/PCA(3→1) 修正变体 |
+| `pca_vmd.py` | Zhuo2023 PCA(72)→PCA(3)→VMD/峰值检测 外部 baseline |
 | `coherent_mrc.py` | B2-A0/A1/B/Bγ/C/D/D-eq（时域相干 MRC + 两层级联波形融合） |
 | `pca_svd.py` | PCA/SVD 降维系列 |
 | `segments.py` | 滑窗、分段、滤波参数 |
@@ -320,6 +347,7 @@ WiFi 呼吸感知文献（Fan 2024 / Yu 2021 WiFi-Sleep）中的时域 MRC 方�
 
 | 日期 | 变更 | 原因 |
 |------|------|------|
+| 2026-06-26 | 新增 §4.10 Zhuo2023 PCA-VMD（Z1 11.31%），VMD 无增益，已结案 | `zhuo2023_pca_vmd_baseline_plan` 执行 |
 | 2026-06-26 | §4.9 追加 Fan-η-equal-wf / Fan-Hilbert-equal / MRC-PCA-η-equal-pca；legacy equal 标注 BPM avg | `wifi_mrc_equal_fix_plan` 执行：波形融合跨域劣于 legacy BPM 平均 |
 | 2026-06-23 | 补充 B2 消融数据（A0-D 11.09%, A1-D 11.15%）到 §4.8；更新 header 日期 | 补充消融确认：第二级 Hilbert 对齐增益依赖第一级连续相位，符号校正+二级对齐无法复现 B2-D |
 | 2026-06-23 | 新增 §4.8 B2 Coherent-MRC 系列（B2-D 9.43%），标记为挂起（波形路线保留）；新增 `coherent_mrc.py` 到模块索引；更新 §2 排行榜 | Review B2 报告：B2-D 跨域 9.43% 未超越 B1（8.45%），但全面优于 WiFi MRC（10.78%）；BPM 不推荐部署，波形输出保留供未来真人验证 |
