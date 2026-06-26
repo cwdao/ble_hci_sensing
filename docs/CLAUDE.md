@@ -237,6 +237,45 @@ docs/templates/algorithm_plan.md
 docs/chFusion_pca_svd_plan.md
 ```
 
+### 5.1 Plan 交付前审查规则
+
+**任何 plan 中存在不确定点（标记 `[待确认]` 或方案有多种可行路径）时，必须先由用户审查确认，才能交付 Cursor Composer 执行。** 不得在用户未确认的情况下将含待定项的 plan 交给执行 Agent。
+
+审查时至少明确：
+- 所有 `[待确认]` 项的用户决策；
+- 方法的核心路线（如 PCA 层级、VMD 参数、BPM 估计方式）；
+- 哪些步骤来自论文原文、哪些是适配调整；
+- 基线选择与消融变体范围。
+
+### 5.2 流程图强制要求
+
+**每个 plan 的 §3（算法步骤）必须包含完整的 ASCII 流程图**，从原始数据开始，每一步滤波、变换、融合、估计都必须体现。流程图必须标注：
+
+- 每一步对应的论文原文步骤（如有）；
+- 每一步使用的项目模块/函数；
+- 数据的维度变化（如 72 tone → PC1 → 1 waveform）；
+- 分支点（如主方案 vs 消融变体）。
+
+流程图示例格式：
+
+```text
+Raw BLE CS Frames (72 tone × 3 variables)
+  │
+  ├─► Phase Unwrap (phases only)
+  │
+  └─► Filter Chain (per tone, per variable):
+        median (w=3) → highpass (0.05 Hz) → bandpass (0.1–0.35 Hz)
+        [模块: segments.py → FilterParams + process_segments()]
+        [维度: 72 tone × 3 var, 每 tone 长度 T]
+      │
+      ▼
+  Sliding Window: 20 s / 1 s step
+  [模块: segments.py → _sliding_window_indices()]
+      │
+      ▼
+  ...（后续步骤）
+```
+
 ------
 
 ## 6. Plan 必含章节
