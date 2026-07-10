@@ -462,6 +462,7 @@ def estimate_pca_vmd_window_bpm(
         info["vmd_info"] = {"converged": False, "skipped": True}
 
     bpm = _estimate_bpm_from_waveform(y_final, fs, bpm_method, cfg)
+    info["waveform"] = y_final
     return bpm, info
 
 

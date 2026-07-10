@@ -46,6 +46,97 @@ def _ble_window_time_range(
     return int(cs_t_host[st]), int(cs_t_host[end - 1])
 
 
+def compute_hkh_gt_per_window(
+    hkh_bandpass: np.ndarray,
+    hkh_t_host: np.ndarray,
+    cs_t_host: np.ndarray,
+    multichannel_by_var: Dict[str, Dict[str, Optional[dict]]],
+    seg_name: str,
+    *,
+    config: Optional[ChFusionConfig] = None,
+    metric_params: Optional[BreathMetricParams] = None,
+    fs_hkh_override: Optional[float] = None,
+) -> Tuple[np.ndarray, np.ndarray, float, float]:
+    """Return HKH GT BPM per BLE sliding window (aligned by ``cs_t_host``).
+
+    Returns
+    -------
+    bpm_hkh, bpm_ble_placeholder (nan array), fs_ble, fs_hkh
+    """
+    cfg = config or ChFusionConfig()
+    mp = metric_params or BreathMetricParams()
+
+    ref_seg = multichannel_by_var["phases"].get(seg_name)
+    if ref_seg is None:
+        raise ValueError(f"Segment {seg_name} not found")
+
+    fs_ble = ref_seg["metadata"]["sampling_rate"]
+    ch_map = ref_seg["channels"]
+    ch_list = sorted(ch_map.keys(), key=lambda c: (isinstance(c, str), str(c)))
+    seg_var = ref_seg.get("variable", "phases")
+    ref_len = max(len(ch_map[c][seg_var]["bandpass_filtered"]) for c in ch_list)
+
+    win_len = int(round(mp.window_length_sec * fs_ble))
+    step_len = int(round(mp.step_length_sec * fs_ble))
+    starts = _sliding_window_indices(ref_len, win_len, step_len)
+
+    if fs_hkh_override is not None:
+        fs_hkh = float(fs_hkh_override)
+    else:
+        fs_hkh = estimate_fs_from_host_timestamps(hkh_t_host)
+        if not np.isfinite(fs_hkh) or fs_hkh <= 0:
+            fs_hkh = float(
+                len(hkh_bandpass) / max((hkh_t_host[-1] - hkh_t_host[0]) / 1e9, 1e-6)
+            )
+
+    bpm_hkh: List[float] = []
+    for st in starts:
+        end = st + win_len
+        t0, t1 = _ble_window_time_range(cs_t_host, st, end, fs_ble, win_len)
+        hkh_win = _hkh_window_bandpass(hkh_bandpass, hkh_t_host, t0, t1 + 1)
+        if len(hkh_win) < 4:
+            bpm_hkh.append(float("nan"))
+            continue
+        bpm_gt, _, _, _ = estimate_bpm_from_waveform(hkh_win, fs_hkh, cfg=cfg)
+        bpm_hkh.append(float(bpm_gt))
+
+    return (
+        np.asarray(bpm_hkh, dtype=float),
+        np.full(len(starts), np.nan),
+        float(fs_ble),
+        float(fs_hkh),
+    )
+
+
+def summarize_bpm_vs_hkh(
+    bpm_est: np.ndarray,
+    bpm_hkh_gt: np.ndarray,
+) -> dict:
+    """Window-level absolute BPM error vs HKH GT."""
+    valid = np.isfinite(bpm_est) & np.isfinite(bpm_hkh_gt) & (bpm_hkh_gt > 0)
+    abs_err = np.where(valid, np.abs(bpm_est - bpm_hkh_gt), np.nan)
+    rel_err = np.where(valid, abs_err / bpm_hkh_gt * 100.0, np.nan)
+    return {
+        "bpm_mean_abs_err": float(np.nanmean(abs_err)),
+        "bpm_std_abs_err": float(np.nanstd(abs_err)),
+        "bpm_mean_rel_err_pct": float(np.nanmean(rel_err)),
+        "bpm_std_rel_err_pct": float(np.nanstd(rel_err)),
+        "est_mean_bpm": float(np.nanmean(bpm_est)),
+        "gt_mean_bpm": float(np.nanmean(bpm_hkh_gt)),
+        "n_valid": int(np.sum(valid)),
+        "n_windows": int(len(bpm_est)),
+    }
+
+
+def extract_bpm_per_window(row: Optional[dict], method_key: str) -> Optional[np.ndarray]:
+    if row is None or method_key not in row:
+        return None
+    block = row[method_key]
+    if isinstance(block, dict) and "bpm_per_window" in block:
+        return np.asarray(block["bpm_per_window"], dtype=float)
+    return None
+
+
 def validate_b2_against_hkh(
     multichannel_by_var: Dict[str, Dict[str, Optional[dict]]],
     seg_name: str,

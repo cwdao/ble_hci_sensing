@@ -153,6 +153,84 @@ python notebooks/scripts/chFusion_ble_hkh_b2_validation.py
 
 ---
 
+## 5.1 多算法对比（HKH GT）
+
+脚本：`notebooks/scripts/chFusion_ble_hkh_multi_algorithm.py`  
+模块：`src/ble_analysis/ble_hkh_multi_validation.py`
+
+共 **26** 种方法（B0/B1、Systematic A/B/C、Modal 5 种、Voting T0–T3、B2 三主变体），238 个 20 s 滑窗，GT 来自 HKH 带通波形 Welch 寻峰（实测 fs：BLE 2.4 Hz，HKH 19.6 Hz）。
+
+**HKH GT 窗均值 ≈ 8.2 BPM**；多数 BLE 方法估计均值 ≈ 11 BPM，存在约 **+3 BPM 系统偏差**。
+
+### BPM 绝对误差排行榜（Top / Bottom）
+
+| Rank | 方法 | BPM err (mean±std) | RMSE |
+|------|------|-------------------:|-----:|
+| 1 | B2-A0 PCA sign → equal modal | **2.75±1.14** | 1.297±0.088 |
+| 2 | T0-V1 Per-Tone simple | 2.76±0.81 | — |
+| 3 | T0-V2 Per-Tone η-weight | 2.77±0.81 | — |
+| … | C1/C2 Uniform→modal、B1 Uniform | ~2.82±0.75 | — |
+| 16 | B2-D Two-level Hilbert-MRC | 2.85±0.74 | **1.217±0.133** |
+| 21–22 | A1/A2 Phase voting | 2.93±1.76 | — |
+| 26 | B0 Single Remote | 2.99±1.10 | — |
+
+### 简要结论（单场景，不可外推）
+
+1. **BPM 误差高度集中**：26 法均在 **2.75–3.0 BPM**，差距 <0.25 BPM；复杂融合相对 Uniform / Voting 无显著优势。
+2. **B2-A0** BPM 略优但 **std 最大**（1.14）；**T0-V1** 误差相近且更稳（0.81）。
+3. **B2-D** BPM 排第 16，但 **RMSE 最低**（1.217），波形贴合仍最优。
+4. **Phase 投票**（A1/A2）std 达 1.76，波动大。
+5. 整体 **~3 BPM 系统高估** 可能来自 BLE 有效采样率偏低、窗长物理时长、或 HKH/BLE 呼吸定义差异——需进一步诊断，非单纯算法选择问题。
+
+产出：
+
+- `outputs/reports/ble_hkh_multi_algorithm_room_A-sbj_A-07101613.json`
+- `outputs/figures/ble_hkh_multi_algorithm_room_A-sbj_A-07101613.png`
+
+---
+
+## 5.2 三篇 WiFi 论文波形方法（Fan / Yu / Zhuo）
+
+脚本：`notebooks/scripts/chFusion_ble_hkh_paper_baselines.py`  
+模块：`src/ble_analysis/ble_hkh_paper_validation.py`
+
+这些方法均 **输出融合呼吸波形**，再估计 BPM；同时报告窗级 **RMSE**（z-score + 符号对齐 vs HKH 带通）。
+
+| 论文 | 方法 | BPM err (mean±std) | RMSE (mean±std) |
+|------|------|-------------------:|----------------:|
+| **Fan 2024** | η-equal waveform avg | **2.73±0.87** | 1.237±0.090 |
+| **Fan 2024** | Hilbert equal wf | 2.73±0.86 | 1.236±0.091 |
+| **Fan 2024** | η-linear (best modal) | 2.78±0.72 | 1.239±0.101 |
+| **Yu 2021** | MRC-PCA √η (best modal) | 2.85±0.78 | 1.292±0.096 |
+| **Yu 2021** | MRC-PCA η-equal PCA3→1 | 2.87±0.77 | 1.299±0.090 |
+| **Zhuo 2023** | Z1 VMD→Peak | 2.82±1.03 | 1.301±0.101 |
+| **Zhuo 2023** | Z1 VMD→FFT | 2.82±1.00 | 1.301±0.101 |
+| **Zhuo 2023** | Z1-no-VMD→Peak | 2.92±0.76 | 1.278±0.069 |
+| B2 参照 | B2-D Two-level | 2.85±0.74 | **1.217±0.133** |
+| B2 参照 | B2-A0 PCA sign | 2.75±1.14 | 1.297±0.088 |
+
+### 与金属板三场景结论的对比
+
+| 维度 | 金属板（cs_091339 等） | 本段真人 HKH |
+|------|------------------------|--------------|
+| Fan/Yu vs B1/B2 BPM | 论文方法 **系统性劣于** B1/B2 | 论文方法与 B2 **几乎持平**（~2.7–2.9 BPM） |
+| 最优波形 RMSE | B2-D 领先 | **B2-D 仍最低**（1.217） |
+| Fan 波形融合 | equal-wf 跨域更差 | equal-wf / Hilbert **BPM 略优** |
+
+### 简要结论（单场景）
+
+1. **Fan 2024 波形等权融合**在本段真人数据上 BPM 略优（2.73），与之前多算法榜 T0-V1（2.76）同量级。
+2. **Yu 2021 MRC-PCA** 波形 RMSE 略差（~1.29–1.30），BPM 与 B2-D 接近。
+3. **Zhuo 2023 VMD** 在本数据上 **无增益**（VMD vs no-VMD：BPM 2.82 vs 2.92，RMSE 1.30 vs 1.28）。
+4. **B2-D** 波形形态仍最佳（RMSE 1.217），BPM 居中。
+
+产出：
+
+- `outputs/reports/ble_hkh_paper_baselines_room_A-sbj_A-07101613.json`
+- `outputs/figures/ble_hkh_paper_baselines_room_A-sbj_A-07101613.png`
+
+---
+
 ## 6. 代码模块
 
 | 模块 | 路径 |
@@ -161,8 +239,14 @@ python notebooks/scripts/chFusion_ble_hkh_b2_validation.py
 | 对齐裁剪滤波 | `src/ble_analysis/ble_hkh_preprocess.py` |
 | 窗级 RMSE | `src/ble_analysis/waveform_metrics.py` |
 | B2 vs HKH 验证 | `src/ble_analysis/ble_hkh_validation.py` |
+| 多算法 vs HKH | `src/ble_analysis/ble_hkh_multi_validation.py` |
+| 论文波形 vs HKH | `src/ble_analysis/ble_hkh_paper_validation.py` |
+| Fan/Yu 实现 | `src/ble_analysis/wifi_mrc.py` |
+| Zhuo 实现 | `src/ble_analysis/pca_vmd.py` |
 | 预处理脚本 | `notebooks/scripts/preprocess_ble_hkh.py` |
 | B2 验证脚本 | `notebooks/scripts/chFusion_ble_hkh_b2_validation.py` |
+| 多算法脚本 | `notebooks/scripts/chFusion_ble_hkh_multi_algorithm.py` |
+| 论文波形脚本 | `notebooks/scripts/chFusion_ble_hkh_paper_baselines.py` |
 
 ---
 
