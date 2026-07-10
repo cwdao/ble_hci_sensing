@@ -1,0 +1,17 @@
+{
+  "id": "room_A-sbj_A-07101613",
+  "name": "Room A Subject A — BLE+HKH live breathing (2026-07-10)",
+  "modality": "CS",
+  "data_file": "sampleData/processed/room_A-sbj_A-07101613/CS_frames_cropped.jsonl",
+  "hkh_file": "sampleData/processed/room_A-sbj_A-07101613/HKH_frames_cropped.jsonl",
+  "preprocess_meta": "sampleData/processed/room_A-sbj_A-07101613/preprocess_meta.json",
+  "default_channel": 2,
+  "description": "Live human breathing with HKH ground truth. Single clean segment; BPM GT derived from HKH bandpass waveform.",
+  "segments": {
+    "main": {
+      "start": 0,
+      "end": 522,
+      "type": "breath"
+    }
+  }
+}

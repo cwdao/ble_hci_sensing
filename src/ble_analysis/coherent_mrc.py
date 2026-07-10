@@ -558,7 +558,8 @@ def _window_b2_bpms(
     f0: float | None,
     min_coherence: float,
     pca_top_k: int,
-) -> Tuple[float, dict]:
+    return_waveform: bool = False,
+):
     modal_waveforms: Dict[str, np.ndarray] = {}
     modal_etas: Dict[str, float] = {}
     tone_info: Dict[str, dict] = {}
@@ -608,6 +609,8 @@ def _window_b2_bpms(
         "eta_fused": _energy_ratio(y_final, fs, cfg),
         **bpm_out,
     }
+    if return_waveform:
+        return bpm_out["bpm_psd"], diag, y_final
     return bpm_out["bpm_psd"], diag
 
 

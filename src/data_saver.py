@@ -541,8 +541,12 @@ class DataSaver:
                 # 将记录转换回原始帧格式
                 frame = {
                     'index': record.get('seq', 0),
+                    'seq': record.get('seq', 0),
                     'timestamp_ms': record.get('t_dev_ms', 0),
                 }
+
+                if 't_host_utc_ns' in record:
+                    frame['t_host_utc_ns'] = int(record['t_host_utc_ns'])
                 
                 # 添加帧类型和版本
                 if 'frame_type' in record:
@@ -551,7 +555,11 @@ class DataSaver:
                     frame['frame_version'] = record['frame_version']
                 
                 # 恢复channels数据
-                if 'ch' in record and 'amp' in record:
+                frame_type = record.get('frame_type', '')
+                if frame_type == 'hkh11c_resp' and 'amp' in record:
+                    frame['amp'] = record['amp']
+                    frame['ch'] = record.get('ch', 0)
+                elif 'ch' in record and 'amp' in record:
                     # 单信道（方向估计帧）
                     amp = record['amp']
                     # DF帧只保存p_avg和amplitude，其他字段物理上不存在，设为默认值
@@ -1002,16 +1010,24 @@ class DataSaver:
                 # 将记录转换回原始帧格式
                 frame = {
                     'index': record.get('seq', 0),
+                    'seq': record.get('seq', 0),
                     'timestamp_ms': record.get('t_dev_ms', 0),
                 }
-                
+
+                if 't_host_utc_ns' in record:
+                    frame['t_host_utc_ns'] = int(record['t_host_utc_ns'])
+
                 if 'frame_type' in record:
                     frame['frame_type'] = record['frame_type']
                 if 'frame_version' in record:
                     frame['frame_version'] = record['frame_version']
                 
                 # 恢复channels数据
-                if 'ch' in record and 'amp' in record:
+                frame_type = record.get('frame_type', '')
+                if frame_type == 'hkh11c_resp' and 'amp' in record:
+                    frame['amp'] = record['amp']
+                    frame['ch'] = record.get('ch', 0)
+                elif 'ch' in record and 'amp' in record:
                     # 单信道（方向估计帧）
                     amp = record['amp']
                     # DF帧只保存p_avg和amplitude，其他字段物理上不存在，设为默认值

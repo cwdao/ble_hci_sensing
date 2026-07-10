@@ -56,3 +56,10 @@ def load_ble_frames(filepath, verbose=True):
         print("✓ 加载成功")
         print(f"✓ 共加载 {len(frames)} 帧数据")
     return data, frames
+
+
+def load_hkh_frames(filepath, verbose=True):
+    """加载 HKH 呼吸带 JSONL 帧数据（见 ``ble_analysis.hkh_data``）。"""
+    from ble_analysis.hkh_data import load_hkh_frames as _load
+
+    return _load(filepath, verbose=verbose)
