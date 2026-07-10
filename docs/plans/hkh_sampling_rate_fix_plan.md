@@ -4,7 +4,7 @@
 > **目标报告**：`docs/ble_hkh_preprocessing.md`（更新 §5 结果）
 > **建议 plan 路径**：`docs/plans/hkh_sampling_rate_fix_plan.md`
 > **日期**：2026-07-10
-> **验证状态**：待实现
+> **验证状态**：已完成
 
 ---
 
@@ -312,19 +312,19 @@ from ble_analysis.chfusion import _next_pow2
 
 | 字段 | 内容 |
 |------|------|
-| **验证状态** | 待实现 |
-| **实际脚本** | — |
-| **报告链接** | — |
-| **一句话结论** | — |
+| **验证状态** | 已完成 |
+| **实际脚本** | `preprocess_ble_hkh.py`；`chFusion_ble_hkh_b2_validation.py`；`chFusion_ble_hkh_multi_algorithm.py`；`chFusion_ble_hkh_paper_baselines.py` |
+| **报告链接** | `docs/ble_hkh_preprocessing.md` §5 |
+| **一句话结论** | HKH fs 修复为 len/duration（50.7 Hz）+ Welch nfft 后，B2-D BPM 误差从 2.85 降至 **0.42 BPM**，算法性能正常 |
 
 ### 保留问题
 
 | ID | 问题 | 备注 |
 |----|------|------|
-| Q1 | 修复后 BLE vs HKH BPM 误差是否 < 3 BPM？ | 单场景结论，不可外推 |
-| Q2 | HKH 带通波形是否呈现典型的呼吸形态（0.1–0.35 Hz）？ | 检查 `ble_hkh_preprocess_*.png` 诊断图 |
+| Q1 | 修复后 BLE vs HKH BPM 误差是否 < 3 BPM？ | ✅ B2-D 0.42 BPM（单场景） |
+| Q2 | HKH 带通波形是否呈现典型的呼吸形态（0.1–0.35 Hz）？ | 待目视检查 `ble_hkh_preprocess_*.png` |
 | Q3 | BLE 非均匀采样（300/400/550 ms）是否对 BPM 估计有残余影响？ | 后续可尝试重采样到 2 Hz uniform |
-| Q4 | `_energy_ratio` 和 `_peak_prominence` 的 `rfft` 是否需要类似 nfft 处理？ | 当前用于信道排序（η/ρ），非 BPM 估计；低优先级 |
+| Q4 | `_energy_ratio` 和 `_peak_prominence` 的 `rfft` 是否需要类似 nfft 处理？ | 低优先级；当前用于信道排序 |
 
 ---
 

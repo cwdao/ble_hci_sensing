@@ -370,6 +370,7 @@ def validate_paper_method_against_hkh(
     pca_cfg: Optional[PcaSvdConfig] = None,
     vmd_params: Optional[VmdParams] = None,
     pca_top_k: int = 36,
+    fs_hkh_override: Optional[float] = None,
     verbose: bool = False,
 ) -> Optional[dict]:
     """Window-level BPM + RMSE for one paper/B2 waveform method."""
@@ -395,7 +396,7 @@ def validate_paper_method_against_hkh(
 
     bpm_hkh, _, _fs_ble, fs_hkh = compute_hkh_gt_per_window(
         hkh_bandpass, hkh_t_host, cs_t_host, multichannel_by_var, seg_name,
-        config=cfg, metric_params=mp,
+        config=cfg, metric_params=mp, fs_hkh_override=fs_hkh_override,
     )
 
     runner = _build_waveform_runner(
@@ -461,6 +462,7 @@ def run_hkh_paper_baselines_benchmark(
     config: Optional[ChFusionConfig] = None,
     metric_params: Optional[BreathMetricParams] = None,
     method_keys: Optional[Tuple[str, ...]] = None,
+    fs_hkh_override: Optional[float] = None,
     verbose: bool = True,
 ) -> dict:
     """Benchmark all paper waveform methods (+ B2 refs) on one HKH segment."""
@@ -478,6 +480,7 @@ def run_hkh_paper_baselines_benchmark(
                 method_key=key,
                 config=config,
                 metric_params=metric_params,
+                fs_hkh_override=fs_hkh_override,
                 verbose=verbose,
             )
         except Exception as exc:

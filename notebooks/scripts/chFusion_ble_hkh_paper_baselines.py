@@ -116,6 +116,7 @@ if __name__ == "__main__":
 
     processed_dir = (project_root / Path(scenario.data_file)).parent
     hkh_bp, hkh_t, cs_t, preprocess_meta = load_hkh_gt_signals(processed_dir)
+    fs_hkh = preprocess_meta.get("sampling_rate_hz", {}).get("hkh_used")
 
     multichannel_by_var, _fs, _skipped = load_multichannel_for_scenario(
         scenario,
@@ -134,6 +135,7 @@ if __name__ == "__main__":
         cs_t,
         config=chfusion_config,
         metric_params=metric_params,
+        fs_hkh_override=fs_hkh,
         verbose=True,
     )
 

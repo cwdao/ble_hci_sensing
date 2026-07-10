@@ -41,9 +41,9 @@ HKH 文件开头（seq≈0–21124）为采集启动后批量刷盘的历史缓�
 | | 帧数 | 时长 | 实测 fs |
 |--|------|------|---------|
 | BLE | 523 | 217.5 s | **2.4 Hz**（由 `t_dev_ms` 差分） |
-| HKH | 11020 | 217.5 s | **≈19.6 Hz**（由 `t_host_utc_ns` 正差分） |
+| HKH | 11020 | 217.5 s | **≈50.7 Hz**（`len / duration`，由 `t_host_utc_ns` 头尾） |
 
-> **说明**：HKH 设备标称 50 Hz（`t_dev_ms` 步进 20 ms），但有效 UTC 时间戳显示存在丢帧/合并写入，预处理 **以实测 fs 为准**，不强制重采样到 50 Hz。
+> **说明**：HKH 设备标称 50 Hz（`t_dev_ms` 步进 20 ms）。因存在批量写入（多帧共享同一 `t_host_utc_ns`），`t_host` 正差分统计仅得 **≈19.6 Hz**（见 `preprocess_meta.json` 的 `hkh_from_t_host_diff`），**不能**用于带通滤波或 BPM 估计。预处理与 GT 验证统一使用 **`hkh_from_len_duration` / `hkh_used`**（帧数 ÷ 主机时间头尾时长）。
 
 ### 2.3 `DataSaver` 更新
 
@@ -121,30 +121,34 @@ python notebooks/scripts/chFusion_ble_hkh_b2_validation.py
 
 滑窗：**20 s 窗长 / 1 s 步长**（与项目标准一致）。
 
-### 5.2 首条数据 B2 结果（2026-07-10）
+### 5.2 首条数据 B2 结果（2026-07-10，fs 修复后）
 
 | 方法 | BPM err (mean±std) | RMSE (mean±std) |
 |------|-------------------:|----------------:|
-| B2-D Two-level Hilbert-MRC | **2.85±0.74 BPM** | 1.217±0.133 |
-| B2-B Hilbert η·ρ | **2.88±0.96 BPM** | 1.230±0.114 |
-| B2-A0 PCA sign | **2.75±1.14 BPM** | 1.297±0.088 |
-| B2-A1 Corr sign | **2.90±1.04 BPM** | 1.269±0.112 |
+| B2-D Two-level Hilbert-MRC | **0.42±0.31 BPM** | 0.762±0.369 |
+| B2-B Hilbert η·ρ | **0.62±0.52 BPM** | 0.852±0.338 |
+| B2-A0 PCA sign | **0.69±0.71 BPM** | 1.080±0.253 |
+| B2-A1 Corr sign | **0.72±0.87 BPM** | 1.066±0.227 |
 
-（HKH GT 窗均值约 **8.2 BPM**；BLE B2 窗均值约 **11.1 BPM**。）
+（HKH GT 窗均值约 **10.7 BPM**；B2-D 窗均值约 **8.4 BPM**。）
 
 ### 5.3 采样率与误差（重要）
 
-早期验证曾误用 `fs_hkh = 帧数 / 总时长 ≈ 50.7 Hz` 估计 HKH BPM。因 HKH 存在批量写入（多帧共享 `t_host_utc_ns`），该公式等价于把标称 50 Hz 当作有效采样率，**GT BPM 被放大约 2×（~16.5 BPM）**，从而出现 ~5.8 BPM 的虚假大误差。
+2026-07-10 曾出现两轮 fs 相关 bug，均已修复（见 `docs/plans/hkh_sampling_rate_fix_plan.md`）：
 
-**正确做法**：HKH BPM 估计使用 `t_host_utc_ns` **正差分** 得到的有效 fs（本数据 **≈19.6 Hz**），与 `preprocess_meta.json` 中 `hkh_used` 一致。
+| 阶段 | HKH fs 用法 | B2-D BPM err | HKH GT 均值 | 问题 |
+|------|-------------|-------------:|------------:|------|
+| 初版 | `len/duration` ≈ 50.7 Hz 估 BPM | ~5.7 | ~16.3 | GT BPM 被放大（commit 前） |
+| 误修（6d59d09） | `t_host` 正差分 ≈ 19.6 Hz 滤波+估 BPM | **2.85±0.74** | 8.2 | 带通实际通带偏移至 0.26–0.91 Hz，GT 不可信 |
+| **当前（修复后）** ✅ | `len/duration` ≈ 50.7 Hz 滤波+估 BPM + Welch `nfft` | **0.42±0.31** | **10.7** | 频域标度正确 |
 
-| 配置 | B2-D BPM err | HKH GT 均值 | 说明 |
-|------|-------------:|------------:|------|
-| 实测 fs（BLE 2.4 + HKH 19.6）✅ | **2.85±0.74** | 8.2 | 当前默认 |
-| 理论 fs（BLE 4 + HKH 50，滤波/估计均名义值） | 4.37±2.07 | 11.7 | 窗长 80 样本，物理时长≠20 s |
-| 仅 HKH 用 50 Hz 估 BPM（旧 bug） | ~5.7 | ~16.3 | 不推荐 |
+**根因**：HKH 批量写入使 `estimate_fs_from_host_timestamps` 低估 fs；用 19.6 Hz 设计 0.1–0.35 Hz 带通会实际作用于 ~0.26–0.91 Hz，呼吸信号被严重衰减。同时 `estimate_bpm_from_waveform` 缺少 Welch `nfft` 零填充，加剧 bin 量化误差。
 
-结论：**不是 B2 算法本身差，而是 HKH GT 的 fs 设置错误**；按实测有效 fs 后，误差回到 ~3 BPM 量级。
+**正确做法**：
+
+1. 预处理：`fs_hkh = len(hkh_crop) / duration_from_t_host` → `preprocess_meta.json` → `hkh_used`
+2. 验证：从 meta 读取 `hkh_used` 传入 `fs_hkh_override`
+3. Welch BPM：`nfft = max(nperseg, _next_pow2(4 * len(sig)))`
 
 结果文件：
 
@@ -158,29 +162,26 @@ python notebooks/scripts/chFusion_ble_hkh_b2_validation.py
 脚本：`notebooks/scripts/chFusion_ble_hkh_multi_algorithm.py`  
 模块：`src/ble_analysis/ble_hkh_multi_validation.py`
 
-共 **26** 种方法（B0/B1、Systematic A/B/C、Modal 5 种、Voting T0–T3、B2 三主变体），238 个 20 s 滑窗，GT 来自 HKH 带通波形 Welch 寻峰（实测 fs：BLE 2.4 Hz，HKH 19.6 Hz）。
+共 **26** 种方法（B0/B1、Systematic A/B/C、Modal 5 种、Voting T0–T3、B2 三主变体），238 个 20 s 滑窗，GT 来自 HKH 带通波形 Welch 寻峰（BLE 2.4 Hz，HKH **50.7 Hz**）。
 
-**HKH GT 窗均值 ≈ 8.2 BPM**；多数 BLE 方法估计均值 ≈ 11 BPM，存在约 **+3 BPM 系统偏差**。
+**HKH GT 窗均值 ≈ 10.7 BPM**；多数 BLE 方法估计均值 ≈ 11.0 BPM。
 
 ### BPM 绝对误差排行榜（Top / Bottom）
 
 | Rank | 方法 | BPM err (mean±std) | RMSE |
 |------|------|-------------------:|-----:|
-| 1 | B2-A0 PCA sign → equal modal | **2.75±1.14** | 1.297±0.088 |
-| 2 | T0-V1 Per-Tone simple | 2.76±0.81 | — |
-| 3 | T0-V2 Per-Tone η-weight | 2.77±0.81 | — |
-| … | C1/C2 Uniform→modal、B1 Uniform | ~2.82±0.75 | — |
-| 16 | B2-D Two-level Hilbert-MRC | 2.85±0.74 | **1.217±0.133** |
-| 21–22 | A1/A2 Phase voting | 2.93±1.76 | — |
-| 26 | B0 Single Remote | 2.99±1.10 | — |
+| 1 | C2 Uniform→η modal | **0.40±0.29** | — |
+| 2 | B1 Vote→Equal modal | 0.41±0.29 | — |
+| 3 | B1 Uniform Remote | 0.41±0.30 | — |
+| 8 | B2-D Two-level Hilbert-MRC | 0.42±0.31 | **0.762±0.369** |
+| 26 | A2 Phase persistence voting | 1.37±1.46 | — |
 
 ### 简要结论（单场景，不可外推）
 
-1. **BPM 误差高度集中**：26 法均在 **2.75–3.0 BPM**，差距 <0.25 BPM；复杂融合相对 Uniform / Voting 无显著优势。
-2. **B2-A0** BPM 略优但 **std 最大**（1.14）；**T0-V1** 误差相近且更稳（0.81）。
-3. **B2-D** BPM 排第 16，但 **RMSE 最低**（1.217），波形贴合仍最优。
-4. **Phase 投票**（A1/A2）std 达 1.76，波动大。
-5. 整体 **~3 BPM 系统高估** 可能来自 BLE 有效采样率偏低、窗长物理时长、或 HKH/BLE 呼吸定义差异——需进一步诊断，非单纯算法选择问题。
+1. **BPM 误差显著改善**：修复 fs 后，26 法误差 **0.40–1.37 BPM**（此前 ~2.75–3.0 BPM 系 GT 错误所致）。
+2. **B2-D** BPM 排第 8（0.42 BPM），**RMSE 仍最低**（0.762），波形贴合最优。
+3. **Uniform / Voting / Modal 系列** 与 B2-D 同量级（~0.4 BPM），差距 <0.05 BPM。
+4. **Phase 投票**（A1/A2）std 仍较大（1.46），波动大。
 
 产出：
 
@@ -198,31 +199,31 @@ python notebooks/scripts/chFusion_ble_hkh_b2_validation.py
 
 | 论文 | 方法 | BPM err (mean±std) | RMSE (mean±std) |
 |------|------|-------------------:|----------------:|
-| **Fan 2024** | η-equal waveform avg | **2.73±0.87** | 1.237±0.090 |
-| **Fan 2024** | Hilbert equal wf | 2.73±0.86 | 1.236±0.091 |
-| **Fan 2024** | η-linear (best modal) | 2.78±0.72 | 1.239±0.101 |
-| **Yu 2021** | MRC-PCA √η (best modal) | 2.85±0.78 | 1.292±0.096 |
-| **Yu 2021** | MRC-PCA η-equal PCA3→1 | 2.87±0.77 | 1.299±0.090 |
-| **Zhuo 2023** | Z1 VMD→Peak | 2.82±1.03 | 1.301±0.101 |
-| **Zhuo 2023** | Z1 VMD→FFT | 2.82±1.00 | 1.301±0.101 |
-| **Zhuo 2023** | Z1-no-VMD→Peak | 2.92±0.76 | 1.278±0.069 |
-| B2 参照 | B2-D Two-level | 2.85±0.74 | **1.217±0.133** |
-| B2 参照 | B2-A0 PCA sign | 2.75±1.14 | 1.297±0.088 |
+| **Fan 2024** | η-linear (best modal) | **0.37±0.28** | 0.993±0.153 |
+| **Fan 2024** | η-equal waveform avg | 0.53±0.37 | 1.013±0.160 |
+| **Fan 2024** | Hilbert equal wf | 0.53±0.36 | 1.012±0.160 |
+| **Yu 2021** | MRC-PCA √η (best modal) | 0.46±0.41 | 1.083±0.232 |
+| **Yu 2021** | MRC-PCA η-equal PCA3→1 | 0.47±0.53 | 1.121±0.217 |
+| **Zhuo 2023** | Z1 VMD→Peak | 0.66±0.45 | 1.117±0.220 |
+| **Zhuo 2023** | Z1 VMD→FFT | 0.65±0.44 | 1.117±0.220 |
+| **Zhuo 2023** | Z1-no-VMD→Peak | 0.51±0.39 | 1.139±0.113 |
+| B2 参照 | B2-D Two-level | 0.42±0.31 | **0.762±0.369** |
+| B2 参照 | B2-A0 PCA sign | 0.69±0.71 | 1.080±0.253 |
 
 ### 与金属板三场景结论的对比
 
 | 维度 | 金属板（cs_091339 等） | 本段真人 HKH |
 |------|------------------------|--------------|
-| Fan/Yu vs B1/B2 BPM | 论文方法 **系统性劣于** B1/B2 | 论文方法与 B2 **几乎持平**（~2.7–2.9 BPM） |
-| 最优波形 RMSE | B2-D 领先 | **B2-D 仍最低**（1.217） |
-| Fan 波形融合 | equal-wf 跨域更差 | equal-wf / Hilbert **BPM 略优** |
+| Fan/Yu vs B1/B2 BPM | 论文方法 **系统性劣于** B1/B2 | Fan η-linear **略优**（0.37 BPM），B2-D 0.42 |
+| 最优波形 RMSE | B2-D 领先 | **B2-D 仍最低**（0.762） |
+| Fan 波形融合 | equal-wf 跨域更差 | equal-wf BPM 0.53，略逊于 linear |
 
 ### 简要结论（单场景）
 
-1. **Fan 2024 波形等权融合**在本段真人数据上 BPM 略优（2.73），与之前多算法榜 T0-V1（2.76）同量级。
-2. **Yu 2021 MRC-PCA** 波形 RMSE 略差（~1.29–1.30），BPM 与 B2-D 接近。
-3. **Zhuo 2023 VMD** 在本数据上 **无增益**（VMD vs no-VMD：BPM 2.82 vs 2.92，RMSE 1.30 vs 1.28）。
-4. **B2-D** 波形形态仍最佳（RMSE 1.217），BPM 居中。
+1. **Fan 2024 η-linear** BPM 最优（0.37），与 B2-D（0.42）同量级。
+2. **Yu 2021 MRC-PCA** BPM ~0.46–0.47，波形 RMSE ~1.08–1.12。
+3. **Zhuo 2023 VMD** 在本数据上 **无增益**（VMD 0.66 vs no-VMD 0.51 BPM）。
+4. **B2-D** 波形形态仍最佳（RMSE 0.762）。
 
 产出：
 
@@ -263,6 +264,6 @@ python notebooks/scripts/chFusion_ble_hkh_b2_validation.py
 ## 8. 保留问题
 
 - [ ] BLE 实测 2.4 Hz vs 用户预期 4 Hz：需确认 CS 采集配置或 seq 间隔含义。
-- [ ] HKH 有效 ~20 Hz：是否可通过固件/串口配置减少丢帧；GT BPM 必须用有效 fs，不可用 len/duration。
-- [x] ~~BPM 误差 ~6 BPM~~：已确认系 HKH fs 误设为 ~50 Hz 导致 GT 放大；修正后 ~2.9 BPM。
+- [ ] HKH `t_host` 正差分（≈19.6 Hz）与 `len/duration`（≈50.7 Hz）差异：批量写入机制待文档化；**滤波/BPM 必须用后者**。
+- [x] ~~BPM 误差 ~3 BPM~~：已确认系 HKH fs 误用 19.6 Hz 导致 GT 带通偏移；修复后 B2-D **0.42±0.31 BPM**。
 - [ ] 是否将 RMSE 归一化方式（z-score vs 幅值归一化）写入正式指标定义。

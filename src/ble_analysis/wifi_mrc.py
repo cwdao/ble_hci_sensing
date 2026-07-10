@@ -16,6 +16,7 @@ from ble_analysis.chfusion import (
     ChFusionConfig,
     Plan2Config,
     _energy_ratio,
+    _next_pow2,
     _overall_rel_error,
     _parabolic_peak_freq,
     _peak_prominence,
@@ -224,12 +225,17 @@ def estimate_bpm_from_waveform(
 
     nperseg = min(len(sig), 512)
     noverlap = nperseg // 2
+    if cfg.nfft is not None:
+        nfft = cfg.nfft
+    else:
+        nfft = _next_pow2(max(nperseg, 4 * len(sig)))
     freqs, pxx = welch(
         sig - np.mean(sig),
         fs=fs,
         window="hann",
         nperseg=nperseg,
         noverlap=noverlap,
+        nfft=nfft,
     )
     band_mask = (freqs >= breath_band[0]) & (freqs <= breath_band[1])
     if not np.any(band_mask):

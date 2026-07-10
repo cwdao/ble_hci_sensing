@@ -70,6 +70,7 @@ def run_hkh_multi_algorithm_benchmark(
     metric_params: Optional[BreathMetricParams] = None,
     plan2_config: Optional[Plan2Config] = None,
     include_b2_variants: bool = True,
+    fs_hkh_override: Optional[float] = None,
     verbose: bool = True,
 ) -> dict:
     """Compare project methods on one HKH-aligned segment."""
@@ -85,6 +86,7 @@ def run_hkh_multi_algorithm_benchmark(
         seg_name,
         config=cfg,
         metric_params=mp,
+        fs_hkh_override=fs_hkh_override,
     )
 
     results: Dict[str, dict] = {}
@@ -175,6 +177,7 @@ def run_hkh_multi_algorithm_benchmark(
                     method_key=key,
                     config=cfg,
                     metric_params=mp,
+                    fs_hkh_override=fs_hkh_override,
                     verbose=False,
                 )
                 if row is None:

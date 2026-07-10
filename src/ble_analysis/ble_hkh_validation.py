@@ -10,7 +10,7 @@ import numpy as np
 
 from ble_analysis.chfusion import ChFusionConfig
 from ble_analysis.coherent_mrc import _window_b2_bpms
-from ble_analysis.hkh_data import load_hkh_frames, estimate_fs_from_host_timestamps
+from ble_analysis.hkh_data import load_hkh_frames
 from ble_analysis.segments import BreathMetricParams, FilterParams, _sliding_window_indices
 from ble_analysis.waveform_metrics import window_rmse_against_reference
 from ble_analysis.wifi_mrc import estimate_bpm_from_waveform
@@ -29,6 +29,18 @@ def _hkh_window_bandpass(
 ) -> np.ndarray:
     mask = (hkh_t_host >= t_start_ns) & (hkh_t_host < t_end_ns)
     return hkh_bandpass[mask]
+
+
+def _resolve_hkh_fs(
+    hkh_bandpass: np.ndarray,
+    hkh_t_host: np.ndarray,
+    fs_hkh_override: Optional[float] = None,
+) -> float:
+    """Resolve HKH sampling rate from preprocess meta or len/duration."""
+    if fs_hkh_override is not None:
+        return float(fs_hkh_override)
+    duration_s = float((hkh_t_host[-1] - hkh_t_host[0]) / 1e9)
+    return float(len(hkh_bandpass) / max(duration_s, 1e-6))
 
 
 def _ble_window_time_range(
@@ -80,14 +92,7 @@ def compute_hkh_gt_per_window(
     step_len = int(round(mp.step_length_sec * fs_ble))
     starts = _sliding_window_indices(ref_len, win_len, step_len)
 
-    if fs_hkh_override is not None:
-        fs_hkh = float(fs_hkh_override)
-    else:
-        fs_hkh = estimate_fs_from_host_timestamps(hkh_t_host)
-        if not np.isfinite(fs_hkh) or fs_hkh <= 0:
-            fs_hkh = float(
-                len(hkh_bandpass) / max((hkh_t_host[-1] - hkh_t_host[0]) / 1e9, 1e-6)
-            )
+    fs_hkh = _resolve_hkh_fs(hkh_bandpass, hkh_t_host, fs_hkh_override)
 
     bpm_hkh: List[float] = []
     for st in starts:
@@ -213,15 +218,7 @@ def validate_b2_against_hkh(
         return None
 
     starts = _sliding_window_indices(ref_len, win_len, step_len)
-    if fs_hkh_override is not None:
-        fs_hkh = float(fs_hkh_override)
-    else:
-        # 不可用 len/duration：HKH 存在批量写入导致 t_host 重复，会高估为 ~50 Hz
-        fs_hkh = estimate_fs_from_host_timestamps(hkh_t_host)
-        if not np.isfinite(fs_hkh) or fs_hkh <= 0:
-            fs_hkh = float(
-                len(hkh_bandpass) / max((hkh_t_host[-1] - hkh_t_host[0]) / 1e9, 1e-6)
-            )
+    fs_hkh = _resolve_hkh_fs(hkh_bandpass, hkh_t_host, fs_hkh_override)
 
     bpm_ble: List[float] = []
     bpm_hkh: List[float] = []

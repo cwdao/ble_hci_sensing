@@ -32,8 +32,9 @@
     "ble_from_t_dev": 2.4,
     "ble_from_t_host": 2.4000123586843296,
     "ble_used": 2.4,
-    "hkh_from_t_host": 19.567223728340966,
-    "hkh_used": 19.567223728340966
+    "hkh_from_t_host_diff": 19.567223728340966,
+    "hkh_from_len_duration": 50.666927572224736,
+    "hkh_used": 50.666927572224736
   },
   "filters": {
     "ble": {

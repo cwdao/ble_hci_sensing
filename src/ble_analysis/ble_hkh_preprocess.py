@@ -201,11 +201,11 @@ def preprocess_ble_hkh_pair(
     )
     fs_hkh_host = estimate_fs_from_host_timestamps(hkh_t_host)
     fs_ble = fs_ble_dev if np.isfinite(fs_ble_dev) else fs_ble_host
-    fs_hkh = fs_hkh_host
+
+    duration_s = float((hkh_t_host[-1] - hkh_t_host[0]) / 1e9)
+    fs_hkh = float(len(hkh_crop) / max(duration_s, 1e-6))
 
     hkh_filtered = _filter_1d(hkh_amp, fs_hkh, filters.hkh)
-
-    duration_s = (hkh_t_host[-1] - hkh_t_host[0]) / 1e9
 
     np.savez_compressed(
         npz_path,
@@ -248,7 +248,8 @@ def preprocess_ble_hkh_pair(
             "ble_from_t_dev": fs_ble_dev,
             "ble_from_t_host": fs_ble_host,
             "ble_used": fs_ble,
-            "hkh_from_t_host": fs_hkh,
+            "hkh_from_t_host_diff": fs_hkh_host,
+            "hkh_from_len_duration": fs_hkh,
             "hkh_used": fs_hkh,
         },
         "filters": {
