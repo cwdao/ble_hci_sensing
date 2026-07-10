@@ -10,7 +10,7 @@ import numpy as np
 
 from ble_analysis.chfusion import ChFusionConfig
 from ble_analysis.coherent_mrc import _window_b2_bpms
-from ble_analysis.hkh_data import load_hkh_frames
+from ble_analysis.hkh_data import load_hkh_frames, estimate_fs_from_host_timestamps
 from ble_analysis.segments import BreathMetricParams, FilterParams, _sliding_window_indices
 from ble_analysis.waveform_metrics import window_rmse_against_reference
 from ble_analysis.wifi_mrc import estimate_bpm_from_waveform
@@ -59,6 +59,7 @@ def validate_b2_against_hkh(
     pca_top_k: int = 36,
     min_coherence: float = 0.2,
     verbose: bool = False,
+    fs_hkh_override: Optional[float] = None,
 ) -> Optional[dict]:
     """单段 B2 vs HKH：窗级 BPM 误差 + 窗级 RMSE。"""
     from ble_analysis.coherent_mrc import estimate_b2_segment  # noqa: F401 — method configs
@@ -121,7 +122,15 @@ def validate_b2_against_hkh(
         return None
 
     starts = _sliding_window_indices(ref_len, win_len, step_len)
-    fs_hkh = float(len(hkh_bandpass) / max((hkh_t_host[-1] - hkh_t_host[0]) / 1e9, 1e-6))
+    if fs_hkh_override is not None:
+        fs_hkh = float(fs_hkh_override)
+    else:
+        # 不可用 len/duration：HKH 存在批量写入导致 t_host 重复，会高估为 ~50 Hz
+        fs_hkh = estimate_fs_from_host_timestamps(hkh_t_host)
+        if not np.isfinite(fs_hkh) or fs_hkh <= 0:
+            fs_hkh = float(
+                len(hkh_bandpass) / max((hkh_t_host[-1] - hkh_t_host[0]) / 1e9, 1e-6)
+            )
 
     bpm_ble: List[float] = []
     bpm_hkh: List[float] = []

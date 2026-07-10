@@ -627,6 +627,7 @@ def run_multichannel_segment_filtering(
     verbose: bool = True,
     cache_dir: Optional[str] = None,
     data_fingerprint: Optional[str] = None,
+    fs_override: Optional[float] = None,
 ) -> Tuple[Dict[str, Optional[dict]], float]:
     """Extract and filter **all channels** for one signal variable per segment.
 
@@ -674,6 +675,8 @@ def run_multichannel_segment_filtering(
         raise ValueError("``frames`` required when filter cache misses")
 
     fs = estimate_sampling_rate_from_frames(frames)
+    if fs_override is not None:
+        fs = float(fs_override)
     min_points = max(fp.median_window, 20)
     channels = get_available_channels(frames)
     out: Dict[str, Optional[dict]] = {}

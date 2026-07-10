@@ -125,14 +125,26 @@ python notebooks/scripts/chFusion_ble_hkh_b2_validation.py
 
 | 方法 | BPM err (mean±std) | RMSE (mean±std) |
 |------|-------------------:|----------------:|
-| B2-D Two-level Hilbert-MRC | **5.86±2.79 BPM** | 1.217±0.133 |
-| B2-B Hilbert η·ρ | **5.83±2.79 BPM** | 1.230±0.114 |
-| B2-A0 PCA sign | **6.05±2.93 BPM** | 1.297±0.088 |
-| B2-A1 Corr sign | **5.82±2.79 BPM** | 1.269±0.112 |
+| B2-D Two-level Hilbert-MRC | **2.85±0.74 BPM** | 1.217±0.133 |
+| B2-B Hilbert η·ρ | **2.88±0.96 BPM** | 1.230±0.114 |
+| B2-A0 PCA sign | **2.75±1.14 BPM** | 1.297±0.088 |
+| B2-A1 Corr sign | **2.90±1.04 BPM** | 1.269±0.112 |
 
-（HKH GT 窗均值约 16.5 BPM；绝对误差 ~5.8 BPM 对应相对误差 ~33%。）
+（HKH GT 窗均值约 **8.2 BPM**；BLE B2 窗均值约 **11.1 BPM**。）
 
-> 以上为 **单场景、真人首采** 的探索性结果，不可与金属板三场景 cross-domain 排名直接对比。BPM 误差偏大，需在后续采集中排查对齐、体动、BLE 2.4 Hz 有效采样率等因素。
+### 5.3 采样率与误差（重要）
+
+早期验证曾误用 `fs_hkh = 帧数 / 总时长 ≈ 50.7 Hz` 估计 HKH BPM。因 HKH 存在批量写入（多帧共享 `t_host_utc_ns`），该公式等价于把标称 50 Hz 当作有效采样率，**GT BPM 被放大约 2×（~16.5 BPM）**，从而出现 ~5.8 BPM 的虚假大误差。
+
+**正确做法**：HKH BPM 估计使用 `t_host_utc_ns` **正差分** 得到的有效 fs（本数据 **≈19.6 Hz**），与 `preprocess_meta.json` 中 `hkh_used` 一致。
+
+| 配置 | B2-D BPM err | HKH GT 均值 | 说明 |
+|------|-------------:|------------:|------|
+| 实测 fs（BLE 2.4 + HKH 19.6）✅ | **2.85±0.74** | 8.2 | 当前默认 |
+| 理论 fs（BLE 4 + HKH 50，滤波/估计均名义值） | 4.37±2.07 | 11.7 | 窗长 80 样本，物理时长≠20 s |
+| 仅 HKH 用 50 Hz 估 BPM（旧 bug） | ~5.7 | ~16.3 | 不推荐 |
+
+结论：**不是 B2 算法本身差，而是 HKH GT 的 fs 设置错误**；按实测有效 fs 后，误差回到 ~3 BPM 量级。
 
 结果文件：
 
@@ -167,6 +179,6 @@ python notebooks/scripts/chFusion_ble_hkh_b2_validation.py
 ## 8. 保留问题
 
 - [ ] BLE 实测 2.4 Hz vs 用户预期 4 Hz：需确认 CS 采集配置或 seq 间隔含义。
-- [ ] HKH 有效 ~20 Hz：是否可通过固件/串口配置减少丢帧。
-- [ ] BPM 误差 ~33%：需诊断是算法问题、对齐边界、还是真人场景特有（体动/多径）。
+- [ ] HKH 有效 ~20 Hz：是否可通过固件/串口配置减少丢帧；GT BPM 必须用有效 fs，不可用 len/duration。
+- [x] ~~BPM 误差 ~6 BPM~~：已确认系 HKH fs 误设为 ~50 Hz 导致 GT 放大；修正后 ~2.9 BPM。
 - [ ] 是否将 RMSE 归一化方式（z-score vs 幅值归一化）写入正式指标定义。
