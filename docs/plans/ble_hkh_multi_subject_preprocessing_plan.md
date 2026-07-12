@@ -4,7 +4,7 @@
 > **目标报告**：`docs/reports/ble_hkh_multi_subject_validation_report.md`  
 > **建议 plan 路径**：`docs/plans/ble_hkh_multi_subject_preprocessing_plan.md`  
 > **日期**：2026-07-12  
-> **验证状态**：待实现
+> **验证状态**：已完成
 
 ---
 
@@ -390,10 +390,24 @@ python notebooks/scripts/chFusion_ble_hkh_paper_baselines.py
 
 | 字段 | 内容 |
 |------|------|
-| **验证状态** | 待实现 |
-| **实际脚本** | — |
-| **报告链接** | — |
-| **一句话结论** | — |
+| **验证状态** | 已完成 |
+| **实际脚本** | `notebooks/scripts/preprocess_ble_hkh_batch.py`；`notebooks/scripts/chFusion_ble_hkh_paper_baselines.py` |
+| **报告链接** | `docs/reports/ble_hkh_multi_subject_validation_report.md` |
+| **一句话结论** | 11/11 预处理成功；Zhuo Z1-no-VMD 跨 12 场景 BPM 最优（0.44 BPM），B2-D RMSE 仍最低（0.950）；Fan η-linear 单场景结论不可推广 |
+
+实际产出路径：
+- 脚本：`notebooks/scripts/preprocess_ble_hkh_batch.py`（新建）；`notebooks/scripts/chFusion_ble_hkh_paper_baselines.py`（改为 12 场景批量）
+- 数值结果：`outputs/reports/ble_hkh_preprocess_batch_summary.json`；`outputs/reports/ble_hkh_paper_baselines_{scenario_id}.json` ×12；`outputs/reports/ble_hkh_paper_baselines_summary.json`
+- 图表：`outputs/figures/ble_hkh_preprocess_*.png` ×11；`outputs/figures/ble_hkh_paper_baselines_*.png`
+- 报告：`docs/reports/ble_hkh_multi_subject_validation_report.md`
+
+结论摘要：
+- Phase 1：11 条新数据全部预处理成功；8/11 条 anchor_diff >100 ms（BLE 稀疏采样，已记录）
+- Phase 2：10 种波形方法 × 12 场景；跨场景 BPM Top3 = Zhuo no-VMD / Yu PCA3 / B2-D；B2-D RMSE 跨场景最低
+
+遗留问题：
+- 3 条场景（A-D、B-C、C-A）Fan/B2 BPM 异常，建议目视诊断
+- Plan Q1 锚点 >100 ms 停止规则与 BLE 稀疏采样冲突，执行侧改用 500 ms 停止 / 100 ms 警告
 
 ---
 

@@ -1,0 +1,17 @@
+{
+  "id": "room_B-sbj_A-07111726",
+  "name": "Bedroom lying flat — Subject A BLE+HKH (07111726)",
+  "modality": "CS",
+  "data_file": "sampleData/processed/room_B-sbj_A-07111726/CS_frames_cropped.jsonl",
+  "hkh_file": "sampleData/processed/room_B-sbj_A-07111726/HKH_frames_cropped.jsonl",
+  "preprocess_meta": "sampleData/processed/room_B-sbj_A-07111726/preprocess_meta.json",
+  "default_channel": 2,
+  "description": "Live human breathing with HKH ground truth. Bedroom lying flat; BPM GT from HKH bandpass waveform.",
+  "segments": {
+    "main": {
+      "start": 0,
+      "end": 192,
+      "type": "breath"
+    }
+  }
+}

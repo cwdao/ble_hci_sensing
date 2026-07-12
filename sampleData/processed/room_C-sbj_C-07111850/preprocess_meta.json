@@ -1,0 +1,57 @@
+{
+  "dataset_name": "room_C-sbj_C-07111850",
+  "source_files": {
+    "cs": "D:\\Work\\atomic\\ble_hci_sensing\\sampleData\\ble-hkh\\CS_frames_all_20260711_185002.jsonl",
+    "hkh": "D:\\Work\\atomic\\ble_hci_sensing\\sampleData\\ble-hkh\\HKH_frames_all_20260711_185017.jsonl"
+  },
+  "output_files": {
+    "cs_cropped": "D:\\Work\\atomic\\ble_hci_sensing\\sampleData\\processed\\room_C-sbj_C-07111850\\CS_frames_cropped.jsonl",
+    "hkh_cropped": "D:\\Work\\atomic\\ble_hci_sensing\\sampleData\\processed\\room_C-sbj_C-07111850\\HKH_frames_cropped.jsonl",
+    "aligned_bundle": "D:\\Work\\atomic\\ble_hci_sensing\\sampleData\\processed\\room_C-sbj_C-07111850\\aligned_bundle.npz"
+  },
+  "crop": {
+    "ble_seq": [
+      401,
+      1125
+    ],
+    "hkh_seq": [
+      4341,
+      13489
+    ],
+    "ble_frames": 435,
+    "hkh_frames": 9149,
+    "duration_s": 180.6262467
+  },
+  "alignment": {
+    "cs_anchor_seq": 401,
+    "hkh_anchor_seq": 4341,
+    "anchor_t_host_utc_ns": 1783767102056499200,
+    "anchor_diff_ms": 203.964
+  },
+  "sampling_rate_hz": {
+    "ble_from_t_dev": 2.3984526112185685,
+    "ble_from_t_host": 2.398193468489144,
+    "ble_used": 2.3984526112185685,
+    "hkh_from_t_host_diff": 19.312930835659877,
+    "hkh_from_len_duration": 50.6515535098034,
+    "hkh_used": 50.6515535098034
+  },
+  "filters": {
+    "ble": {
+      "median_window": 3,
+      "highpass_cutoff": 0.05,
+      "highpass_order": 1,
+      "bandpass_lowcut": 0.1,
+      "bandpass_highcut": 0.35,
+      "bandpass_order": 2
+    },
+    "hkh": {
+      "median_window": 5,
+      "highpass_cutoff": 0.05,
+      "highpass_order": 1,
+      "bandpass_lowcut": 0.1,
+      "bandpass_highcut": 0.35,
+      "bandpass_order": 2
+    }
+  }
+}

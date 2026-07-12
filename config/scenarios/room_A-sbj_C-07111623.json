@@ -1,0 +1,17 @@
+{
+  "id": "room_A-sbj_C-07111623",
+  "name": "Living room sitting — Subject C BLE+HKH (07111623)",
+  "modality": "CS",
+  "data_file": "sampleData/processed/room_A-sbj_C-07111623/CS_frames_cropped.jsonl",
+  "hkh_file": "sampleData/processed/room_A-sbj_C-07111623/HKH_frames_cropped.jsonl",
+  "preprocess_meta": "sampleData/processed/room_A-sbj_C-07111623/preprocess_meta.json",
+  "default_channel": 2,
+  "description": "Live human breathing with HKH ground truth. Living room sitting; BPM GT from HKH bandpass waveform.",
+  "segments": {
+    "main": {
+      "start": 0,
+      "end": 371,
+      "type": "breath"
+    }
+  }
+}

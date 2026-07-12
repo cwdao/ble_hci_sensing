@@ -1,0 +1,17 @@
+{
+  "id": "room_C-sbj_C-07111850",
+  "name": "Bedroom side lying — Subject C BLE+HKH (07111850)",
+  "modality": "CS",
+  "data_file": "sampleData/processed/room_C-sbj_C-07111850/CS_frames_cropped.jsonl",
+  "hkh_file": "sampleData/processed/room_C-sbj_C-07111850/HKH_frames_cropped.jsonl",
+  "preprocess_meta": "sampleData/processed/room_C-sbj_C-07111850/preprocess_meta.json",
+  "default_channel": 2,
+  "description": "Live human breathing with HKH ground truth. Bedroom side lying; BPM GT from HKH bandpass waveform.",
+  "segments": {
+    "main": {
+      "start": 0,
+      "end": 434,
+      "type": "breath"
+    }
+  }
+}
