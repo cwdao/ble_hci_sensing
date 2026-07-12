@@ -25,6 +25,9 @@ outputs/
 *.npy
 docs/assets/
 
+# Raw BLE-HKH data (large JSONL files, not for version control)
+sampleData/ble-hkh/
+
 # Build artifacts (legacy)
 build/
 dist/
