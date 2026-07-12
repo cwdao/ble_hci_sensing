@@ -1,11 +1,15 @@
-"""B3 unified pipeline + ablations vs HKH GT across 12 live-breathing scenarios.
+"""B3 unified pipeline validation vs HKH GT across 12 live-breathing scenarios.
 
-Run:
+Run (default — B3 Simplified + baselines):
     python notebooks/scripts/chFusion_ble_hkh_b3_validation.py
+
+Full ablation (legacy A1–A5 variants):
+    python notebooks/scripts/chFusion_ble_hkh_b3_validation.py --mode full
 """
 
 from __future__ import annotations
 
+import argparse
 import json
 import re
 import sys
@@ -68,9 +72,7 @@ OUTLIER_SCENARIOS = [
 
 OUTLIER_COMPARE_KEYS = [
     "b3_b1_equal",
-    "b3_full",
     "a1_single_best_eta",
-    "a2_waveform_psd_bpm",
     "b2_d_two_level",
 ]
 
@@ -109,6 +111,7 @@ def run_single_scenario(
     metric_params: BreathMetricParams,
     chfusion_config: ChFusionConfig,
     *,
+    mode: str = "simplified",
     verbose: bool = True,
 ) -> dict:
     scenario = load_scenario(scenario_id, project_root=project_root)
@@ -132,23 +135,41 @@ def run_single_scenario(
 
     methods: Dict[str, dict] = {}
 
-    if verbose:
-        print("\n--- B3 variants ---")
-    for label, variant_key, _cfg in B3_VARIANT_SPECS:
+    if mode == "full":
+        if verbose:
+            print("\n--- B3 variants ---")
+        for label, variant_key, _cfg in B3_VARIANT_SPECS:
+            row = validate_b3_variant_against_hkh(
+                multichannel_by_var,
+                "main",
+                hkh_bp,
+                hkh_t,
+                cs_t,
+                variant_key=variant_key,
+                config=chfusion_config,
+                metric_params=metric_params,
+                fs_hkh_override=fs_hkh,
+                verbose=verbose,
+            )
+            if row is not None:
+                methods[variant_key] = row
+    else:
+        if verbose:
+            print("\n--- B3 Simplified ---")
         row = validate_b3_variant_against_hkh(
             multichannel_by_var,
             "main",
             hkh_bp,
             hkh_t,
             cs_t,
-            variant_key=variant_key,
+            variant_key="b3_b1_equal",
             config=chfusion_config,
             metric_params=metric_params,
             fs_hkh_override=fs_hkh,
             verbose=verbose,
         )
         if row is not None:
-            methods[variant_key] = row
+            methods["b3_b1_equal"] = row
 
     if verbose:
         print("\n--- External baselines ---")
@@ -168,6 +189,8 @@ def run_single_scenario(
 
     for _label, baseline_key in EXTERNAL_BASELINE_SPECS:
         if baseline_key == "b1_vote_modal_equal":
+            continue
+        if mode == "simplified" and baseline_key not in {"b2_d_two_level"}:
             continue
         row = validate_paper_method_against_hkh(
             multichannel_by_var,
@@ -280,17 +303,13 @@ def plot_bpm_vs_rmse(summary: dict) -> Path:
 def plot_outlier_timeseries(all_results: Dict[str, dict]) -> Path:
     compare_keys = OUTLIER_COMPARE_KEYS
     labels = {
-        "b3_b1_equal": "B3 B1-equal BPM",
-        "b3_full": "B3 median BPM",
+        "b3_b1_equal": "B3 Simplified BPM",
         "a1_single_best_eta": "A1 best-η",
-        "a2_waveform_psd_bpm": "A2 waveform BPM",
         "b2_d_two_level": "B2-D",
     }
     colors = {
         "b3_b1_equal": "crimson",
-        "b3_full": "hotpink",
         "a1_single_best_eta": "steelblue",
-        "a2_waveform_psd_bpm": "darkorange",
         "b2_d_two_level": "seagreen",
     }
 
@@ -328,6 +347,15 @@ def plot_outlier_timeseries(all_results: Dict[str, dict]) -> Path:
 
 
 if __name__ == "__main__":
+    parser = argparse.ArgumentParser(description="Validate B3 pipeline on HKH 12 scenarios")
+    parser.add_argument(
+        "--mode",
+        choices=("simplified", "full"),
+        default="simplified",
+        help="simplified: B3 Simplified + B1/B2-D baselines; full: legacy ablation A1-A5",
+    )
+    args = parser.parse_args()
+
     filter_params = FilterParams()
     metric_params = BreathMetricParams()
     chfusion_config = ChFusionConfig(
@@ -345,6 +373,7 @@ if __name__ == "__main__":
             filter_params,
             metric_params,
             chfusion_config,
+            mode=args.mode,
             verbose=True,
         )
 
@@ -354,13 +383,20 @@ if __name__ == "__main__":
     }
     summary = compute_b3_cross_domain_summary(cross_input)
 
-    summary_path = REPORTS_DIR / "ble_hkh_b3_validation_summary.json"
+    if args.mode == "full":
+        summary_path = REPORTS_DIR / "ble_hkh_b3_validation_summary.json"
+    else:
+        summary_path = REPORTS_DIR / "ble_hkh_b3_simplified_validation_summary.json"
+
     with summary_path.open("w", encoding="utf-8") as handle:
         json.dump(summary, handle, ensure_ascii=False, indent=2, default=_json_default)
 
     fig_leader = plot_ablation_leaderboard(summary)
     fig_scatter = plot_bpm_vs_rmse(summary)
-    fig_outlier = plot_outlier_timeseries(all_results)
+    if args.mode == "full":
+        fig_outlier = plot_outlier_timeseries(all_results)
+    else:
+        fig_outlier = None
 
     print("\n=== Cross-domain leaderboard (BPM mean abs err) ===")
     print(f"{'Rank':<5} {'Method':<40} {'BPM mean±std':>16} {'RMSE mean':>12}")
@@ -369,11 +405,31 @@ if __name__ == "__main__":
         rmse_txt = f"{row['rmse_mean']:.3f}" if np.isfinite(row.get("rmse_mean", float("nan"))) else "N/A"
         print(
             f"{i:<5} {row['label']:<40} "
-            f"{row['bpm_mean_abs_err']:.2f}±{row['bpm_std_abs_err']:.2f}".rjust(16)
-            + f"  {rmse_txt:>12}"
+            f"{row['bpm_mean_abs_err']:.3f}±{row['bpm_std_abs_err']:.3f} "
+            f"{rmse_txt:>12}"
         )
 
-    print(f"\nSummary JSON: {summary_path}")
-    print(f"Leaderboard:  {fig_leader}")
-    print(f"Scatter:      {fig_scatter}")
-    print(f"Outlier TS:   {fig_outlier}")
+    print(f"\nSaved summary: {summary_path}")
+    print(f"Saved figure: {fig_leader}")
+    print(f"Saved figure: {fig_scatter}")
+    if fig_outlier is not None:
+        print(f"Saved figure: {fig_outlier}")
+
+    if args.mode == "simplified":
+        b3 = summary["methods"].get("b3_b1_equal", {})
+        b1 = summary["methods"].get("b1_vote_modal_equal", {})
+        b2 = summary["methods"].get("b2_d_two_level", {})
+        print("\n=== B3 Simplified vs baselines ===")
+        if b3:
+            print(
+                f"B3 Simplified: BPM {b3['bpm_mean_abs_err']:.3f}±{b3['bpm_std_abs_err']:.3f} "
+                f"RMSE {b3.get('rmse_mean', float('nan')):.3f}"
+            )
+        if b1:
+            print(
+                f"B1 Vote→Equal: BPM {b1['bpm_mean_abs_err']:.3f}±{b1['bpm_std_abs_err']:.3f}"
+            )
+        if b3 and b1:
+            print(f"BPM delta (B3 - B1): {b3['bpm_mean_abs_err'] - b1['bpm_mean_abs_err']:+.6f}")
+        if b2:
+            print(f"B2-D RMSE: {b2.get('rmse_mean', float('nan')):.3f}")

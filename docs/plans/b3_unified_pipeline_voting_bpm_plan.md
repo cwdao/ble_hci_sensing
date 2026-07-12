@@ -445,8 +445,8 @@ python notebooks/scripts/chFusion_ble_hkh_b3_validation.py
 
 | ID | 问题 | 结论 |
 |----|------|------|
-| Q1 | B3 B1-equal 完整 12 场景验证？ | 仅 quick-check；**需跑一遍完整批量脚本确认** |
-| Q2 | 精简版代码是否需重构 `b3_pipeline.py`？ | 当前 B3 B1-equal 复用 B1 (`systematic_fusion`) + B2-D (`coherent_mrc`) 路径；建议后续合并为精简版单文件 |
+| Q1 | B3 B1-equal 完整 12 场景验证？ | ✅ 已完成 — `chFusion_ble_hkh_b3_validation.py --mode simplified` 产出 `ble_hkh_b3_simplified_validation_summary.json` |
+| Q2 | 精简版代码是否需重构 `b3_pipeline.py`？ | ✅ 已完成 — 移除 coherence gate / weighted_median / waveform PSD BPM / 全局 Voting；默认 equal spectral |
 | Q3 | 精简版是否影响论文消融写作？ | 不影响 — 消融数据已存在（§4.4），论文可直接引用 |
 | Q4 | B2-D 中 coherence gate 是否在 CS 金属板场景有不同表现？ | 未测试；12 场景 HKH 上无效果不一定推广到 CS 场景 |
 
@@ -465,9 +465,9 @@ python notebooks/scripts/chFusion_ble_hkh_b3_validation.py
 
 | 优先级 | 任务 | 说明 |
 |--------|------|------|
-| **P0** | 为 B3 B1-equal 跑完整 12 场景批量验证 | 替换 quick-check，产出正式 `ble_hkh_b3_simplified_validation_summary.json` |
-| **P0** | 更新 `b3_pipeline.py` 至精简版 | 移除 coherence gate、weighted_median、waveform PSD BPM 路径；保留 Voting → equal spectral + Hilbert 波形 |
-| **P1** | 更新 `docs/methods/README.md` | 新增 B3 条目；补充 HKH 12 场景排行榜 |
+| **P0** | 为 B3 B1-equal 跑完整 12 场景批量验证 | ✅ 已完成 — `ble_hkh_b3_simplified_validation_summary.json` |
+| **P0** | 更新 `b3_pipeline.py` 至精简版 | ✅ 已完成 |
+| **P1** | 更新 `docs/methods/README.md` | ✅ 已完成 — B3 Simplified 条目 + HKH 排行榜 + CS [待确认] 标注 |
 | **P1** | 更新 `docs/CS呼吸算法验证整体进度.md` | 补充 B3 + HKH 多场景验证章节和方法演进路线图 |
 | **P2** | 新 plan: `b1_b2_hybrid_gating` | 窗级门控：|B2 BPM − B1 BPM| > 阈值 → 取 B1（HKH 报告 §4.9） |
 | **P2** | 异常场景目视诊断 | A-D、B-C、C-A 三条问题场景的 HKH 佩戴质量可视化检查 |

@@ -6,7 +6,7 @@ Implements ``docs/plans/b3_unified_pipeline_voting_bpm_plan.md``.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any, Dict, List, Literal, Optional, Sequence, Tuple
+from typing import Any, Dict, List, Optional, Sequence, Tuple
 
 import numpy as np
 
@@ -19,11 +19,9 @@ from ble_analysis.ble_hkh_validation import (
 )
 from ble_analysis.chfusion import (
     ChFusionConfig,
-    _bpm_from_fused_spectrum,
     _energy_ratio,
     _next_pow2,
     _parabolic_peak_freq,
-    _weighted_median,
 )
 from ble_analysis.coherent_mrc import (
     coherent_mrc_fuse_modals,
@@ -47,9 +45,6 @@ from ble_analysis.voting_fusion import (
 from ble_analysis.waveform_metrics import window_rmse_against_reference
 from ble_analysis.wifi_mrc import _collect_modal_window_matrix
 
-ModalConsensus = Literal["weighted_median", "max_confidence"]
-ModalBpmFusion = Literal["weighted_median", "equal_spectral"]
-
 MODAL_SHORT: Dict[str, str] = {
     "remote_amplitudes": "remote",
     "local_amplitudes": "local",
@@ -59,39 +54,26 @@ MODAL_SHORT: Dict[str, str] = {
 
 @dataclass(frozen=True)
 class B3VariantConfig:
-    """Single B3 ablation / full-pipeline configuration."""
+    """B3 Simplified pipeline configuration with optional ablation toggles."""
 
     use_voting: bool = True
     use_eta_rho_weights: bool = True
     use_multi_modal: bool = True
     use_two_level_hilbert: bool = True
-    vote_bpm: bool = True
-    global_voting: bool = False
-    min_coherence: float = 0.2
-    modal_consensus: ModalConsensus = "weighted_median"
-    modal_bpm_fusion: ModalBpmFusion = "equal_spectral"
 
+
+B3_SIMPLIFIED_CONFIG = B3VariantConfig()
 
 B3_VARIANT_SPECS: Tuple[Tuple[str, str, B3VariantConfig], ...] = (
     (
-        "B3-Full (B1 equal modal BPM)",
+        "B3 Simplified",
         "b3_b1_equal",
-        B3VariantConfig(modal_bpm_fusion="equal_spectral"),
-    ),
-    (
-        "B3-Full (weighted-median BPM)",
-        "b3_full",
-        B3VariantConfig(modal_bpm_fusion="weighted_median"),
+        B3_SIMPLIFIED_CONFIG,
     ),
     (
         "A1 Single best-η",
         "a1_single_best_eta",
         B3VariantConfig(use_voting=False),
-    ),
-    (
-        "A2 Waveform PSD BPM",
-        "a2_waveform_psd_bpm",
-        B3VariantConfig(vote_bpm=False),
     ),
     (
         "A3 Remote only",
@@ -108,16 +90,6 @@ B3_VARIANT_SPECS: Tuple[Tuple[str, str, B3VariantConfig], ...] = (
         "a5_equal_voting",
         B3VariantConfig(use_eta_rho_weights=False),
     ),
-    (
-        "A6 No coherence gate",
-        "a6_no_coherence",
-        B3VariantConfig(min_coherence=0.0),
-    ),
-    (
-        "A7 Cross-modal global voting",
-        "a7_global_voting",
-        B3VariantConfig(global_voting=True),
-    ),
 )
 
 EXTERNAL_BASELINE_SPECS: Tuple[Tuple[str, str], ...] = (
@@ -128,6 +100,7 @@ EXTERNAL_BASELINE_SPECS: Tuple[Tuple[str, str], ...] = (
 
 __all__ = [
     "B3VariantConfig",
+    "B3_SIMPLIFIED_CONFIG",
     "B3_VARIANT_SPECS",
     "EXTERNAL_BASELINE_SPECS",
     "MODAL_SHORT",
@@ -259,56 +232,6 @@ def _single_best_eta_bpm(
     return float(bpm_per_tone[idx]), conf
 
 
-def _modal_voting_consensus(
-    modal_results: Dict[str, dict],
-    *,
-    method: ModalConsensus = "weighted_median",
-) -> float:
-    bpms: List[float] = []
-    confs: List[float] = []
-    for short, res in modal_results.items():
-        bpm = res.get("voted_bpm", float("nan"))
-        conf = res.get("confidence", 0.0)
-        if np.isfinite(bpm) and bpm > 0:
-            bpms.append(float(bpm))
-            confs.append(max(float(conf), 1e-6))
-
-    if not bpms:
-        return float("nan")
-    if method == "max_confidence":
-        return float(bpms[int(np.argmax(confs))])
-    return _weighted_median(np.asarray(bpms), np.asarray(confs))
-
-
-def _global_voting_bpm(
-    modal_results: Dict[str, dict],
-    *,
-    cfg: ChFusionConfig,
-    vcfg: VotingConfig,
-    strategy: str,
-) -> float:
-    all_bpms: List[float] = []
-    all_weights: List[float] = []
-    for res in modal_results.values():
-        bpms = np.asarray(res.get("bpm_per_tone", []), dtype=float)
-        weights = np.asarray(res.get("weights", []), dtype=float)
-        if strategy == "simple":
-            w = np.ones_like(bpms)
-        else:
-            w = weights
-        mask = np.isfinite(bpms) & np.isfinite(w) & (w > 0)
-        all_bpms.extend(bpms[mask].tolist())
-        all_weights.extend(w[mask].tolist())
-    if not all_bpms:
-        return float("nan")
-    voted, _, _ = vote_bpm_weighted_histogram(
-        np.asarray(all_bpms),
-        np.asarray(all_weights),
-        vcfg,
-    )
-    return float(voted)
-
-
 def estimate_b3_window(
     multichannel_by_var: Dict[str, Dict[str, Optional[dict]]],
     seg_name: str,
@@ -398,7 +321,7 @@ def estimate_b3_window(
                 phase_method="hilbert",
                 weight_mode="coherence_gated",
                 fs=fs,
-                min_coherence=variant.min_coherence,
+                min_coherence=0.0,
             )
             modal_waveforms[short] = y_modal
             modal_etas[short] = _energy_ratio(y_modal, fs, cfg)
@@ -444,22 +367,19 @@ def estimate_b3_window(
             "diagnostics": {},
         }
 
-    if variant.global_voting:
-        bpm_vote = _global_voting_bpm(
-            modal_results, cfg=cfg, vcfg=vcfg, strategy=strategy
-        )
-    elif variant.modal_bpm_fusion == "equal_spectral":
-        spectra_for_modal: Dict[str, np.ndarray] = {}
-        scores_for_modal: Dict[str, float] = {}
-        for short, res in modal_results.items():
-            ws = res.get("weighted_spectrum")
-            if ws is None:
-                continue
-            ws_arr = np.asarray(ws, dtype=float)
-            if ws_arr.size != len(band_freqs):
-                continue
-            spectra_for_modal[short] = ws_arr
-            scores_for_modal[short] = float(res.get("confidence", 0.0))
+    spectra_for_modal: Dict[str, np.ndarray] = {}
+    scores_for_modal: Dict[str, float] = {}
+    for short, res in modal_results.items():
+        ws = res.get("weighted_spectrum")
+        if ws is None:
+            continue
+        ws_arr = np.asarray(ws, dtype=float)
+        if ws_arr.size != len(band_freqs):
+            continue
+        spectra_for_modal[short] = ws_arr
+        scores_for_modal[short] = float(res.get("confidence", 0.0))
+
+    if variant.use_two_level_hilbert:
         if spectra_for_modal:
             bpm_vote, _sel = modal_fusion_from_spectra(
                 spectra_for_modal,
@@ -470,10 +390,6 @@ def estimate_b3_window(
             )
         else:
             bpm_vote = float("nan")
-    elif variant.use_two_level_hilbert:
-        bpm_vote = _modal_voting_consensus(
-            modal_results, method=variant.modal_consensus
-        )
     else:
         bpm_vote, _sel = modal_fusion_from_spectra(
             modal_spectra,
@@ -500,7 +416,7 @@ def estimate_b3_window(
         bpm_out = estimate_bpm_from_waveform_multi(y_final, fs, cfg=cfg)
         bpm_wf = float(bpm_out.get("bpm_psd", float("nan")))
 
-    primary_bpm = float(bpm_vote) if variant.vote_bpm else bpm_wf
+    primary_bpm = float(bpm_vote)
 
     return {
         "bpm": primary_bpm,
