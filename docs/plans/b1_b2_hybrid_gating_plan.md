@@ -3,7 +3,7 @@
 > **来源**：[`ble_hkh_multi_subject_validation_report.md`](../reports/ble_hkh_multi_subject_validation_report.md) §4.9  
 > **目标报告**：`docs/reports/b1_b2_hybrid_gating_report.md`（模板：`docs/templates/algorithm_validation_report.md`）  
 > **日期**：2026-07-12  
-> **验证状态**：待实现
+> **验证状态**：已完成
 
 ---
 
@@ -320,10 +320,29 @@ python notebooks/scripts/chFusion_b1_b2_hybrid_gating.py
 
 | 字段 | 内容 |
 |------|------|
-| **验证状态** | 待实现 |
-| **实际脚本** | — |
-| **报告链接** | — |
-| **一句话结论** | — |
+| **验证状态** | 已完成 |
+| **实际脚本** | `notebooks/scripts/chFusion_b1_b2_hybrid_gating.py` |
+| **核心模块** | `src/ble_analysis/hybrid_gating.py` |
+| **报告链接** | `docs/reports/b1_b2_hybrid_gating_report.md` |
+| **一句话结论** | 所有 G-Hybrid 变体 BPM ≥ B1（0.405）；门控无增益，B3 Simplified 确认最优 |
+
+**实际产出路径：**
+- 脚本：`notebooks/scripts/chFusion_b1_b2_hybrid_gating.py`
+- 模块：`src/ble_analysis/hybrid_gating.py`
+- 数值结果：`outputs/reports/ble_hkh_hybrid_gating_{scenario_id}.json` ×12；`outputs/reports/ble_hkh_hybrid_gating_summary.json`
+- 图表：`outputs/figures/ble_hkh_hybrid_gating_threshold_scan.png`；`ble_hkh_hybrid_gating_trigger_timeseries.png`；`ble_hkh_hybrid_gating_error_distribution.png`；`ble_hkh_hybrid_gating_d2_trigger_rate.png`
+- 报告：`docs/reports/b1_b2_hybrid_gating_report.md`
+
+**结论摘要：**
+- 最优 G-H1（T=0.5）BPM = 0.416 > B1 = 0.405；G-H2 最优 T=0.5 BPM = 0.408，仍劣于 B1。
+- D1：共识窗 B2 误差高于 B1（b2_advantage = −0.013），H1 不成立。
+- D2：outlier 触发率（24.6% @ T=0.5）高于 normal（2.4%），机制部分有效但不足以改善跨域 BPM。
+- Plan §5.2「失败路径」成立：B3 Simplified 确认为 BPM 最优。
+
+**遗留问题：**
+- Q2（共识窗 B2 是否更优）：实验推翻，B2 在共识窗也更差。
+- Q1（最优 T 跨 Room 一致性）：最优 T=0.5 全局一致，但所有 T 均劣于 B1。
+- G-Hybrid 标记为已废弃；待 Review Mode 更新 `docs/methods/README.md`。
 
 ### 保留问题
 
