@@ -415,6 +415,45 @@ B1（Vote→Equal, BPM-only）和 B2-D（Hilbert-MRC, waveform）共享同一滤
 
 ---
 
+## 改进方案9：B1+B2 窗级混合门控（b1_b2_hybrid_gating）
+
+**Plan**：[`docs/plans/b1_b2_hybrid_gating_plan.md`](plans/b1_b2_hybrid_gating_plan.md)  
+**Report**：[`docs/reports/b1_b2_hybrid_gating_report.md`](reports/b1_b2_hybrid_gating_report.md)  
+**脚本**：`notebooks/scripts/chFusion_b1_b2_hybrid_gating.py`  
+**模块**：`src/ble_analysis/hybrid_gating.py`  
+**状态**：✅ 已完成 — **负结果，G-Hybrid 全线劣于 B1，已正式废弃**
+
+### 核心思路
+
+B1（BPM 0.41）和 B2-D（BPM 0.68）在 12 场景 HKH 上呈互补模式：正常场景两者同量级，outlier 场景 B2-D 崩溃（A-D: 2.31, C-A: 1.40）而 B1 仍稳。利用窗级 BPM 分歧度 Δ(w)=|bpm_b1(w)−bpm_b2(w)| 识别 B2 不可靠窗口：Δ > T → 回退 B1；否则 → 取 B2。
+
+### 主结果（12 场景 HKH）
+
+| 方法 | BPM mean | vs B1 (0.405) |
+|------|---------:|--------------:|
+| **B1 Vote→Equal / B3 Simplified** | **0.405** | — |
+| G-H2 T=0.5（最优门控） | 0.408 | **+0.003**（劣于 B1） |
+| G-H1 T=0.5（最优 G-H1） | 0.416 | **+0.011**（劣于 B1） |
+| B2-D / G-H4 | 0.682 | — |
+
+### 诊断发现
+
+- **D1（共识窗分析）**：共识窗（Δ≤0.5）上 B2 误差 **高于** B1（b2_advantage = −0.013）——B2 即使在"双方一致"的窗口也不优于 B1
+- **D2（触发率）**：outlier 场景触发率 ~25%（T=0.5）vs normal ~2.4%，Δ 信号能部分识别 B2 不稳定窗口，但捕获率偏低
+- **根因**：门控的假设「共识窗 B2 优于 B1」不成立，B2 在正常窗口也存在系统性偏差
+
+### 结论
+
+**G-Hybrid 窗级 BPM 门控已正式废弃**——全部变体×全部阈值均劣于 B1（0.405）。B3 Simplified（始终 B1 BPM + B2 波形）确认为 BPM 最优方案。门控路线在此数据上缺乏理论基础。
+
+### 关键教训
+
+- BPM 分歧度（Δ）能**识别** outlier 场景（触发率差异显著），但共识窗上 B2 **不优于** B1，因此门控无增益——这是对原假设 H1 的正面证伪
+- 间接信号质量代理（η、ρ 等）与 BPM 准确性脱钩的问题，在直接用 BPM 分歧度做门控信号的方案中复现——Δ 高 ≠ B1 更优，只是两者不一致
+- 为后续 Per-Window 级方法选择研究提供了明确的上界参考：简单阈值门控的上限 ≈ 0.408（G-H2 T=0.5），提升空间极小
+
+---
+
 ## 阶段性进展汇报
 
 - **阶段性进展汇报**（Phase 0–4）：[`docs/achievements/method_evolution_progress_report.md`](achievements/method_evolution_progress_report.md)
@@ -447,4 +486,8 @@ B2 Coherent-MRC (9.43%)      ← b2_coherent_mrc: B2-D 两级 Hilbert，未超�
 HKH 12-Scene Validation       ← ble_hkh_multi_subject: B1 系列 BPM 全局最优 (0.37–0.41)
     ↓
 B3 Unified Pipeline            ← b3_unified_pipeline: B1 BPM + B2 波形统一管线，精简版定稿 (BPM 0.405 + RMSE 0.950)
+    ↓
+B1+B2 Hybrid Gating            ← b1_b2_hybrid_gating: 窗级 Δ(BPM) 门控，全线劣于 B1，已废弃 (最优 0.408 > 0.405)
+    ↓
+B3 Simplified CS 验证 [待执行]  ← b3_cs_metal_plate_validation: CS 金属板三场景 B3 Simplified 验证
 ```
