@@ -38,7 +38,36 @@
 
 ---
 
-## 2. 方法排行榜（跨域 mean 升序）
+### 1.2 统一管线推荐：B3 Simplified（B1 BPM + B2 波形）
+
+| 字段 | 内容 |
+|------|------|
+| **代号** | B3 Simplified（`b3_b1_equal`） |
+| **描述性全称** | 统一管线：逐模态 η·ρ Voting → 三模态等权谱融合 BPM + 两级 Hilbert-MRC 波形 |
+| **HKH 12 场景 BPM** | **0.405**（≡ B1 Vote→Equal） |
+| **HKH 12 场景 RMSE** | **0.950**（≡ B2-D） |
+| **物理自洽性** | ✅ 自洽 — BPM 路径 = B1（已验证物理自洽）；波形路径 = B2-D 精简版 |
+| **信道融合** | η·ρ Voting（同 B1） |
+| **模态融合（BPM）** | 三模态等权谱融合 1:1:1（同 B1） |
+| **模态融合（波形）** | 两级 Hilbert 相位对齐（同 B2-D，去 coherence gate） |
+| **实现** | `src/ble_analysis/b3_pipeline.py` + 复用 `systematic_fusion.py`（BPM）+ `coherent_mrc.py`（波形） |
+| **Plan** | [`docs/plans/b3_unified_pipeline_voting_bpm_plan.md`](../plans/b3_unified_pipeline_voting_bpm_plan.md) |
+| **Report** | [`docs/reports/b3_unified_pipeline_voting_bpm_report.md`](../reports/b3_unified_pipeline_voting_bpm_report.md) |
+| **状态** | ✅ **推荐部署（BPM + 波形统一管线）** |
+
+**为何推荐 B3 而非分别部署 B1 + B2-D**：
+
+- B3 在单次滤波后同时产出 B1 的 BPM 和 B2-D 的波形，无需两套独立管线
+- Voting 前端共享——per-tone η, ρ, spectra 在 BPM 和波形路径间复用，增量计算 < 5%
+- 消融实验确认精简版去掉 coherence gate、weighted_median 等无效步骤后，BPM 和 RMSE 均不退化
+
+**已知限制**：
+- CS 金属板场景（091339/095806/102621）尚未用 B3 Simplified 验证（当前仅 HKH 12 场景）
+- B3 Simplified 的 BPM 在 CS 场景上是否 ≡ B1（8.45%）[待确认]
+
+---
+
+## 2. 方法排行榜（CS 金属板三场景，跨域 mean % 升序）
 
 | 排名 | 代号 | 描述性名称 | 跨域 mean | 091339 | 095806 | 102621 | 物理自洽 | 状态 |
 |------|------|-----------|-----------|--------|--------|--------|----------|------|
@@ -65,6 +94,28 @@
 > ✅ remote/local 物理对等，不得硬编码偏好；三种变量对称对待；决策由 per-window 信号质量动态驱动。  
 > ⚠️ 部分违反（如仅使用单一模态，但不硬编码哪一 modal 更优）。  
 > ❌ 硬编码特定模态/信道偏好，或将特定场景下的经验有效性强加为通用规则。
+
+---
+
+## 2-bis. HKH 12 场景真人排行榜（BPM 绝对误差 breaths/min 升序）
+
+> **场景**：3 Room × 4 Subject = 12 条真人数据（HKH 呼吸带 ground truth）。  
+> **指标**：BPM 绝对误差 mean ± std（breaths/min），非 CS 场景的 %。  
+> **来源**：[`ble_hkh_multi_subject_validation_report.md`](../reports/ble_hkh_multi_subject_validation_report.md) §4.7 + [`b3_unified_pipeline_voting_bpm_report.md`](../reports/b3_unified_pipeline_voting_bpm_report.md) §4.1
+
+| 排名 | 代号 | 描述性名称 | BPM err (mean±std) | RMSE | 波形 | 状态 |
+|------|------|-----------|-------------------:|------|:----:|------|
+| **1** | **B1 Uniform Remote** | 72 tone 等权谱平均（Remote 幅值）→ 寻峰 | **0.37±0.12** | — | ❌ | BPM 推荐 |
+| 2 | B3 Vote→Top2 | 逐模态 Voting → Top2 等权谱融合 | 0.38±0.12 | — | ❌ | BPM 推荐 |
+| **3** | **B1 Vote→Equal** | **逐模态 Voting → 三模态等权谱融合** | **0.41±0.14** | — | ❌ | BPM 推荐 |
+| **4** | **B3 Simplified** | **统一管线：Voting → 等权谱融合 BPM + Hilbert 波形** | **0.41±0.14** | **0.950** | ✅ | **推荐（BPM+波形）** |
+| 5 | Zhuo Z1-no-VMD | PCA(72)→PCA(3)→峰值检测 | 0.44±0.12 | 1.070 | ✅ | 外部 baseline |
+| 6 | B3-Full (weighted_median) | Voting → weighted_median 共识 + Hilbert 波形 | 0.46±0.37 | 0.950 | ✅ | 被 B3 Simplified 取代 |
+| 7 | B2-D Two-level | 两级 Hilbert-MRC（含 coherence gate） | 0.68±0.57 | 0.950 | ✅ | 挂起（波形保留） |
+| 8 | Fan η-linear | η-MRC → Best modal | 1.39±1.68 | 1.025 | ✅ | 外部 baseline |
+
+> **BPM 部署建议**：B1 Uniform Remote（0.37）或 B1 Vote→Equal（0.41）为纯 BPM 最优。  
+> **BPM + 波形部署建议**：**B3 Simplified**（0.41 + 0.950）为唯一同时输出最优 BPM 和最优波形的统一管线。
 
 ---
 
@@ -343,6 +394,7 @@ Zhuo et al. 2023 WiFi CSI 的 PCA(72)→PCA(3)→VMD→峰值检测路线迁移�
 | `wifi_mrc.py` | Fan-η/MRC-PCA 外部 baseline；含 legacy BPM-avg equal 与 waveform/PCA(3→1) 修正变体 |
 | `pca_vmd.py` | Zhuo2023 PCA(72)→PCA(3)→VMD/峰值检测 外部 baseline |
 | `coherent_mrc.py` | B2-A0/A1/B/Bγ/C/D/D-eq（时域相干 MRC + 两层级联波形融合） |
+| `b3_pipeline.py` | B3 Simplified（统一管线：Voting BPM + Hilbert 波形） |
 | `pca_svd.py` | PCA/SVD 降维系列 |
 | `segments.py` | 滑窗、分段、滤波参数 |
 | `metrics.py` | 评估指标（`_overall_rel_error`, `_seg_bpm_stats`） |
@@ -353,6 +405,9 @@ Zhuo et al. 2023 WiFi CSI 的 PCA(72)→PCA(3)→VMD→峰值检测路线迁移�
 
 | 日期 | 变更 | 原因 |
 |------|------|------|
+| 2026-07-12 | **新增 §1.2 B3 Simplified**（统一管线：B1 BPM + B2 波形），标记为推荐部署；新增 §2-bis HKH 12 场景真人排行榜 | Review B3 + HKH 报告：消融确认精简版 B3 B1-equal 精确复现 B1 BPM（0.405）和 B2-D RMSE（0.950） |
+| 2026-07-12 | B2-D 补充 HKH 12 场景结论（RMSE 0.950 最优，outlier 场景 BPM 崩溃警告） | `ble_hkh_multi_subject_validation` 执行 |
+| 2026-07-12 | B1 补充 HKH 12 场景结论（BPM 0.41，优于 Z1 0.44 和 B2-D 0.68） | `ble_hkh_multi_subject_validation` B1 补充实验 |
 | 2026-06-26 | 新增 §4.10 Zhuo2023 PCA-VMD（Z1 11.31%），VMD 无增益，已结案 | `zhuo2023_pca_vmd_baseline_plan` 执行 |
 | 2026-06-26 | §4.9 追加 Fan-η-equal-wf / Fan-Hilbert-equal / MRC-PCA-η-equal-pca；legacy equal 标注 BPM avg | `wifi_mrc_equal_fix_plan` 执行：波形融合跨域劣于 legacy BPM 平均 |
 | 2026-06-23 | 补充 B2 消融数据（A0-D 11.09%, A1-D 11.15%）到 §4.8；更新 header 日期 | 补充消融确认：第二级 Hilbert 对齐增益依赖第一级连续相位，符号校正+二级对齐无法复现 B2-D |

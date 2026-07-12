@@ -342,6 +342,79 @@ G4-B1-v2（三候选最近对共识门控）跨域 **8.05%** 为当前全局最�
 
 ---
 
+## HKH 多人多场景验证（ble_hkh_multi_subject）
+
+**Plan**：[`docs/plans/ble_hkh_multi_subject_preprocessing_plan.md`](plans/ble_hkh_multi_subject_preprocessing_plan.md)  
+**Report**：[`docs/reports/ble_hkh_multi_subject_validation_report.md`](reports/ble_hkh_multi_subject_validation_report.md)  
+**脚本**：`notebooks/scripts/preprocess_ble_hkh_batch.py`、`notebooks/scripts/chFusion_ble_hkh_paper_baselines.py`、`notebooks/scripts/chFusion_ble_hkh_b1_validation.py`  
+**状态**：✅ 已完成
+
+### 核心思路
+
+将 BLE CS + HKH 呼吸带验证从 1 人 1 场景扩展至 **3 Room × 4 Subject = 12 条**真人数据，在 10 种有波形输出的论文/B2 方法上评估 BPM 误差与 RMSE。
+
+> **注意**：HKH 使用 BPM **绝对误差**（breaths/min），CS 金属板使用 BPM **相对误差 %**。两者不可直接比较。
+
+### BPM 排行榜（12 场景 mean，含 B1 补充）
+
+| Rank | 方法 | BPM err (mean±std) | 波形 |
+|------|------|-------------------:|:----:|
+| **1** | **B1 Uniform Remote** | **0.37±0.12** | ❌ |
+| 2 | B3 Vote→Top2 modal | 0.38±0.12 | ❌ |
+| **3** | **B1 Vote→Equal modal** | **0.41±0.14** | ❌ |
+| 4 | Zhuo Z1-no-VMD | 0.44±0.12 | ✅ |
+| 5 | B2-D Two-level Hilbert-MRC | 0.68±0.57 | ✅ |
+| 6 | Fan η-linear | 1.39±1.68 | ✅ |
+
+### 关键发现
+
+- **B1 系列 BPM 在 12 场景真人 HKH 上全局最优**（0.37–0.41），优于所有有波形输出的论文方法（Z1 0.44, B2-D 0.68）
+- **B2-D RMSE 仍最低**（0.950），但 BPM 在 outlier 场景崩溃（A-D: 2.31, C-A: 1.40）——RMSE 优 ≠ BPM 优
+- **Fan η-linear 单场景最优（0.37）不可推广**：跨场景 1.39（第 6/6），3 条 outlier 场景拖累
+- **VMD 仍无增益**：Z1-VMD 0.71–0.74 vs Z1-no-VMD 0.44
+- **异常场景**：A-D、B-C、C-A 三条场景可能存在采集/佩戴质量问题
+
+---
+
+## 改进方案8：B3 统一管线（b3_unified_pipeline_voting_bpm）
+
+**Plan**：[`docs/plans/b3_unified_pipeline_voting_bpm_plan.md`](plans/b3_unified_pipeline_voting_bpm_plan.md)  
+**Report**：[`docs/reports/b3_unified_pipeline_voting_bpm_report.md`](reports/b3_unified_pipeline_voting_bpm_report.md)  
+**脚本**：`notebooks/scripts/chFusion_ble_hkh_b3_validation.py`  
+**模块**：`src/ble_analysis/b3_pipeline.py`  
+**状态**：✅ 已完成 — **精简版方案已由 Review 定稿**
+
+### 核心思路
+
+B1（Vote→Equal, BPM-only）和 B2-D（Hilbert-MRC, waveform）共享同一滤波/Voting 前端，统一为单条管线：**BPM = B1 等权谱融合寻峰，波形 = B2-D 两级 Hilbert 对齐（去 coherence gate）**。
+
+### B3-Full 消融结果（12 场景 HKH）
+
+| 方法 | BPM mean±std | RMSE mean | 波形 |
+|------|-------------:|----------:|:----:|
+| **B3 B1-equal（精简版，推荐）** | **0.41±0.14** | **0.950** | ✅ |
+| B1 Vote→Equal | 0.41±0.14 | N/A | ❌ |
+| B3-Full (weighted_median) | 0.46±0.37 | 0.950 | ✅ |
+| B2-D Two-level | 0.68±0.84 | 0.950 | ✅ |
+| A1 单信道 best-η | 0.96±1.28 | 0.950 | ✅ |
+
+### 消融核心发现
+
+| 步骤 | 消融 | ΔBPM | 判定 |
+|------|------|-----:|------|
+| 直方图 Voting | A1: Voting→单信道 | **0.50** | ✅ 保留 |
+| Voting BPM | A2: Voting BPM→波形 PSD | **0.22** | ✅ 保留 |
+| Equal spectral vs weighted_median | B3 B1-equal vs Full | **0.055** | ✅ 替换 |
+| η·ρ 权重 | A5: η·ρ→等权 | 0.02 | ✅ 保留（零成本） |
+| ~~Coherence gate~~ | A6 | 0.00 | ❌ 移除 |
+| ~~全局 Voting~~ | A7 | 0.00 | ❌ 移除 |
+
+### 结论
+
+**B3 Simplified**（Voting → 三模态等权谱融合 BPM + 两级 Hilbert 波形）精确复现 B1 BPM（0.405）和 B2-D RMSE（0.950），是当前唯一同时输出最优 BPM 和最优波形的统一管线。
+
+---
+
 ## 阶段性进展汇报
 
 - **阶段性进展汇报**（Phase 0–4）：[`docs/achievements/method_evolution_progress_report.md`](achievements/method_evolution_progress_report.md)
@@ -370,4 +443,8 @@ G4-B1-v2 (8.05%)            ← b1_gating_diagnosis: 三候选最近对共识 ++
 SA 自适应门控 (10.66%)       ← signal_adaptive_gating: SA-v2 未超越 B1
     ↓
 B2 Coherent-MRC (9.43%)      ← b2_coherent_mrc: B2-D 两级 Hilbert，未超越 B1
+    ↓
+HKH 12-Scene Validation       ← ble_hkh_multi_subject: B1 系列 BPM 全局最优 (0.37–0.41)
+    ↓
+B3 Unified Pipeline            ← b3_unified_pipeline: B1 BPM + B2 波形统一管线，精简版定稿 (BPM 0.405 + RMSE 0.950)
 ```
