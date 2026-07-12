@@ -4,7 +4,7 @@
 > **目标报告**：`docs/reports/b3_unified_pipeline_voting_bpm_report.md`（模板：`docs/templates/algorithm_validation_report.md`）  
 > **建议 plan 路径**：`docs/plans/b3_unified_pipeline_voting_bpm_plan.md`  
 > **日期**：2026-07-12  
-> **验证状态**：待实现
+> **验证状态**：已完成
 
 ---
 
@@ -405,20 +405,27 @@ python notebooks/scripts/chFusion_ble_hkh_b3_validation.py
 
 | 字段 | 内容 |
 |------|------|
-| **验证状态** | 待实现 |
-| **实际脚本** | — |
-| **报告链接** | — |
-| **一句话结论** | — |
+| **验证状态** | 已完成 |
+| **实际脚本** | `notebooks/scripts/chFusion_ble_hkh_b3_validation.py` |
+| **核心模块** | `src/ble_analysis/b3_pipeline.py` |
+| **报告链接** | `docs/reports/b3_unified_pipeline_voting_bpm_report.md` |
+| **数值结果** | `outputs/reports/ble_hkh_b3_validation_summary.json`；`outputs/reports/ble_hkh_b3_validation_{scenario_id}.json` ×12 |
+| **图表** | `outputs/figures/ble_hkh_b3_ablation_leaderboard.png`；`ble_hkh_b3_bpm_vs_rmse.png`；`ble_hkh_b3_outlier_timeseries.png` |
+| **一句话结论** | B3 Voting BPM 修复 B2-D outlier 崩溃（A-D/C-A）且 RMSE 持平（0.950），但跨域 BPM 0.46 未优于 B1（0.41） |
 
-### 保留问题
+### 执行结论摘要
 
-| ID | 问题 | 备注 |
+- **最低成功标准**：部分满足 — RMSE ≤ B2-D ✅；BPM ≤ B1 ❌（0.46 > 0.41）
+- **核心机制**：Voting BPM vs 波形 PSD（A2≡B2-D）在 outlier 场景 Δ>1 BPM — **成立**
+- **消融**：Voting（A1）、Voting BPM（A2）有意义；η·ρ 权重（A5）、coherence gate（A6）、全局 Voting（A7）无显著跨域效果
+
+### 保留问题（执行后更新）
+
+| ID | 问题 | 结论 |
 |----|------|------|
-| Q1 | Voting 的三模态共识策略（weighted_median vs max_confidence）哪个更优？ | 实验确定 |
-| Q2 | `_energy_ratio()` 内部 FFT 结果是否值得复用（vs 独立计算 per-tone 谱）？ | 工程权衡，见 §6.3(1) |
-| Q3 | A4（等权谱融合）无波形 → 无法算 RMSE，如何公平对比？ | 只在 BPM 维度对比 |
-| Q4 | 3 条问题场景（A-D, B-C, C-A）是否会因 B3 Voting BPM 而改善？ | 本 plan 核心假设之一 |
-| Q5 | 若某消融步骤判定为「无显著效果」，是否需要从 B3 最终方案中移除？ | 论文策略，待 Review 决策 |
+| Q1 | weighted_median vs max_confidence | 未单独对比；默认 weighted_median 已用 |
+| Q4 | 三问题场景改善？ | A-D/C-A 改善；B-C 无显著差异 |
+| Q5 | 无效果步骤是否移除？ | 建议移除候选：A5/A6/A7 对应步骤 |
 
 ---
 
