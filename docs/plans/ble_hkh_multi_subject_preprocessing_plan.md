@@ -408,6 +408,7 @@ python notebooks/scripts/chFusion_ble_hkh_paper_baselines.py
 遗留问题：
 - 3 条场景（A-D、B-C、C-A）Fan/B2 BPM 异常，建议目视诊断
 - Plan Q1 锚点 >100 ms 停止规则与 BLE 稀疏采样冲突，执行侧改用 500 ms 停止 / 100 ms 警告
+- **补充（2026-07-12）**：B1 系列 12 场景 BPM 验证（`chFusion_ble_hkh_b1_validation.py`）— B1 Uniform 0.37 BPM 最优，B2-D RMSE 0.950 仍最低；详见报告 §4.7–§4.9
 
 ---
 
