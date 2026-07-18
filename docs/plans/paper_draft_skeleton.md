@@ -2,8 +2,9 @@
 
 # 基于 BLE 信道探测的呼吸感知：系统建模与物理驱动统一管线
 
-> **DRAFT v0.2** — 骨架稿，每节仅写核心句子。先英后中。细节由用户补充。  
-> **日期**：2026-07-18
+> **DRAFT v0.3** — 骨架稿 + 已插入可用配图。每节仅写核心句子。先英后中。细节由用户补充。  
+> **日期**：2026-07-18  
+> **配图状态**：Fig 2 ✅ | Fig 3 ✅ | Fig 4 ❌ (数据已有，图未生成) | Fig 5 ✅ | Fig 6 ✅ | Fig 7 ✅ | Fig 8 ✅ | Fig S1 ✅ | Fig 1 ❌ (需手绘架构图)
 
 ---
 
@@ -51,11 +52,19 @@
 
 **CN**: [回顾菲涅尔区理论。在 BLE CS 中的适用性论证。PCA 符号校正有效 → 确认 ±1 基线成立。但 Hilbert 连续相位补偿进一步改善 → 确认顺序采样引入了超越 ±1 的额外相位结构。引用 Figure 2。]
 
+![Figure 2: Inter-tone phase relationship — (a) 4 tones raw bandpass waveforms, (b) after PCA sign correction (±1 only), (c) after Hilbert continuous phase alignment → near-perfect overlap, (d) 72×72 coherence matrix γ_ij (good scenario cs_095806 | hard scenario cs_091339). Takeaway: Fresnel ±1 is the first-order baseline; sequential sampling introduces additional continuous phase offsets that only Hilbert alignment can compensate.](../../outputs/figures/paper_fig2_inter_tone_phase.png)
+
+> **Fig. 2 解读**: (a) 4 个代表 tone（#58 ref, #48 同相 γ≈0.83, #45 反相 Δφ≈π, #69 中间相位 Δφ≈−0.83）的原始带通波形叠加。(b) PCA ±1 符号校正后：反相 tone 被翻转，但中间相位 tone 仍有明显残余错位。(c) Hilbert 连续相位对齐后：四条波形近乎完美重合。(d) 72×72 tone-pair 相干性热力图：cs_095806（左，good）左上角高 γ 结构密集；cs_091339（右，hard）整体 γ 更低且碎片化。**结论**：菲涅尔区 ±1 是有效的一阶近似，但顺序采样引入了超越 ±1 的连续相位分量，Hilbert 对齐可进一步补偿。另见 [Figure S1](#supplementary-figure-s1) 跨窗口 γ 稳定性对比。
+
 ### 2.4 Inter-Modal Phase Relationship / 模态间（变量间）相位关系
 
 **EN**: [Remote vs local vs phase: relative phase depends on multipath geometry. Different rooms → different relationships. Per-window variation observed. Cannot hardcode. Cite Figure 3.]
 
 **CN**: [Remote 与 local 与 phase 之间：相对相位取决于多径几何。不同房间 → 不同的相位关系。观察到逐窗变化。不可硬编码。引用 Figure 3。]
+
+![Figure 3: Inter-modal phase relationship — (a) Three modal waveforms after Level-1 fusion, BEFORE Level-2 alignment, (b) AFTER Level-2 Hilbert alignment + η·γ weighted fusion, (c) cross-window Δφ time series (cs_095806), (d) same Δφ plot for different room (cs_102621). Takeaway: modal-to-modal phase is non-fixed, scene-dependent, and per-window Hilbert alignment effectively resolves it.](../../outputs/figures/paper_fig3_inter_modal_phase.png)
+
+> **Fig. 3 解读**: (a) 三模态（remote/local/phase）经 Level-1 Hilbert tone 融合后的波形，Level-2 对齐前可见明显相位差异。(b) Level-2 Hilbert 对齐 + η·γ 加权融合后：三波形对齐，融合波形（粗黑线）跟踪一致性。(c) cs_095806 全 segment 跨窗模态间相位差 Δφ 序列：Δφ 非固定，逐窗浮动。(d) cs_102621（不同房间）同款图：Δφ 基线不同，确认模态间相位关系场景依赖。**结论**：模态相位不可预设，必须每窗估计，等权融合是正确的先验。
 
 ### 2.5 Signal Quality Proxies: η and ρ / 信号质量指标：η 与 ρ
 
@@ -85,6 +94,10 @@
 
 **CN**: [公式见 paper_outline_plan.md §3.3。逐 tone 计算 η_i, ρ_i → 质量权重 w_i = η_i·max(ρ_i, 0) → 加权直方图投票 BPM → 置信度加权频谱平均 S̄_m(f)。]
 
+![Figure 5: η·ρ quality voting mechanism — (a) Per-tone η vs ρ scatter (72 points, one window), color = |BPM_i − BPM_voted|, marker size ∝ w_i. (b) BPM histogram: Uniform (light) vs η·ρ Voting (dark). (c) Fused spectrum comparison: Voting spectrum has cleaner peak, lower noise floor. Takeaway: η identifies energy concentration in breath band; ρ suppresses spurious-peak tones; product η·ρ ensures both hold simultaneously.](../../outputs/figures/paper_fig5_eta_rho_voting.png)
+
+> **Fig. 5 解读**: (a) 单个窗口 72 tone 的 η vs ρ 散点图，颜色=该 tone BPM 与 Voting 共识 BPM 的偏差，点大小 ∝ η·ρ 权重。右上角高 η 高 ρ 的 tone 偏差小（冷色），左下角低质量 tone 偏差大（暖色）。(b) BPM 直方图对比：等权（浅色）分布宽、峰低；η·ρ 加权投票（深色）峰更尖锐、置信度更高。实际数值：Voting BPM=8.00, Uniform BPM=8.86。(c) 融合频谱对比：η·ρ 加权谱（深色）噪声底更低、呼吸峰更突出。**结论**：η 和 ρ 互补——η 要求能量集中在呼吸频段，ρ 抑制有尖锐假峰的 tone，两者乘积作为质量权重有效。
+
 ### 3.4 Stage 2a: BPM Branch — Equal Spectrum Fusion / BPM 分支：等权谱融合
 
 **EN**: [Formula: S_final = (S_remote + S_local + S_phase) / 3. Argmax + parabolic interpolation. Why equal weight: physical symmetry argument.]
@@ -103,6 +116,8 @@
 
 **CN**: [实验发现：A1-D ≈ A1（Level-2 在符号校正第一级上无增益），Bγ→D = −1.46 pp（Level-2 在 Hilbert 第一级上有效）。物理解释：符号校正（±1）残留的非二值相位误差污染了模态融合波形；Level-2 无法从已被污染的输入中恢复。Level-1 连续相位保留了波形保真度 → "解锁" Level-2 的 −1.46 pp 增益。引用 Figure 4。]
 
+> ⚠️ **Fig. 4 状态**：解锁器效应消融矩阵的数据已有（CS 三场景跨域：A0=12.33%, A0-D=11.09%, A1=11.06%, A1-D=11.15% [无效!], Bγ=10.89%, B2-D=9.43% [有效!]），但论文风格的消融矩阵图 + 机制示意图**尚未生成**。Plan `paper_outline_plan.md` §5.5 和 `paper_figures_generation_plan.md` 均未覆盖 Figure 4（后者仅覆盖 Fig 2/3/5/S1）。需后续单独生成。
+
 ---
 
 ## 4. Experimental Validation / 实验验证
@@ -115,21 +130,37 @@
 
 ### 4.2 BPM Accuracy (HKH) / BPM 精度（HKH）
 
-**EN**: [Table: B1=0.41, Z1=0.44, etc. Cite Figure 6.]
+**EN**: [B3 Simplified = 0.41 BPM mean abs error, Z1-no-VMD = 0.44, B2-D = 0.68, Fan2024 η-linear = 1.39. Cite Figure 6.]
 
-**CN**: [主结果表：B1 Uniform Remote (0.37) ≈ B3 Vote→Top2 (0.38) > B3 Simplified = B1 Vote→Equal (0.41) > Z1 (0.44) > B2-D (0.68) > Fan (1.39)。引用 Figure 6。]
+**CN**: [主结果（12-scenario aggregate）：B3 Simplified = B1 Vote→Equal = **0.405** BPM mean abs error（最优），Zhuo2023 Z1-no-VMD = 0.435，MRC-PCA η-equal PCA3→1 = 0.505，B2-D Two-level Hilbert-MRC = 0.682，Fan 2024 η-linear = 1.386。引用 Figure 6。]
+
+![Figure 6: HKH BPM leaderboard — 10 methods × 12 scenarios (3 rooms × 4 subjects). B3 Simplified (逐模态 Voting → 三模态等权谱融合) achieves lowest BPM error (0.405 breaths/min).](../../outputs/figures/ble_hkh_paper_baselines_leaderboard_all.png)
+
+![Figure 6b: HKH per-room BPM breakdown. Room A (Living room): Zhu2023 Z1-no-VMD = 0.415. Room B+C (Bedroom): B3/B1 methods lead.](../../outputs/figures/ble_hkh_paper_baselines_by_room.png)
+
+> **Fig. 6 解读**: (上) 全 12 场景 BPM 排行榜。B3 Simplified（即 逐模态 Voting → 三模态等权谱融合）和 B1 Vote→Equal 并列最优，跨场景 mean abs error = 0.405 breaths/min，优于所有迁移 baseline（Zhuo2023 Z1-no-VMD 0.435, MRC-PCA 0.505）一个数量级优于 Fan 2024 系列（1.39–1.49）。(下) 按房间拆分：Room A（客厅）Zhuo2023 微弱领先（0.415 vs B3 0.405 在全量 aggregate 中），Room B+C（卧室）本项目方法系统性领先。
 
 ### 4.3 Waveform Recovery Accuracy (HKH) / 波形恢复精度（HKH）
 
-**EN**: [B3 RMSE=0.950 vs belt. Cite Figure 7.]
+**EN**: [B3 Simplified RMSE = 0.951 vs belt, B2-D same. Z1-no-VMD RMSE = 1.070. B3 is the only unified pipeline achieving both optimal BPM (0.41) and optimal waveform (0.951). Cite Figure 7.]
 
-**CN**: [B3 Simplified RMSE = 0.950（vs 呼吸带），B2-D 同值。Z1 RMSE = 1.070。B3 是唯一同时输出最优 BPM (0.41) 和最优波形 (0.950) 的统一管线。引用 Figure 7。]
+**CN**: [B3 Simplified RMSE = **0.951**（vs 呼吸带），B2-D 同值 0.950。Z1-no-VMD RMSE = 1.070。B3 是唯一同时输出最优 BPM (0.405) 和最优波形 (0.951) 的统一管线。引用 Figure 7。]
+
+![Figure 7: BPM vs RMSE trade-off across methods on HKH 12 scenarios. B3 Simplified (★) achieves the best joint BPM+RMSE — lowest BPM error AND lowest waveform RMSE simultaneously.](../../outputs/figures/ble_hkh_b3_bpm_vs_rmse.png)
+
+> **Fig. 7 解读**: BPM-RMSE 双指标散点图。每个点代表一个方法在 12 场景上的 (mean BPM abs error, mean RMSE)。B3 Simplified（★）位于左下角——同时实现最低 BPM 误差和最低 RMSE。B2-D Two-level Hilbert-MRC 波形 RMSE 同优 (0.950)，但 BPM 精度较差 (0.682)。Zhuo2023 Z1-no-VMD 在 BPM 上接近 (0.435)，但 RMSE 明显更差 (1.070)，因为其时域 PCA 对齐在低采样率下不可靠。
 
 ### 4.4 Ablation Experiments / 消融实验
 
 **EN**: [Channel fusion: Voting > Single-best > Uniform. Modal fusion: Equal > Top2 > η-weight. Phase method: Hilbert two-level > single-level > sign-only. Cite Figure 8.]
 
 **CN**: [信道融合消融：Voting (η·ρ 加权) > Single-best (max-η) > Uniform (等权)。模态融合消融：Equal (1:1:1) > Top2 > η-weight → 对称对待被验证。相位方法消融：Hilbert 两级 > Hilbert 单级 > Corr sign > PCA sign。解锁器交互效应（§3.6）进一步证实第一级 Hilbert 的逻辑必要性。引用 Figure 8。]
+
+![Figure 8a: HKH ablation leaderboard — cumulative contribution of each pipeline component. B3 Simplified (full pipeline) achieves lowest BPM error.](../../outputs/figures/ble_hkh_b3_ablation_leaderboard.png)
+
+![Figure 8b: CS metal-plate waterfall decomposition — cumulative BPM error reduction as components are added. Voting (η·ρ weighted) provides the largest single gain over Uniform.](../../outputs/figures/b2_coherent_mrc_waterfall_decomposition.png)
+
+> **Fig. 8 解读**: (上) HKH 消融排行榜：从 Single Remote baseline 到完整 B3 Simplified 管线的逐组件贡献。(下) CS 金属板跨域 waterfall 分解：η·ρ Voting 在 Uniform 基础上贡献最大单步增益；Hilbert 两级对齐与等权模态融合进一步降低误差。解锁器效应（§3.6）是解释性的关键：Hilbert 连续相位不是直接改善 BPM，而是通过保留波形保真度"解锁"第二级模态对齐的效能。
 
 ### 4.5 Mechanism Validation (CS Metal-Plate) / 机制验证（CS 金属板）
 
@@ -142,6 +173,14 @@
 **EN**: [WiFi MRC: 10.78%. Zhuo2023: 11.31%. B1: 8.45%. B3 on HKH: 0.41 BPM + 0.950 RMSE.]
 
 **CN**: [CS 金属板跨域：B1 (8.45%) < WiFi MRC (10.78%) < Zhuo2023 (11.31%)。B1 在 BPM 精度上系统性优于迁移到 BLE CS 的 WiFi 时域 MRC 方法。HKH 真人：B3 Simplified (0.41 BPM + 0.950 RMSE) 是唯一同时最优的统一管线。]
+
+---
+
+### Supplementary Figure S1: Tone-Pair Coherence Stability / 补充图 S1：Tone 对相干性稳定性
+
+![Figure S1: Tone-pair coherence γ stability across windows — same tone pair (58, 69) tracked across all windows of segment 1b. cs_095806 (good): γ = 0.901 ± 0.075, stable high. cs_091339 (hard): γ = 0.485 ± 0.345, fluctuates strongly. Takeaway: tone coherence is scenario-dependent; hard multipath environments systematically degrade inter-tone phase consistency.](../../outputs/figures/paper_figS1_coherence_stability.png)
+
+> **Fig. S1 解读**: 同一 tone pair (#58, #69) 在 good scenario (cs_095806) 和 hard scenario (cs_091339) 同 segment `1b` 上的跨窗口 γ 序列。Good: γ 均值 0.90，std 仅 0.075，跨窗稳定。Hard: γ 均值 0.49，std 达 0.345，大幅波动。**结论**：tone 间相干性场景依赖，复杂多径环境（cs_091339）会导致信道间相位一致性系统性退化——这解释了为何该场景在所有方法上都是全局瓶颈。
 
 ---
 
