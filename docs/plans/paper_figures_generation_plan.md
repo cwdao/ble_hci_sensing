@@ -3,7 +3,7 @@
 > **目标**：从 CS 金属板已滤波数据中提取单窗/跨窗诊断数据，绘制论文 Figure 2/3/5/S1  
 > **模式**：Research Mode → 交付 Cursor Composer 执行  
 > **日期**：2026-07-18  
-> **状态**：待执行
+> **状态**：已完成
 
 ---
 
@@ -269,10 +269,10 @@ Two tone pairs tracked across all windows of one segment:
 | 类型 | 路径 |
 |------|------|
 | 实验脚本 | `notebooks/scripts/chFusion_paper_figures_mechanism.py` |
-| Figure 2 | `outputs/figures/paper_fig2_inter_tone_phase.png` |
-| Figure 3 | `outputs/figures/paper_fig3_inter_modal_phase.png` |
-| Figure 5 | `outputs/figures/paper_fig5_eta_rho_voting.png` |
-| Figure S1 | `outputs/figures/paper_figS1_coherence_stability.png` |
+| Figure 2 | `outputs/figures/paper_fig2_inter_tone_phase.png` (+ `.pdf`) |
+| Figure 3 | `outputs/figures/paper_fig3_inter_modal_phase.png` (+ `.pdf`) |
+| Figure 5 | `outputs/figures/paper_fig5_eta_rho_voting.png` (+ `.pdf`) |
+| Figure S1 | `outputs/figures/paper_figS1_coherence_stability.png` (+ `.pdf`) |
 | 诊断数据 | `outputs/reports/paper_figures_diagnostics.npy`（包含所有中间数据） |
 
 **诊断数据应包含**（保存为 dict）：
@@ -408,3 +408,31 @@ plt.rcParams.update({
 - `outputs/figures/paper_fig5_eta_rho_voting.png`
 - `outputs/figures/paper_figS1_coherence_stability.png`
 - `outputs/reports/paper_figures_diagnostics.npy`
+
+---
+
+## 验证状态
+
+状态：已完成
+
+实际产出路径：
+- 脚本：`notebooks/scripts/chFusion_paper_figures_mechanism.py`
+- 数值结果：`outputs/reports/paper_figures_diagnostics.npy`（另有 `outputs/figures/paper_fig{2,3,5}_diagnostics.npy`）
+- 图表：
+  - `outputs/figures/paper_fig2_inter_tone_phase.png` / `.pdf`
+  - `outputs/figures/paper_fig3_inter_modal_phase.png` / `.pdf`
+  - `outputs/figures/paper_fig5_eta_rho_voting.png` / `.pdf`
+  - `outputs/figures/paper_figS1_coherence_stability.png` / `.pdf`
+- 报告：`docs/reports/paper_figures_generation_report.md`
+
+结论摘要：
+- 三场景滤波缓存全命中；代表窗为 `cs_095806/1b/win16`，tones `[58,48,45,69]`（含同相/反相/中间相位）。
+- Fig 2：±1 sign 部分对齐，Hilbert 近重合；good/hard γ 热力图对比成立。
+- Fig 3：Level-2 对齐前后对比清晰；跨窗 Δφ 非固定；`cs_102621` 基线不同。
+- Fig 5：Voting BPM=8.00 vs Uniform=8.86；Voting 谱峰更尖。
+- Fig S1：tone pair (58,69) 在 good γ=0.901±0.075，hard γ=0.485±0.345（同 segment `1b`）。
+
+遗留问题：
+- 代表窗/tone 为自动启发式，定稿可手选固定列表。
+- Fig 2 hard 热力图边缘暗带需确认是否部分 tone 无效。
+- 论文最终美术风格未统一（本轮保证数值关系正确）。
