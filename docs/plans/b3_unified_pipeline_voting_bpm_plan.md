@@ -66,12 +66,14 @@ B2-D 在 `_collect_modal_window_matrix()` 中已经计算了 Voting 所需的全
 
 ## 3. 算法步骤
 
-### 3.1 完整流程图（精简版，消融实验后定稿）
+### 3.1 完整流程图（精简版，消融实验后定稿 — 2026-07-21 校订）
 
 > **消融依据**：A5（η·ρ 权重 ΔBPM=0.02）、A6（coherence gate ΔBPM=0.00, ΔRMSE=+0.001）、A7（全局 Voting ΔBPM=0.00）在 12 场景跨域无显著效果，已从管线移除。B3 B1-equal 变体验证 equal spectral fusion 替代 weighted_median 共识可精确复现 B1 BPM（0.405 vs 0.405，max |Δ|=0.000），已替换。
+>
+> **2026-07-21 校订说明**：原流程图将 BPM 路径和波形路径画为"共享同一前端"（Shared Frontend），η/ρ/spectra 统一产出后分流。代码实际实现中，两条路径**各自独立取数据**——BPM 路径通过 `_collect_channel_window_data()` 取谱域数据，波形路径通过 `_collect_modal_window_matrix()` 取时域数据，η 和 ρ 被各算一次（工程取舍，见 §6.3 注）。**但从物理/算法层面看，两条路径的 η 和 ρ 输入相同（同一窗的 highpass/bandpass 切片）、公式相同（`_energy_ratio` / `_peak_prominence`），数值完全一致——因此 channel weights 在概念上是共享的。** 此外，per-tone BPM 估计和直方图投票的标量产出（voted_bpm、confidence）仅存入 diagnostics，**不参与最终 BPM 决策**——最终 BPM 由三模态 weighted_spectrum 等权融合寻峰得到。以下流程图按实际数据流重绘。
 
 ```text
-Raw BLE CS Frames (72 tone × 3 variables)
+Raw BLE CS Frames (72 tone × 3 variables: remote_amplitudes / local_amplitudes / phases)
   │
   └─► Filter Chain (per tone, per variable):
         median(w=3) → highpass(0.05 Hz, order=1) → bandpass(0.1–0.35 Hz, order=2)
@@ -82,46 +84,81 @@ Raw BLE CS Frames (72 tone × 3 variables)
   Sliding Window: 20 s / 1 s step
   [模块: segments.py → _sliding_window_indices()]
       │
-      ▼
-  ╔══════════════════════════════════════════════════════════╗
-  ║  Shared Frontend（per modal: remote / local / phase）    ║
-  ║  [模块: wifi_mrc.py → _collect_modal_window_matrix()]    ║
-  ║                                                        ║
-  ║    X [72, T_win] ← bandpass 时域切片                    ║
-  ║    η[72]  ← _energy_ratio(highpass)                     ║
-  ║    ρ[72]  ← _peak_prominence(bandpass)                  ║
-  ║    quality[72] = η × max(ρ, 0)                          ║
-  ║    spectra[72, nfft] ← per-tone FFT 功率谱              ║
-  ╚══════════════════════════════════════════════════════════╝
+      ├─── BPM 路径（per modal: remote / local / phase, 各独立执行）───
       │
-      ├─► BPM 路径（= B1 Vote→Equal）:
-      │     Per-modal η·ρ 加权直方图 Voting
-      │       weights[72] = η × max(ρ, 0) / Σ(η × max(ρ,0))
-      │       weighted_spectrum = Σ(weights[i] × spectra[i])
-      │       [参考: voting_fusion.py + systematic_fusion.py]
-      │     → per-modal weighted_spectrum (remote / local / phase)
-      │     → 三模态等权谱融合（1:1:1）
-      │     → argmax 寻峰 → ★ 最终 BPM ★
+      │    [模块: b3_pipeline.py → _compute_per_tone_spectra()
+      │            → systematic_fusion.py → _collect_channel_window_data()]
       │
-      └─► 波形路径（= B2-D 精简版，去 coherence gate）:
-            Level 1: coherent_mrc_fuse_tones() per modal
-              [模块: coherent_mrc.py]
-              - Hilbert 解析信号 (72 tone)
-              - 以最高 quality tone 为参考
-              - 相位对齐（无 coherence gating）
-              - quality 加权融合 → per-modal waveform
-              → wave_r, wave_l, wave_p
-            │
-            Level 2: coherent_mrc_fuse_modals()
-              [模块: coherent_mrc.py]
-              - 以最高 η modal 为参考
-              - Hilbert 模态间相位对齐
-              - η 加权融合
-              → 最终呼吸波形 y_final → ★ RMSE ★
+      │    Per tone (i = 1..72):
+      │      bandpass[i]  ──► FFT + Hanning ──► spectrum[i]       (n_band_bins 维向量)
+      │      bandpass[i]  ──► argmax + parabolic ──► bpm_per_tone[i]  [诊断用]
+      │      highpass[i]  ──► _energy_ratio()   ──► η[i]
+      │      bandpass[i]  ──► _peak_prominence() ──► ρ[i]
+      │    │
+      │    weights[i] = η[i] × max(ρ[i], 0) / Σ_j (η[j] × max(ρ[j], 0))
+      │    │
+      │    ├── weighted_spectrum = Σ_i weights[i] × spectrum[i]     ★ 参与 Modal 融合
+      │    │
+      │    └── [诊断用，不影响最终 BPM]:
+      │          voted_bpm = vote_bpm_weighted_histogram(bpm_per_tone, weights)
+      │          confidence = winning_mass / total_weight
+      │          （存入 diagnostics，供调试/消融分析）
+      │
+      │    产出 per modal: weighted_spectrum (remote / local / phase)
+      │
+      │    ┌──────────────────────────────────────────────────────────┐
+      │    │  三模态等权谱融合  [模块: systematic_fusion.py           │
+      │    │                    → modal_fusion_from_spectra("equal")] │
+      │    │                                                          │
+      │    │  S_final = (weighted_spectrum_remote                      │
+      │    │           + weighted_spectrum_local                       │
+      │    │           + weighted_spectrum_phase) / 3                  │
+      │    │                                                          │
+      │    │  → argmax + parabolic 插值                                │
+      │    │  → ★ 最终 BPM ★  (= B1 Vote→Equal, 已证 0.405)          │
+      │    │                                                          │
+      │    │  （confidence 不参与等权融合——equal 模式下各 modal      │
+      │    │   权重恒为 1.0，scores 参数传入但忽略）                  │
+      │    └──────────────────────────────────────────────────────────┘
+      │
+      └─── 波形路径（per modal: remote / local / phase, 各独立执行）───
+      │
+      │    [模块: b3_pipeline.py → wifi_mrc.py
+      │            → _collect_modal_window_matrix()]
+      │
+      │    输入数据（纯时域，不使用频谱）:
+      │      bandpass[i]  ──► X[i, :]   [72, T_win]（逐行标准化）
+      │      highpass[i]  ──► η_mrc[i]  [72]      （独立重算，非复用 BPM 路径的 η）
+      │      bandpass[i]  ──► ρ_mrc[i]  [72]      （独立重算，非复用 BPM 路径的 ρ）
+      │    │
+      │    Level 1: coherent_mrc_fuse_tones()  [模块: coherent_mrc.py]
+      │      quality[i] = η_mrc[i] × max(ρ_mrc[i], 0)
+      │      参考 tone = argmax(quality)
+      │      Hilbert 解析信号 (72 tone) → 与参考 tone 互相关相位对齐
+      │      coherence[i] = |cross| / sqrt(|z_i|² × |z_ref|²)    (soft weight)
+      │      weight[i] = quality[i] × coherence[i]                (coherence_gated)
+      │      min_coherence = 0.0（不做硬阈值筛除）
+      │      z_fused = Σ weight[i] × z_i × exp(-j·φ_i)
+      │      y_modal = real(z_fused) → 归一化
+      │      → y_remote, y_local, y_phase
+      │    │
+      │    modal_η = _energy_ratio(y_modal)  [对每条 y_modal 重算 η，用于 L2 权重]
+      │    │
+      │    Level 2: coherent_mrc_fuse_modals()  [模块: coherent_mrc.py]
+      │      参考 modal = argmax(modal_η)
+      │      Hilbert 模态间相位对齐
+      │      weight[k] = modal_η[k] × coherence[k]    (eta_coherence)
+      │      z_fused = Σ weight[k] × hilbert(y_k) × exp(-j·φ_k)
+      │      y_final = real(z_fused) → 归一化
+      │      → ★ 最终呼吸波形 ★  (= B2-D 精简版, RMSE=0.950)
+      │    │
+      │    └── [诊断用]: bpm_wf = estimate_bpm_from_waveform_multi(y_final)
+      │         波形 PSD 寻峰结果，仅对照用，不参与主 BPM 输出
 
-  输出 (每窗):
-    - BPM:   Voting → 三模态等权谱融合寻峰（= B1，已验证 BPM=0.405）
-    - 波形:  两级 Hilbert-MRC 融合输出（= B2-D，RMSE=0.950）
+  每窗最终输出:
+    ├─ primary_bpm  = 三模态等权谱融合寻峰结果（Voting BPM）
+    ├─ waveform     = 两级 Hilbert-MRC 融合波形
+    └─ diagnostics  = {voted_bpm, confidence, bpm_wf, modal_results, ...}
 ```
 
 ### 3.2 与 B1 / B2-D 的关键差异
@@ -134,19 +171,29 @@ Raw BLE CS Frames (72 tone × 3 variables)
 | 波形输出 | ❌ | ✅ 最终融合波形 | ✅ 最终融合波形 |
 | 增量计算 | — | — | 仅 Voting（< B2-D 的 5%） |
 
-### 3.3 各步骤的物理/算法理由
+### 3.3 各步骤的数据流与角色
 
-| # | 步骤 | 为什么需要这一步 | 消融验证 | 保留？ |
-|---|------|----------------|---------|--------|
-| 1 | Per-tone η·ρ 权重 | η 度量呼吸频段能量占比，ρ 度量谱峰锐度 | A5（ΔBPM=0.02, 几乎零成本） | ✅ |
-| 2 | 直方图 Voting | 72 tone 独立估计 BPM → 多数投票天然压制 outlier | **A1（ΔBPM=0.50，outlier Δ>1）** | ✅ |
-| 3 | Voting BPM（而非波形 PSD BPM） | 频域投票对参考 tone 质量不敏感，避免级联崩溃 | **A2（ΔBPM=0.22，outlier Δ>1）** | ✅ |
-| 4 | 三模态分别 Voting | remote/local/phase 走不同物理路径，保留模态多样性 | A3（ΔBPM=0.00，但物理自洽性要求对称对待） | ✅ |
-| 5 | Equal spectral fusion（vs weighted_median） | 等权谱融合保留完整谱信息，argmax 更鲁棒；weighted_median 在两个高 confidence 模态给出相近错误 BPM 时无纠正机制 | **B3 B1-equal vs Full（BPM 0.405 vs 0.46）** | ✅ |
-| 6 | 两级 Hilbert 相位对齐 | 先 tone 级后 modal 级相干叠加，避免直接混合 216 维 | A4（BPM Δ=+0.06，但 RMSE 仅 Hilbert 路径可产出） | ✅ |
-| 7 | ~~Coherence gate~~ | — | A6（ΔBPM=0.00, ΔRMSE=+0.001） | ❌ 移除 |
-| 8 | ~~跨模态全局 Voting~~ | — | A7（ΔBPM=0.00, ΔRMSE=0.000） | ❌ 移除 |
-| 9 | ~~波形 PSD BPM 路径~~ | — | A2（Voting BPM 严格更优） | ❌ 移除 |
+> **2026-07-21 校订**：增加"数据角色"列，区分"参与最终 BPM 决策" vs "仅用于诊断/消融分析"。per-tone BPM 估计和直方图投票的标量产出虽在 B3-Full 时代曾作为 weighted_median 共识的输入，但 B3 Simplified 改用 equal spectral fusion 后，这些量不再参与最终 BPM 决策。
+
+| # | 步骤 | 输入数据 | 产出 | 数据角色 | 保留？ |
+|---|------|---------|------|---------|--------|
+| 1 | Per-tone 功率谱 | bandpass 时域切片 → FFT + Hanning | `spectra[72, F]` | **参与 BPM 融合**（η·ρ 加权平均） | ✅ |
+| 2 | Per-tone η | highpass 时域切片 → `_energy_ratio()` | `η[72]` | **参与 BPM 融合**（作为权重分量） | ✅ |
+| 3 | Per-tone ρ | bandpass 时域切片 → `_peak_prominence()` | `ρ[72]` | **参与 BPM 融合**（作为权重分量） | ✅ |
+| 4 | η·ρ 加权谱平均 | `spectra` + `weights = η×max(ρ,0)` | `weighted_spectrum` per modal | **参与 BPM 融合**（三模态等权融合的输入） | ✅ |
+| 5 | 三模态等权谱融合 | 3 条 `weighted_spectrum` → `modal_fusion_from_spectra("equal")` | `BPM` | **最终 BPM 输出** | ✅ |
+| 6 | Per-tone BPM 估计 | `spectra[i]` → argmax + parabolic | `bpm_per_tone[72]` | **诊断用**（零成本——谱已算好，仅做 argmax） | ✅ 保留（零成本） |
+| 7 | 直方图 Voting | `bpm_per_tone` + `weights` → `vote_bpm_weighted_histogram()` | `voted_bpm` per modal | **诊断用**（B3-Full 时代用于 weighted_median 共识） | ✅ 保留（零成本 + 诊断价值） |
+| 8 | Confidence | `winning_mass / total_weight` | `confidence` per modal | **诊断用**（equal 模式下 `modal_fusion_from_spectra` 传入但忽略） | ✅ 保留（零成本 + 调试价值） |
+| 9 | 两级 Hilbert 相位对齐 | bandpass 时域切片 `X[72, T_win]` + `η_mrc[72]` + `ρ_mrc[72]` | `y_final` 波形 | **波形输出**（BPM 路径不使用） | ✅ |
+| 10 | ~~Coherence gate（硬阈值筛除）~~ | — | — | — | ❌ 移除 |
+| 11 | ~~跨模态全局 Voting~~ | — | — | — | ❌ 移除 |
+| 12 | ~~Weighted median 模态共识~~ | — | — | — | ❌ 替换为 equal spectral |
+| 13 | ~~波形 PSD BPM 作为主输出~~ | — | — | — | ❌ 降级为 diagnostics（`bpm_wf`） |
+
+> **关键澄清**：标量 Voting BPM（`voted_bpm`）和 confidence 曾是 B3-Full 中 weighted_median 共识的核心输入。B3 Simplified 改为 equal spectral fusion 后，这两个量不再参与最终 BPM——但它们仍被计算和保存（成本为零或接近零），供消融分析（如 A1/A2 对比）和调试使用。
+>
+> **η/ρ 双重计算说明**：BPM 路径在 `_collect_channel_window_data()` 中计算 η 和 ρ（用于构造 voting 权重和 weighted_spectrum），波形路径在 `_collect_modal_window_matrix()` 中独立重算 η 和 ρ（用于 Hilbert MRC 的 quality 权重和参考 tone 选择）。两次计算输入相同（同一窗的高通/带通切片），输出数值一致。这是有意为之的工程取舍——避免修改 `coherent_mrc.py` 和 `systematic_fusion.py` 的核心接口，代价是 ~2% 的额外计算（Plan §6.3 已记录）。
 
 ---
 

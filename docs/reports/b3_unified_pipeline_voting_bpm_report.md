@@ -24,15 +24,19 @@
 
 ## 2. 方法摘要
 
+> **2026-07-21 校订**：以下描述反映 B3 Simplified（最终推荐方案）。B3-Full 的 weighted_median 共识已被 equal spectral fusion 替代（见 §7.1）。
+
 | 项目 | 内容 |
 |------|------|
 | 观测量 | `remote_amplitudes`、`local_amplitudes`、`phases`（不用 total amplitudes） |
-| 信道融合 | η·ρ 加权直方图 Voting（继承 B1） |
-| 模态融合（波形） | 两级 Hilbert-MRC + η·coherence 加权（继承 B2-D） |
-| BPM 主输出 | 三模态分别 Voting → confidence-weighted median 共识 |
+| **BPM 路径** | Per-modal η·ρ 加权谱平均 → 三模态等权谱融合 (1:1:1) → argmax 寻峰 |
+| **波形路径** | 两级 Hilbert-MRC（tone 级 + modal 级 Hilbert 相位对齐，去 coherence gate） |
+| BPM 主输出 | 三模态 weighted_spectrum 等权融合寻峰（= B1 Vote→Equal，非 weighted_median） |
 | 滑窗与寻峰 | 20 s / 1 s；呼吸频段 0.1–0.35 Hz；HKH GT 同口径 Welch 寻峰 |
+| 诊断输出（不参与 BPM） | per-tone BPM 估计、直方图 Voting 标量结果、confidence、波形 PSD BPM |
 
 实现采用 **wrapper 策略**（`b3_pipeline.py`），未修改 `coherent_mrc.py` / `wifi_mrc.py` / `systematic_fusion.py`。
+- **η/ρ 双重计算**：BPM 路径和波形路径各自独立计算 η 和 ρ（~2% 额外开销，有意为之的工程取舍，见 plan §6.3）。
 
 ---
 
