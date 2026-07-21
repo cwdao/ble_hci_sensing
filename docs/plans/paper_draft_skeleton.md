@@ -30,37 +30,172 @@
 
 **CN—贡献**: (C1) 首次全面建模 BLE CS 用于呼吸感知的理论机制，识别并实验验证了三个物理约束。(C2) [名称待定] 统一管线，应对全部三个约束。(C3) 在可控场景和真实场景上的双重验证。
 
+## 2.Background and Related work
+
+
+
 ---
 
-## 2. Background and System Model / 背景与系统模型
+## 3. BLE CS Primer / BLE CS 基础
 
-### 2.1 BLE CS Physical Primer / BLE CS 物理基础
+### 3.1 BLE CS Physical Primer / BLE CS 物理基础
 
-**EN**: [Brief description of CS exchange, PCT multiplication, LO drift cancellation. Why remote_amplitudes, local_amplitudes, and phases are the three usable observables. Why total amplitude is not used.]
+> **EN**: [Brief description of CS exchange, PCT multiplication, LO drift cancellation. Why remote_amplitudes, local_amplitudes, and phases are the three usable observables. Why total amplitude is not used.]
+>
+> **CN**: [简述 CS 交换过程、PCT 乘法、LO 漂移抵消。为什么 remote_amplitudes、local_amplitudes、phases 是三个可用观测量。为什么 total amplitude 不可用（双方噪声乘积，无独立物理意义）。]
 
-**CN**: [简述 CS 交换过程、PCT 乘法、LO 漂移抵消。为什么 remote_amplitudes、local_amplitudes、phases 是三个可用观测量。为什么 total amplitude 不可用（双方噪声乘积，无独立物理意义）。]
+BLE 6.0 推出了信道探测功能，其中最重要的更新就是引入了基于相位的测距（phase-based ranging, PBR）。CS -PBR （以下简称CS）要求两个设备必须首先连接，确定发起者、接收者的角色，随后在BLE的频段上以1MHz 的带宽为步进依次执行每个信道的测量。在预留一部分信道后，可用信道数为72个。
 
-### 2.2 Effective Sampling Rate and Its Consequences / 有效采样率及其影响
+在每个信道测量中，双方各自向对方发送一个 CS tone，并由接收方测量该 CS tone 的幅值和相位，以 IQ 形式存储，记为 PCT （即 phase correlation term）。双方的PCT 在当前event 结束后会经由 ranging service 收集到一处。
 
-**EN**: BLE CS events occur at ~100–200 ms intervals. After bandpass filtering (0.1–0.35 Hz) and 20-second windowing, each window contains only ~4 breathing cycles. This makes time-domain waveform alignment intrinsically unreliable—a small timing offset between two channels translates to a large relative phase error across only 4 cycles. The spectral domain (|FFT|) discards timing information and is therefore the natural choice for frequency estimation.
+为了抵消两个设备间的本振漂移，只需要将两者PCT叠加，就能获得最终的相位。我们设两个设备本振的固定相位差为  
+$$
+\Delta \theta_{LO} = 2\pi F_(\varphi_i- \varphi_r),
+$$
+其中，$F_1$ 是当前信道频率， $\varphi_i,\varphi_r$分别是发起方、反射方设备对真实时间的延迟。
 
-**CN**: BLE CS 事件的间隔约为 100–200 ms。经带通滤波（0.1–0.35 Hz）和 20 秒滑窗后，每个窗口仅包含约 4 个呼吸周期。这使得时域波形对齐在本质上不可靠——两个信道之间的微小时间偏移会在仅 4 个周期上转化为较大的相对相位误差。频谱域（|FFT|）丢弃了时间信息，因此是频率估计的自然选择。
+从发起方出发的CStone ，经过时间 $\tau$后抵达反射方。当我们以发起方作为最终PCT整合方时，反射方就被视为 remote 端。因此，这一过程中的相位变化由反射方记录为 Remote PCT:
+$$
+\text{PCT}_{\text{Remote}}:\theta_{INI \rarr REF}  = 2\pi F \tau +\Delta \theta_{LO}.
+$$
 
-### 2.3 Inter-Tone Phase Relationship / 信道间（Tone 间）相位关系
+然后交换角色，反射方向发起方发送 CS tone，发起方记录 Local PCT:
+$$
+\text{PCT}_{\text{Local}}:\theta_{REF \rarr INI} = 2\pi F \tau -\Delta \theta_{LO} .
+$$
+显然，由上述两式可见，若将两端PCT叠加，就能消去未知的 $\Delta\theta_{LO}$。二者均为(a+bi)形式的复数，使用复数乘法就能得到两者的相位之和。最后，我们所获得的可用物理层感知信息就是本地、远端PCT的幅值，以及PCT叠加后的相位，我们分别将其记为：
+$$
+A_{\text{Local}},A_{\text{Remote}},\Phi
+$$
+由复数乘法获得的乘积的幅值就是幅值的乘积，并未引入新的物理量，因此不使用。
 
-**EN**: [Fresnel zone theory review. Applicability to BLE CS. PCA sign correction works → confirms ±1 baseline. But Hilbert continuous phase further improves → confirms additional structure from sequential sampling. Cite Figure 2.]
+### 3.2 Effective Sampling Rate and Its Consequences / 有效采样率及其影响
 
-**CN**: [回顾菲涅尔区理论。在 BLE CS 中的适用性论证。PCA 符号校正有效 → 确认 ±1 基线成立。但 Hilbert 连续相位补偿进一步改善 → 确认顺序采样引入了超越 ±1 的额外相位结构。引用 Figure 2。]
+> **EN**: BLE CS events occur at ~100–200 ms intervals. After bandpass filtering (0.1–0.35 Hz) and 20-second windowing, each window contains only ~4 breathing cycles. This makes time-domain waveform alignment intrinsically unreliable—a small timing offset between two channels translates to a large relative phase error across only 4 cycles. The spectral domain (|FFT|) discards timing information and is therefore the natural choice for frequency estimation.
+>
+> **CN**: BLE CS 事件的间隔约为 100–200 ms。经带通滤波（0.1–0.35 Hz）和 20 秒滑窗后，每个窗口仅包含约 4 个呼吸周期。这使得时域波形对齐在本质上不可靠——两个信道之间的微小时间偏移会在仅 4 个周期上转化为较大的相对相位误差。频谱域（|FFT|）丢弃了时间信息，因此是频率估计的自然选择。
+
+一个CS流程可能包含多个CS事件，CS事件是包含所有必须步骤的最小测量单位。单个事件内包含多个step，每个step就是某个信道的一次完整的双向测量。 本文启用全部的72信道以获得最大的频谱丰富度。
+
+单个Step的耗时约300us，启用全部的信道后，单个事件的时长约为21ms。但根据BLE6.0规范【引用预留】，远端的PCT需要经由 ranging service 返回，这需要占用更多的时间。我们在nordic nrf54L15 上进行了多次测试，发现最短的事件间隔约为250ms。但如果需要长期执行测量，需要适当放宽最大间隔的上限。因此，实际的事件间隔在 250-500ms之间，频率为2-4Hz。根据奈奎斯特采样定理，这恰好高于呼吸频率的2倍范围，因此可以实现呼吸感知。
+
+##   4.BLE CS Respiratory Observation Model
+
+本节建立用于解释基于 BLE CS 呼吸感知的观测模型。我们首先分析BLE CS的有效物理观测量；接着，我们尝试构建信道、观测量模态之间的呼吸波形关系，以指导如何融合这些呼吸波形，达到提升信噪比、更好地拟合原始呼吸波形的目标。为此，我们讨论同一模态内 CS 信道之间的关系，并分析顺序 CS 信道扫描是否会引入不可忽略的呼吸相位偏移。最后，我们将模型扩展为多有效成分相量表示，从而解释不同观测模态间的连续性相位偏差，以为所提出的两级相干融合方法提供动机。
+
+### 4.1 CS的有效观测变量
+
+在 Section 3.1 中，我们论证了单次CS 测量可获得的变量。在呼吸感知中，我们需要连续进行CS测量，以获得各个变量的时序数据，随后用于进一步提取呼吸。
+
+对于每个 CS 信道 $i$，BLE CS 提供两个 PCT 复数观测：
+$$
+Z_{l,i}(t), \quad Z_{r,i}(t), \tag{1}
+$$
+其中 $Z_{l,i}(t)$ 和 $Z_{r,i}(t)$ 分别表示$\text{PCT}_{\text{Local},}$, $\text{PCT}_{\text{Remote}}$ 在时间$t$ 上的采样序列。
+
+随后，我们计算得到三个可用的呼吸感知变量序列：
+$$
+A_{l,i}(t)=|Z_{l,i}(t)|, \qquad A_{r,i}(t)=|Z_{r,i}(t)|, \\\Phi_i(t)=\operatorname{unwrap} \left( \angle\left(Z_{l,i}(t)Z_{r,i}(t)\right) \right). \tag{2}
+$$
+其中，$A_{l,i}(t)$ 和 $A_{r,i}(t)$ 是幅度型观测，分别是来自两端设备对环境的观测；而 $\Phi_i(t)$ 是相位型观测。三者具有不同的物理意义。为了论证这一点，考虑一种简单的单一呼吸路径下的情形：
+$$
+Z_{d,i}(t)=\overline{Z}_{d,i}+\delta Z_{d,i}(t), \quad d\in\{l,r\},\tag{3}
+$$
+其中 $\overline{Z}_{d,i}$ 是准静态分量，$\delta Z_{d,i}(t)$ 是由呼吸引起的扰动。
+
+当 $|\delta Z_{d,i}(t)|\ll |\overline{Z}_{d,i}|$ 时，归一化幅度扰动可近似为该扰动的实部（复平面中，与$Z_{d,i}(t)$方向相同）：
+$$
+\frac{\delta A_{d,i}(t)}{\overline{A}_{d,i}} \approx \operatorname{Re} \left\{ \frac{V_d}{\overline{Z}_{d,i}} \right\}\delta Z_{d,i}(t),\tag{4}
+$$
+其中 $\overline{A}_{d,i}=|\overline{Z}_{d,i}|$。相反，积分相位扰动可近似为该扰动的虚部（复平面中，与$Z_{d,i}(t)$方向垂直）：
+$$
+\delta \Phi_i(t) \approx \operatorname{Im} \left\{ \frac{\delta Z_{l,i}(t)}{\overline{Z}_{l,i}} + \frac{\delta Z_{r,i}(t)}{\overline{Z}_{r,i}} \right\}.\tag{5}
+$$
+因此，幅度变量依赖于本地和远端复数扰动的径向分量，而积分相位依赖于两个 PCT 观测切向分量之和。这一区别促使我们将本地幅度、远端幅度和积分相位视为三种具有不同物理意义的呼吸观测模态。接下来，我们分别讨论模态内部各信道呼吸波形间的相位关系和模态之间的波形相位关系。
+
+### 4.2 信道间的相位关系 Inter-Tone Phase Relationship / 信道间（Tone 间）相位关系
+
+> **EN**: [Fresnel zone theory review. Applicability to BLE CS. PCA sign correction works → confirms ±1 baseline. But Hilbert continuous phase further improves → confirms additional structure from sequential sampling. Cite Figure 2.]
+>
+> **CN**: [回顾菲涅尔区理论。在 BLE CS 中的适用性论证。PCA 符号校正有效 → 确认 ±1 基线成立。但 Hilbert 连续相位补偿进一步改善 → 确认顺序采样引入了超越 ±1 的额外相位结构。引用 Figure 2。]
+
+不同信道的频率不同，对于同样的呼吸活动，所引发的信道衰落也会有差异。为了更好的估计呼吸，拟合原始的波形，许多工作选择将各信道的波形融合到一起【相关WIFI的论文】。
+
+同一模态内部各信道的物理意义是相同的，因此，如果按照菲涅尔区理论，它们之间的菲涅尔区边界会因为频率不同而略微有区别。对于同样的呼吸扰动，它们的影响要么是同相的，要么恰好是反相的。因此在过去的WIFI 感知工作中，为了合并所有信道的波形以获得最大的信噪比，通常仅考虑计算同相/反相的情况，为各信道赋予符号，以将所有信道的波形进行正确的相干合并。
+
+仍考虑在静态工作点附近，由呼吸活动产生的一个微小扰动（等式 3），将其在工作点$\overline{Z}_{d,i}$附近做一阶泰勒展开
+$$
+Z_{d,i}(t)\approx \underbrace{Z_{d,i}^{(0)}} _{\text{Static}}+\underbrace{k_{d,i}\xi(t)} _{\text{Dynamic}},
+$$
+此时，静态分量可通过滤波等方式去除，剩余的动态项的系数和信道的频率相关。对于两个比较的信道 $Ch_i,Ch_j$，如果 $k_{d,i}k_{d,j}>0$那么两个 CS 信道观测同相；如果 $k_{d,i}k_{d,j}<0$，它们反相；如果任一系数接近零，则对应信道为弱响应。
+
+但BLE CS的不同之处在于，各个信道是顺序扫描测量的。这意味着额外的相位延迟。在BLE规范6.0和我们的实现中，每个 CS 信道约耗时 $300$--$400\,\mu\mathrm{s}$。即便使用保守值 $400\,\mu\mathrm{s}$，72 个信道的完整扫描时间也低于 $30\,\mathrm{ms}$。在呼吸频带上限 $f_b=0.35\,\mathrm{Hz}$ 处，由扫描导致的最大相位差近似为：
+$$
+\Delta\varphi_{\max} \le 2\pi f_b \cdot 72 \cdot 400\,\mu\mathrm{s} \approx 0.063\,\mathrm{rad} \approx 3.6^\circ.
+$$
+这一数值几乎对测量不造成主要影响。因此，对于呼吸感知而言，72 个 CS 信道观测可以视为准同时测量。
+
+我们在常见的会议室环境搭建了验证平台【图-金属板设置】，使用nrf54L15 启动BLE CS测量，并在其视距路径的垂直平分线上部署了金属板。金属板按模拟的呼吸频率周期性前后移动，范围为5-10mm。我们希望用金属板模拟较为理想的单一动态路径，以验证我们的猜想。
+
+测试的结果如【图2-信道间关系(a)】，经预处理后，我们只保留动态呼吸成分，令四个信道的原始带通波形叠加。不同信道间的幅值呼吸波形大致呈同相、反相分布。但实际上仍然存在一定的非整数相位偏差。我们使用PCA为各信道赋予正负号，反相的波形被成功翻转，但可以观察到各信道之间仍然存在细微的相位偏差【图2-b】。通过希尔伯特变换并求出各信道的平均相位，然后旋转对齐，波形重合度得到了明显提升【图2-c】。
+
+进一步的，我们在两个位置连续采集数分钟数据后，做出整个数据的信道间相干性热力图【图2-d】。在位置1（095806），各信道整体相干性更高，而位置2的相干性较低，且颜色分布更多样。这说明在真实的呼吸状态下，BLE CS的信道间相位存在同相、反相之外的细小偏差。尽管基于菲涅尔区的符号赋予已经非常有效，但通过hilbert变换进一步对齐仍可进一步补偿。
 
 ![Figure 2: Inter-tone phase relationship — (a) 4 tones raw bandpass waveforms, (b) after PCA sign correction (±1 only), (c) after Hilbert continuous phase alignment → near-perfect overlap, (d) 72×72 coherence matrix γ_ij (good scenario cs_095806 | hard scenario cs_091339). Takeaway: Fresnel ±1 is the first-order baseline; sequential sampling introduces additional continuous phase offsets that only Hilbert alignment can compensate.](../../outputs/figures/paper_fig2_inter_tone_phase.png)
 
 > **Fig. 2 解读**: (a) 4 个代表 tone（#58 ref, #48 同相 γ≈0.83, #45 反相 Δφ≈π, #69 中间相位 Δφ≈−0.83）的原始带通波形叠加。(b) PCA ±1 符号校正后：反相 tone 被翻转，但中间相位 tone 仍有明显残余错位。(c) Hilbert 连续相位对齐后：四条波形近乎完美重合。(d) 72×72 tone-pair 相干性热力图：cs_095806（左，good）左上角高 γ 结构密集；cs_091339（右，hard）整体 γ 更低且碎片化。**结论**：菲涅尔区 ±1 是有效的一阶近似，但顺序采样引入了超越 ±1 的连续相位分量，Hilbert 对齐可进一步补偿。另见 [Figure S1](#supplementary-figure-s1) 跨窗口 γ 稳定性对比。
 
-### 2.4 Inter-Modal Phase Relationship / 模态间（变量间）相位关系
+### 4.3 Inter-Modal Phase Relationship / 模态间（变量间）相位关系
 
 **EN**: [Remote vs local vs phase: relative phase depends on multipath geometry. Different rooms → different relationships. Per-window variation observed. Cannot hardcode. Cite Figure 3.]
 
 **CN**: [Remote 与 local 与 phase 之间：相对相位取决于多径几何。不同房间 → 不同的相位关系。观察到逐窗变化。不可硬编码。引用 Figure 3。]
+
+本章第一节已经证明三种模态之间是独立的物理量。为了增大感知性能、拟合原始呼吸波形，有必要研究三者波形间的相位关系，以讨论融合各观测模态的方案。
+
+在【等式3】中，呼吸扰动$\delta Z_{d,i}(t)$ 可以进一步表示为：
+$$
+\delta Z_d(t)=V_d\xi(t)
+$$
+$V_d$是观测对于呼吸位移的敏感系数。比照 4.1，我们分别讨论各个模态的波形关系：
+$$
+\frac{\delta Z_l(t)}{Z_{l0}} = \operatorname{Re}\left\{\frac{V_l}{Z_{l0}}\right\}\xi(t)\tag
+{6}\\ 
+\frac{\delta Z_r(t)}{Z_{r0}} = \operatorname{Re}\left\{\frac{V_r}{Z_{r0}}\right\}\xi(t)\\
+\delta\Phi(t) = \left[ \operatorname{Im}\left\{\frac{V_l}{Z_{l0}}\right\} + \operatorname{Im}\left\{\frac{V_r}{Z_{r0}}\right\} \right]\xi(t)
+$$
+我们将系数用复数形式表示，并予以简化的代号代替：
+$$
+\frac{V_L}{Z_{L0}}=u_L+jv_L \tag{7}\\
+\frac{V_R}{Z_{R0}}=u_R+jv_R
+$$
+空间中由呼吸引起的路径可能有多个，第 $q$ 个有效呼吸成分写为：
+$$
+\xi_q(t)=X_q\cos(\omega t+\psi_q),
+$$
+其中 $X_q$ 和 $\psi_q$ 分别为其幅度和时间相位。为了简洁，我们转为使用向量表示：
+$$
+\xi_q(t) = \operatorname{Re} \left\{ X_qe^{j\psi_q}e^{j\omega_b t} \right\},\tag{8}
+$$
+于是，各模态的观测为：
+$$
+C_l=\sum_q u_{l,q}X_qe^{j\psi_q}\\
+C_r=\sum_q u_{r,q}X_qe^{j\psi_q}\\
+C_\Phi=\sum_q (v_{L,q}+v_{R,q})X_qe^{j\psi_q}
+$$
+因此，任意模态的等效呼吸幅度和相位可表示为：
+$$
+A=|C_{d}|, \qquad \varphi_{d}=\arg(C_{d}).
+$$
+
+
+于是，任意两个模态$m,n$的波形相位差可由复数的除法得到：
+$$
+\Delta\varphi_{(m),(n)} = \arg \left( C_{m}\overline{C}_{n} \right).\tag{9}
+$$
+含有多个有效成分的模型允许连续相位偏移。这是因为 $C_{d}$ 是复数，两个复数的夹角可以是任意的。因此，不同信道和不同模态可能产生指向复平面中不同方向的有效呼吸相量。
+
+
 
 ![Figure 3: Inter-modal phase relationship — (a) Three modal waveforms after Level-1 fusion, BEFORE Level-2 alignment, (b) AFTER Level-2 Hilbert alignment + η·γ weighted fusion, (c) cross-window Δφ time series (cs_095806), (d) same Δφ plot for different room (cs_102621). Takeaway: modal-to-modal phase is non-fixed, scene-dependent, and per-window Hilbert alignment effectively resolves it.](../../outputs/figures/paper_fig3_inter_modal_phase.png)
 
@@ -74,7 +209,7 @@
 
 ---
 
-## 3. Proposed Method: [Name TBD] / 提出方法：[名称待定]
+## 3. Proposed Method: BreatheCS / 提出方法：BreatheCS
 
 ### 3.1 Design Rationale / 设计动机
 
