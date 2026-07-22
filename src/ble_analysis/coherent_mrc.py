@@ -1144,6 +1144,7 @@ def plot_b2_achievement_figures(
     p1 = figures_dir / f"{prefix}_two_level_contribution.png"
     if save:
         fig1.savefig(p1, dpi=150, bbox_inches="tight")
+        fig1.savefig(figures_dir / f"{prefix}_two_level_contribution.pdf", bbox_inches="tight")
     paths["two_level_contribution"] = p1
     if not show:
         plt.close(fig1)
@@ -1200,6 +1201,7 @@ def plot_b2_achievement_figures(
     p2 = figures_dir / f"{prefix}_waterfall_decomposition.png"
     if save:
         fig2.savefig(p2, dpi=150, bbox_inches="tight")
+        fig2.savefig(figures_dir / f"{prefix}_waterfall_decomposition.pdf", bbox_inches="tight")
     paths["waterfall_decomposition"] = p2
     if not show:
         plt.close(fig2)

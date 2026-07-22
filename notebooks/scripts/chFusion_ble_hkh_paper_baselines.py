@@ -82,6 +82,16 @@ def _json_default(obj):
     raise TypeError(f"Object of type {type(obj)} is not JSON serializable")
 
 
+def _save_figure(fig: plt.Figure, stem_or_filename: str) -> Path:
+    """Save PNG (preview) and PDF (paper-ready). Accepts stem or ``*.png`` name."""
+    stem = Path(stem_or_filename).stem
+    png_path = FIGURES_DIR / f"{stem}.png"
+    pdf_path = FIGURES_DIR / f"{stem}.pdf"
+    fig.savefig(png_path, dpi=150, bbox_inches="tight")
+    fig.savefig(pdf_path, bbox_inches="tight")
+    return png_path
+
+
 def _parse_scenario_id(scenario_id: str) -> Tuple[str, str]:
     m = re.match(r"(room_[A-C])-(sbj_[A-D])-", scenario_id)
     if not m:
@@ -129,8 +139,7 @@ def plot_paper_leaderboard(bench: dict, dataset_name: str) -> Path:
     fig.legend(handles=legend, loc="lower center", ncol=4, bbox_to_anchor=(0.5, -0.02))
     fig.suptitle(f"HKH live breathing — WiFi paper baselines ({dataset_name})", y=1.01)
     fig.tight_layout()
-    path = FIGURES_DIR / f"ble_hkh_paper_baselines_{dataset_name}.png"
-    fig.savefig(path, dpi=150, bbox_inches="tight")
+    path = _save_figure(fig, f"ble_hkh_paper_baselines_{dataset_name}")
     plt.close(fig)
     return path
 
@@ -260,8 +269,7 @@ def plot_cross_scenario_leaderboard(
     ax.set_xlabel("Mean BPM abs err across scenarios (breaths/min)")
     ax.set_title(title)
     fig.tight_layout()
-    path = FIGURES_DIR / filename
-    fig.savefig(path, dpi=150, bbox_inches="tight")
+    path = _save_figure(fig, filename)
     plt.close(fig)
     return path
 
@@ -299,8 +307,7 @@ def plot_group_comparison(
     ax.set_title(title)
     ax.legend()
     fig.tight_layout()
-    path = FIGURES_DIR / filename
-    fig.savefig(path, dpi=150, bbox_inches="tight")
+    path = _save_figure(fig, filename)
     plt.close(fig)
     return path
 

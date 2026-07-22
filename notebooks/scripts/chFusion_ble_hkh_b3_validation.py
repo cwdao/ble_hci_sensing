@@ -82,7 +82,19 @@ def _json_default(obj):
         return obj.tolist()
     if isinstance(obj, (np.floating, np.integer)):
         return obj.item()
+    if isinstance(obj, float) and (np.isnan(obj) or np.isinf(obj)):
+        return None
     raise TypeError(f"Object of type {type(obj)} is not JSON serializable")
+
+
+def _save_figure(fig: plt.Figure, stem_or_filename: str) -> Path:
+    """Save PNG (preview) and PDF (paper-ready). Accepts stem or ``*.png`` name."""
+    stem = Path(stem_or_filename).stem
+    png_path = FIGURES_DIR / f"{stem}.png"
+    pdf_path = FIGURES_DIR / f"{stem}.pdf"
+    fig.savefig(png_path, dpi=150, bbox_inches="tight")
+    fig.savefig(pdf_path, bbox_inches="tight")
+    return png_path
 
 
 def _parse_scenario_id(scenario_id: str) -> Tuple[str, str]:
@@ -269,8 +281,7 @@ def plot_ablation_leaderboard(summary: dict) -> Path:
 
     fig.suptitle("B3 unified pipeline — 12 HKH scenarios", y=1.01)
     fig.tight_layout()
-    path = FIGURES_DIR / "ble_hkh_b3_ablation_leaderboard.png"
-    fig.savefig(path, dpi=150, bbox_inches="tight")
+    path = _save_figure(fig, "ble_hkh_b3_ablation_leaderboard")
     plt.close(fig)
     return path
 
@@ -294,8 +305,7 @@ def plot_bpm_vs_rmse(summary: dict) -> Path:
     ax.set_title("BPM error vs waveform RMSE")
     ax.grid(True, alpha=0.3)
     fig.tight_layout()
-    path = FIGURES_DIR / "ble_hkh_b3_bpm_vs_rmse.png"
-    fig.savefig(path, dpi=150, bbox_inches="tight")
+    path = _save_figure(fig, "ble_hkh_b3_bpm_vs_rmse")
     plt.close(fig)
     return path
 
@@ -340,8 +350,7 @@ def plot_outlier_timeseries(all_results: Dict[str, dict]) -> Path:
     axes[-1].set_xlabel("Window index")
     fig.suptitle("Outlier scenarios — BPM time series", y=1.01)
     fig.tight_layout()
-    path = FIGURES_DIR / "ble_hkh_b3_outlier_timeseries.png"
-    fig.savefig(path, dpi=150, bbox_inches="tight")
+    path = _save_figure(fig, "ble_hkh_b3_outlier_timeseries")
     plt.close(fig)
     return path
 
