@@ -209,65 +209,217 @@ $$
 
 
 
-![Figure 3: Inter-modal phase relationship — (a) Three modal waveforms after Level-1 fusion, BEFORE Level-2 alignment, (b) AFTER Level-2 Hilbert alignment + η·γ weighted fusion, (c) cross-window Δφ time series (cs_095806), (d) same Δφ plot for different room (cs_102621). Takeaway: modal-to-modal phase is non-fixed, scene-dependent, and per-window Hilbert alignment effectively resolves it.](../../outputs/figures/paper_fig3_inter_modal_phase.png)
+![Figure 3: Inter-modal phase relationship — (a) Three modal waveforms after Level-1 fusion, BEFORE Level-2 alignment, (b) AFTER Level-2 Hilbert alignment + η-weighted fusion, (c) cross-window Δφ time series (cs_095806), (d) same Δφ plot for different room (cs_102621). Takeaway: modal-to-modal phase is non-fixed, scene-dependent, and per-window Hilbert alignment effectively resolves it.](../../outputs/figures/paper_fig3_inter_modal_phase.png)
 
-> **Fig. 3 解读**: (a) 三模态（remote/local/phase）经 Level-1 Hilbert tone 融合后的波形，Level-2 对齐前可见明显相位差异。(b) Level-2 Hilbert 对齐 + η·γ 加权融合后：三波形对齐，融合波形（粗黑线）跟踪一致性。(c) cs_095806 全 segment 跨窗模态间相位差 Δφ 序列：Δφ 非固定，逐窗浮动。(d) cs_102621（不同房间）同款图：Δφ 基线不同，确认模态间相位关系场景依赖。**结论**：模态相位不可预设，必须每窗估计，等权融合是正确的先验。
+> **Fig. 3 解读**: (a) 三模态（remote/local/phase）经 Level-1 Hilbert tone 融合后的波形，Level-2 对齐前可见明显相位差异。(b) Level-2 Hilbert 对齐 + $\eta$ 加权融合后：三波形对齐，融合波形（粗黑线）跟踪一致性。(c) cs_095806 全 segment 跨窗模态间相位差 Δφ 序列：Δφ 非固定，逐窗浮动。(d) cs_102621（不同房间）同款图：Δφ 基线不同，确认模态间相位关系场景依赖。**结论**：模态相位不可预设，必须每窗估计，等权融合是正确的先验。
 
 ---
 
 ## 5. Proposed Method: BreatheCS / 提出方法：BreatheCS
 
+> **同步说明（2026-07-24）**：本节中文正文与公式已与英文 LaTeX（`wang26csdf.tex` §V，B3 Simplified 双分支）对齐。小标题：Channel-level fusion / Modal-level fusion。波形分支仅保留相位旋转 + $\eta\cdot\rho$（或模态 $\eta$）质量加权，不含 coherence / $\gamma$ 项；主 BPM 来自等权谱融合，非波形 PSD。
+
+本节提出 BreatheCS：面向 BLE CS 呼吸感知的统一双分支管线。目标是在同一套低采样率、多信道、三模态观测上，同时给出稳健的呼吸率估计与连续呼吸波形。下文中“信道 / tone”指某一模态内 $N=72$ 路 PCT 导出的 CS 信道观测，$m\in\{l,r,\phi\}$。
+
 ### 5.1 Design Rationale / 设计动机
 
-> **EN**: [Why two branches sharing one front-end. BPM → spectral domain (insensitive to misalignment). Waveform → time domain (preserves morphology). Both benefit from η·ρ quality weights.]
->
-> **CN**: [为什么两支共享一个前端。BPM → 频谱域（对时间对齐不敏感）。波形 → 时域（保留呼吸形态学特征）。η·ρ 质量权重对两支都有益。]
+对人体呼吸活动的观测包含两部分：BPM 估计与呼吸波形恢复。BPM 只需稳定的呼吸频率，一旦形成频谱，对时域残余错位不敏感；波形恢复则需保留形态学特征，因此依赖时域相干融合以提高呼吸能量比（BNR）。
 
-对人体呼吸活动的观测包含BPM估计和呼吸波形的拟合两部分。BPM估计是最基本的需求，需要从BLE CS PCT中稳定地提取呼吸频率，对波形是否对齐并不敏感；而想要从各个模态中恢复呼吸波形以保留形态学特征，就必须依赖波形在时域的融合以增强呼吸能量比（BNR，breathe noise ratio）。
+BreatheCS 用共享前端 + 两条专用分支应对这两个目标：
 
-我们提出 BreatheCS，对两种呼吸指标做针对性的处理，以最大程度利用BLE CS 双观测、三模态的优势，并弱化低采样率和测量噪声的影响。
+1. **共享前端**：逐 tone 质量估计，互补指标 $\eta$（呼吸频段能量比）与 $\rho$（谱峰峰度），同时服务于谱加权与波形 MRC 权重。
+2. **BPM 分支**：逐模态 $\eta\cdot\rho$ 加权谱融合，再对三模态做等权谱融合。
+3. **波形分支**：两级 Hilbert 相干 MRC（HiCo-MRC）——先在模态内做 tone 级对齐，再跨 remote/local/phase 做模态级对齐。
+
+这一分离直接来自 §3（低采样率）与 §4（连续残余相位）：谱域分支耐受低采样率；波形分支补偿 $\pm 1$ 符号校正无法消除的连续相位。
 
 ### 5.2 Preprocessing / 预处理
 
-**EN**: [Filter chain. Sliding window parameters.]
+为保证公平对比，本文方法与所有 baseline 共用同一预处理链。对每个 tone、三种变量：短窗中值滤波 → $0.05\,\mathrm{Hz}$ 高通去缓变漂移 → $0.1$--$0.35\,\mathrm{Hz}$ 呼吸带通。相位变量在滤波前先做 unwrap。随后以 $20\,\mathrm{s}$ 窗长、$1\,\mathrm{s}$ 步长滑窗处理。记模态 $m$、tone $i$ 的带通波形为 $x_{m,i}(t)$。
 
-**CN**: [滤波链：median → highpass (0.05 Hz) → bandpass (0.1–0.35 Hz)。滑窗：20 s 窗长 / 1 s 步长。]
+### 5.3 Stage 1: Per-Modal Channel Quality and Weighted Spectra / 逐模态信道质量与加权谱
 
-### 5.3 Stage 1: Per-Modal η·ρ Voting / 第一阶段：逐模态 η·ρ 投票
+在进入任一分支前，为每个 tone 赋予反映呼吸频段主导性与峰值可靠性的质量分数。设 $P_{m,i}(f)$ 为（$\eta$ 用高通、$\rho$ 与 BPM 谱用带通）tone 功率谱，$\mathcal{F}_b$ 为呼吸频段，$\mathcal{F}$ 为分析频段：
 
-> **EN**: [Formulas from paper_outline_plan §3.3. η_i, ρ_i, w_i, weighted histogram, confidence-weighted spectrum average S̄_m(f).]
->
-> **CN**: [公式见 paper_outline_plan.md §3.3。逐 tone 计算 η_i, ρ_i → 质量权重 w_i = η_i·max(ρ_i, 0) → 加权直方图投票 BPM → 置信度加权频谱平均 S̄_m(f)。]
+$$
+\eta_{m,i}
+=
+\frac{\sum_{f\in\mathcal{F}_b}P_{m,i}(f)}{\sum_{f\in\mathcal{F}}P_{m,i}(f)+\epsilon}
+$$
 
-### 
+（LaTeX: `eq:eta`）
 
-**EN**: [Definition. Why product. How they complement each other.]
+$$
+\begin{aligned}
+\rho_{m,i}
+&=
+\frac{P_{m,i}(\widehat{f}_{m,i})}{\frac{1}{|\mathcal{F}_b|}\sum_{f\in\mathcal{F}_b}P_{m,i}(f)+\epsilon},
+\\
+\widehat{f}_{m,i}
+&=
+\arg\max_{f\in\mathcal{F}_b}P_{m,i}(f)
+\end{aligned}
+$$
 
-**CN**: [η（呼吸频段能量比）和 ρ（谱峰峰度）的定义。为什么使用乘积 η·ρ 而非单一指标。两者如何互补：η 要求能量集中在呼吸频段，ρ 抑制假峰 tone。缺一不可。]
+（LaTeX: `eq:rho`）
 
-![Figure 5: η·ρ quality voting mechanism — (a) Per-tone η vs ρ scatter (72 points, one window), color = |BPM_i − BPM_voted|, marker size ∝ w_i. (b) BPM histogram: Uniform (light) vs η·ρ Voting (dark). (c) Fused spectrum comparison: Voting spectrum has cleaner peak, lower noise floor. Takeaway: η identifies energy concentration in breath band; ρ suppresses spurious-peak tones; product η·ρ ensures both hold simultaneously.](../../outputs/figures/paper_fig5_eta_rho_voting.png)
+$$
+\begin{aligned}
+w_{m,i}
+&=
+\eta_{m,i}\cdot\max(\rho_{m,i},0),
+\\
+\tilde{w}_{m,i}
+&=
+\frac{w_{m,i}}{\sum_j w_{m,j}+\epsilon}
+\end{aligned}
+$$
 
-> **Fig. 5 解读**: (a) 单个窗口 72 tone 的 η vs ρ 散点图，颜色=该 tone BPM 与 Voting 共识 BPM 的偏差，点大小 ∝ η·ρ 权重。右上角高 η 高 ρ 的 tone 偏差小（冷色），左下角低质量 tone 偏差大（暖色）。(b) BPM 直方图对比：等权（浅色）分布宽、峰低；η·ρ 加权投票（深色）峰更尖锐、置信度更高。实际数值：Voting BPM=8.00, Uniform BPM=8.86。(c) 融合频谱对比：η·ρ 加权谱（深色）噪声底更低、呼吸峰更突出。**结论**：η 和 ρ 互补——η 要求能量集中在呼吸频段，ρ 抑制有尖锐假峰的 tone，两者乘积作为质量权重有效。
+（LaTeX: `eq:eta_rho_weight`）
+
+乘积 $\eta\cdot\rho$ 互补：$\eta$ 要求能量集中在呼吸频段，$\rho$ 抑制带内能量被尖锐假峰主导的 tone；两者缺一不可。
+
+记 $S_{m,i}(f)$ 为模态 $m$、tone $i$ 的带通幅度谱。逐模态融合谱为质量加权平均：
+
+$$
+\bar{S}_m(f)
+=
+\sum_{i=1}^{N}\tilde{w}_{m,i}\,S_{m,i}(f)
+$$
+
+（LaTeX: `eq:weighted_spectrum`）
+
+![Figure 5: eta-rho quality voting mechanism](../../outputs/figures/paper_fig5_eta_rho_voting.png)
+
+> **Fig. 5 解读**: (a) 单窗 72 tone 的 $\eta$ vs $\rho$：高 $\eta$/高 $\rho$ tone 与共识 BPM 一致。(b) 直方图：$\eta\cdot\rho$ 加权峰更尖。(c) 加权谱噪声底更低、呼吸峰更突出。**结论**：$\eta$ 与 $\rho$ 互补，乘积作质量权重有效。注：直方图投票标量在 B3 Simplified 中主要用于机制示意/诊断；**最终 BPM 由加权谱等权模态融合寻峰得到**。
 
 ### 5.4 Stage 2a: BPM Branch — Equal Spectrum Fusion / BPM 分支：等权谱融合
 
-**EN**: [Formula: S_final = (S_remote + S_local + S_phase) / 3. Argmax + parabolic interpolation. Why equal weight: physical symmetry argument.]
+remote / local / phase 物理上不同但先验对称，估计 BPM 时不预设任一模态更优。三模态谱等权融合：
 
-**CN**: [公式：S_final(f) = (S_remote(f) + S_local(f) + S_phase(f)) / 3。寻峰 + 抛物线插值。为什么等权：remote/local/phases 物理对等，不应预设哪一模态更优。实验证据：Equal (B1, 8.45%) 优于 Top2 (B3, 9.92%) 和 η-weight (B2, 9.45%)。]
+$$
+S_{\mathrm{final}}(f)
+=
+\frac{1}{3}\bigl(\bar{S}_{r}(f)+\bar{S}_{l}(f)+\bar{S}_{\phi}(f)\bigr)
+$$
+
+（LaTeX: `eq:equal_spectrum`）
+
+在 $\mathcal{F}_b$ 内寻峰，并对主峰邻域做抛物线插值：
+
+$$
+\begin{aligned}
+\widehat{f}_b
+&=
+\operatorname{ParabolicInterp}\Bigl(
+S_{\mathrm{final}},\,
+\arg\max_{f\in\mathcal{F}_b}S_{\mathrm{final}}(f)
+\Bigr),
+\\
+\widehat{\mathrm{BPM}}
+&=
+60\,\widehat{f}_b
+\end{aligned}
+$$
+
+（LaTeX: `eq:bpm_peak`）
+
+该谱域分支是 BreatheCS 的**主 BPM 输出**。它继承质量加权信道融合的稳健性，并避免 $\sim 2\,\mathrm{Hz}$ 采样率下脆弱的时域对齐。实验上，等权模态融合优于 Top-2 与 $\eta$-加权模态融合，与 §4 的物理对称论证一致。
 
 ### 5.5 Stage 2b: Waveform Branch — Two-Level Hilbert-MRC / 波形分支：两级 Hilbert-MRC
 
-**EN**: [Level 1 formulas: Hilbert transform → analytic signal → cross-correlation phase → complex-plane rotation → weighted sum → real part. Level 2 formulas: same structure but across modals. Why complex-plane rotation ≠ time shift: no edge effects, continuous phase resolution.]
+波形恢复使用 HiCo-MRC（两级复平面相干融合）。由 §4 相量模型，模态 $m$、tone $i$ 的带限呼吸分量可写为：
 
-**CN**: [Level 1（tone 级，72→1/模态）：Hilbert 变换 → 解析信号 → 互相关求相位差 → 复平面旋转（z' = z·e^{−jΔφ}）→ η·ρ·γ 加权叠加 → 取实部。Level 2（模态级，3→1）：同上结构，跨 remote/local/phase 执行。为什么复平面旋转 ≠ 时域平移：无边缘效应、保留所有样本、连续相位分辨率。]
+$$
+x_{m,i}(t)
+\approx
+\operatorname{Re}\bigl\{C_{m,i}e^{j\omega_b t}\bigr\}
++
+n_{m,i}(t)
+$$
 
-### 5.6 The "Unlocking" Interaction / "解锁器"交互效应
+（LaTeX: `eq:tone_phasor`）
 
-**EN**: [Experimental finding: A1-D ≈ A1 (no gain), Bγ→D = −1.46 pp (significant gain). Physical interpretation: sign correction leaves residual phase errors that pollute modal waveforms; Level-2 cannot recover from degraded input. Continuous phase at Level 1 preserves waveform fidelity → unlocks Level-2 gain. Cite Figure 4.]
+其解析信号为：
 
-**CN**: [实验发现：A1-D ≈ A1（Level-2 在符号校正第一级上无增益），Bγ→D = −1.46 pp（Level-2 在 Hilbert 第一级上有效）。物理解释：符号校正（±1）残留的非二值相位误差污染了模态融合波形；Level-2 无法从已被污染的输入中恢复。Level-1 连续相位保留了波形保真度 → "解锁" Level-2 的 −1.46 pp 增益。引用 Figure 4。]
+$$
+\begin{aligned}
+z_{m,i}(t)
+&=
+x_{m,i}(t)+j\mathcal{H}\{x_{m,i}(t)\}
+\\
+&\approx
+C_{m,i}e^{j\omega_b t}+\tilde{n}_{m,i}(t)
+\end{aligned}
+$$
 
-> ⚠️ **Fig. 4 状态**：解锁器效应消融矩阵的数据已有（CS 三场景跨域：A0=12.33%, A0-D=11.09%, A1=11.06%, A1-D=11.15% [无效!], Bγ=10.89%, B2-D=9.43% [有效!]），但论文风格的消融矩阵图 + 机制示意图**尚未生成**。Plan `paper_outline_plan.md` §5.5 和 `paper_figures_generation_plan.md` 均未覆盖 Figure 4（后者仅覆盖 Fig 2/3/5/S1）。需后续单独生成。
+（LaTeX: `eq:analytic_tone`）
+
+其中 $\mathcal{H}\{\cdot\}$ 为 Hilbert 变换。
+
+#### Channel-level fusion / 信道级融合
+
+对每个模态 $m$，按质量选参考 tone：
+
+$$
+i_m^\star=\arg\max_i w_{m,i}
+$$
+
+（LaTeX: `eq:ref_tone`）
+
+相对参考 tone 的连续相位由复相关估计：
+
+$$
+\Delta\phi_{m,i}
+=
+\arg\left(\sum_t z_{m,i}(t)\overline{z}_{m,i_m^\star}(t)\right)
+$$
+
+（LaTeX: `eq:delta_phi_tone`）
+
+再在复平面旋转，并用 Stage~1 的质量权重 $w_{m,i}$ 叠加：
+
+$$
+\begin{aligned}
+z_m(t)
+&=
+\frac{\sum_i w_{m,i}\,z_{m,i}(t)\,e^{-j\Delta\phi_{m,i}}}{\sum_i w_{m,i}+\epsilon},
+\\
+y_m(t)
+&=
+\operatorname{Re}\{z_m(t)\}
+\end{aligned}
+$$
+
+（LaTeX: `eq:level1_mrc`）
+
+复平面旋转优于时移：无边缘截断、保留全部样本，并补偿 $\pm 1$ 无法消除的连续相位。融合权重即 BPM 分支共用的 $\eta\cdot\rho$ 质量分，**不再引入相干度 $\gamma$ 或 coherence gate**。
+
+#### Modal-level fusion / 模态级融合
+
+三模态波形 $y_r(t)$、$y_l(t)$、$y_\phi(t)$ 仍可能存在连续相位差。各自转为解析信号 $u_m(t)=y_m(t)+j\mathcal{H}\{y_m(t)\}$，由 $y_m$ 重算模态能量比 $\eta_m$，取参考模态 $m^\star=\arg\max_m\eta_m$。模态相位差 $\Delta\theta_m$ 的定义与信道级 $\Delta\phi_{m,i}$ 类似：
+
+$$
+\begin{aligned}
+z_{\mathrm{final}}(t)
+&=
+\frac{\sum_m \eta_m\,u_m(t)\,e^{-j\Delta\theta_m}}{\sum_m\eta_m+\epsilon},
+\\
+y_{\mathrm{final}}(t)
+&=
+\operatorname{Re}\{z_{\mathrm{final}}(t)\}
+\end{aligned}
+$$
+
+（LaTeX: `eq:level2_mrc`）
+
+$y_{\mathrm{final}}(t)$ 是 BreatheCS 的主波形输出。其频谱仅作诊断保留，**不作为主 BPM**。
+
+### 5.6 The Unlocking Interaction / “解锁器”交互效应
+
+关键实验发现：仅当第一级使用连续 Hilbert 相位校正时，第二级模态对齐才有效。金属板跨域评估中：符号校正第一级 + 第二级几乎无增益（A1-D $\approx$ A1）；Hilbert 第一级 + 第二级约再降 $1.46$ 个百分点相对 BPM 误差。解释与 §4 残余相位模型一致：$\pm 1$ 残留的非二值相位误差污染各模态波形后，第二级无法从已退化输入中恢复；第一级连续对齐保住波形保真度，从而“解锁”模态级相干融合收益。因此波形分支在两级均保留 Hilbert 对齐，即便 BPM 分支本身走谱域。
+
+> ⚠️ **Fig. 4 状态**：解锁器消融矩阵数据已有（CS 三场景跨域：A0=12.33%, A0-D=11.09%, A1=11.06%, A1-D=11.15% [无效], Bγ=10.89%, B2-D=9.43% [有效]），论文风格消融矩阵图尚未生成。
 
 ---
 
