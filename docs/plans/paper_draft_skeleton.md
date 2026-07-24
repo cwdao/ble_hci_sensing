@@ -129,17 +129,27 @@ Z_{d,i}(t)\approx \underbrace{Z_{d,i}^{(0)}} _{\text{Static}}+\underbrace{k_{d,i
 $$
 此时，静态分量可通过滤波等方式去除，剩余的动态项的系数和信道的频率相关。对于两个比较的信道 $Ch_i,Ch_j$，如果 $k_{d,i}k_{d,j}>0$那么两个 CS 信道观测同相；如果 $k_{d,i}k_{d,j}<0$，它们反相；如果任一系数接近零，则对应信道为弱响应。
 
-但BLE CS的不同之处在于，各个信道是顺序扫描测量的。这意味着额外的相位延迟。在BLE规范6.0和我们的实现中，每个 CS 信道约耗时 $300$--$400\,\mu\mathrm{s}$。即便使用保守值 $400\,\mu\mathrm{s}$，72 个信道的完整扫描时间也低于 $30\,\mathrm{ms}$。在呼吸频带上限 $f_b=0.35\,\mathrm{Hz}$ 处，由扫描导致的最大相位差近似为：
-$$
-\Delta\varphi_{\max} \le 2\pi f_b \cdot 72 \cdot 400\,\mu\mathrm{s} \approx 0.063\,\mathrm{rad} \approx 3.6^\circ.
-$$
-这一数值几乎对测量不造成主要影响。因此，对于呼吸感知而言，72 个 CS 信道观测可以视为准同时测量。
+
 
 我们在常见的会议室环境搭建了验证平台【图-金属板设置】，使用nrf54L15 启动BLE CS测量，并在其视距路径的垂直平分线上部署了金属板。金属板按模拟的呼吸频率周期性前后移动，范围为5-10mm。我们希望用金属板模拟较为理想的单一动态路径，以验证我们的猜想。
 
-测试的结果如【图2-信道间关系(a)】，经预处理后，我们只保留动态呼吸成分，令四个信道的原始带通波形叠加。不同信道间的幅值呼吸波形大致呈同相、反相分布。但实际上仍然存在一定的非整数相位偏差。我们使用PCA为各信道赋予正负号，反相的波形被成功翻转，但可以观察到各信道之间仍然存在细微的相位偏差【图2-b】。通过希尔伯特变换并求出各信道的平均相位，然后旋转对齐，波形重合度得到了明显提升【图2-c】。
+测试的结果如【图2-信道间关系(a)】，经预处理后，我们只保留动态呼吸成分，并展示72信道中的四个原始带通波形的叠加。不同信道间的幅值呼吸波形大致呈同相、反相分布。我们使用PCA为各信道赋予正负号，反相的波形被成功翻转，但可以观察到各信道之间仍然存在细微的相位偏差【图2-b】。通过希尔伯特变换并求出各信道的平均相位，然后旋转对齐，波形重合度得到了明显提升【图2-c】。
 
-进一步的，我们在两个位置连续采集数分钟数据后，做出整个数据的信道间相干性热力图【图2-d】。在位置1（095806），各信道整体相干性更高，而位置2的相干性较低，且颜色分布更多样。这说明在真实的呼吸状态下，BLE CS的信道间相位存在同相、反相之外的细小偏差。尽管基于菲涅尔区的符号赋予已经非常有效，但通过hilbert变换进一步对齐仍可进一步补偿。
+进一步的，我们在两个位置连续采集数分钟数据后，做出整个数据的信道间相干性热力图【图2-d】。在位置1（095806），各信道整体相干性更高，而位置2的相干性较低，且颜色分布更多样。这说明在真实的呼吸状态下，BLE CS的信道间相位存在同相、反相之外的细小偏差。尽管基于菲涅尔区的符号赋予已经非常有效，但通过hilbert变换对齐仍可进一步补偿。
+
+我们认为，BLE CS 的具体实现过程可能会引入一些因素影响波形的相位关系，令实际情况不再符合理想的同相、反相情况：
+
+-  BLE CS 的有效事件采样率较低，且 event 间隔可能存在不均匀性。有限长度窗口内的带通滤波、插值更容易受到时序误差、噪声和边界效应的影响，从而产生或放大表观的波形相位失配。
+-  PCT 测量非理想性。包括接收机增益/延迟变化、有限信噪比下的相位估计误差、校准残差以及后处理畸变。
+- 顺序扫描测量的影响是有限的。在BLE规范6.0中，每个 CS 信道约耗时 $300$--$400\,\mu\mathrm{s}$。即便使用保守值 $400\,\mu\mathrm{s}$，72 个信道的完整扫描时间也低于 $30\,\mathrm{ms}$。在呼吸频带上限 $f_b=0.35\,\mathrm{Hz}$ 处，由扫描导致的最大相位差近似为：
+
+$$
+\Delta\varphi_{\max} \le 2\pi f_b \cdot 72 \cdot 400\,\mu\mathrm{s} \approx 0.063\,\mathrm{rad} \approx 3.6^\circ.
+$$
+
+这一数值几乎对测量不造成主要影响。因此，对于呼吸感知而言，72 个 CS 信道观测可以视为准同时测量。
+
+因此，本文将信道间关系建模为二值主符号关系与逐窗口连续残余相位的组合，并通过复平面旋转进行补偿。
 
 ![Figure 2: Inter-tone phase relationship — (a) 4 tones raw bandpass waveforms, (b) after PCA sign correction (±1 only), (c) after Hilbert continuous phase alignment → near-perfect overlap, (d) 72×72 coherence matrix γ_ij (good scenario cs_095806 | hard scenario cs_091339). Takeaway: Fresnel ±1 is the first-order baseline; sequential sampling introduces additional continuous phase offsets that only Hilbert alignment can compensate.](../../outputs/figures/paper_fig2_inter_tone_phase.png)
 
@@ -195,57 +205,63 @@ $$
 $$
 含有多个有效成分的模型允许连续相位偏移。这是因为 $C_{d}$ 是复数，两个复数的夹角可以是任意的。因此，不同信道和不同模态可能产生指向复平面中不同方向的有效呼吸相量。
 
+我们将4.3 的实验结果中三个模态的信道波形的相位对齐，然后融合成一个，并把三个波形归一化后比较【图-3 （a）】。它们之间也存在非整周期的相位关系。这验证了我们的模型。通过将它们的相位旋转对齐，可以消除这种相位偏差 【图3-b】。同时，这种情况并非偶然现象，我们将该次金属板模拟的所有数据的做加窗处理，然后画出每个窗口内三模态的相位偏差【图3-c】，这些相位偏差几乎是完全随机的；对于另一个位置场景下的模拟，相位关系又完全不同于前一场景【图3-d】。这充分证明了本节论述的各模态见不稳定的相位关系。
+
 
 
 ![Figure 3: Inter-modal phase relationship — (a) Three modal waveforms after Level-1 fusion, BEFORE Level-2 alignment, (b) AFTER Level-2 Hilbert alignment + η·γ weighted fusion, (c) cross-window Δφ time series (cs_095806), (d) same Δφ plot for different room (cs_102621). Takeaway: modal-to-modal phase is non-fixed, scene-dependent, and per-window Hilbert alignment effectively resolves it.](../../outputs/figures/paper_fig3_inter_modal_phase.png)
 
 > **Fig. 3 解读**: (a) 三模态（remote/local/phase）经 Level-1 Hilbert tone 融合后的波形，Level-2 对齐前可见明显相位差异。(b) Level-2 Hilbert 对齐 + η·γ 加权融合后：三波形对齐，融合波形（粗黑线）跟踪一致性。(c) cs_095806 全 segment 跨窗模态间相位差 Δφ 序列：Δφ 非固定，逐窗浮动。(d) cs_102621（不同房间）同款图：Δφ 基线不同，确认模态间相位关系场景依赖。**结论**：模态相位不可预设，必须每窗估计，等权融合是正确的先验。
 
-### 2.5 Signal Quality Proxies: η and ρ / 信号质量指标：η 与 ρ
-
-**EN**: [Definition. Why product. How they complement each other.]
-
-**CN**: [η（呼吸频段能量比）和 ρ（谱峰峰度）的定义。为什么使用乘积 η·ρ 而非单一指标。两者如何互补：η 要求能量集中在呼吸频段，ρ 抑制假峰 tone。缺一不可。]
-
 ---
 
-## 3. Proposed Method: BreatheCS / 提出方法：BreatheCS
+## 5. Proposed Method: BreatheCS / 提出方法：BreatheCS
 
-### 3.1 Design Rationale / 设计动机
+### 5.1 Design Rationale / 设计动机
 
-**EN**: [Why two branches sharing one front-end. BPM → spectral domain (insensitive to misalignment). Waveform → time domain (preserves morphology). Both benefit from η·ρ quality weights.]
+> **EN**: [Why two branches sharing one front-end. BPM → spectral domain (insensitive to misalignment). Waveform → time domain (preserves morphology). Both benefit from η·ρ quality weights.]
+>
+> **CN**: [为什么两支共享一个前端。BPM → 频谱域（对时间对齐不敏感）。波形 → 时域（保留呼吸形态学特征）。η·ρ 质量权重对两支都有益。]
 
-**CN**: [为什么两支共享一个前端。BPM → 频谱域（对时间对齐不敏感）。波形 → 时域（保留呼吸形态学特征）。η·ρ 质量权重对两支都有益。]
+对人体呼吸活动的观测包含BPM估计和呼吸波形的拟合两部分。BPM估计是最基本的需求，需要从BLE CS PCT中稳定地提取呼吸频率，对波形是否对齐并不敏感；而想要从各个模态中恢复呼吸波形以保留形态学特征，就必须依赖波形在时域的融合以增强呼吸能量比（BNR，breathe noise ratio）。
 
-### 3.2 Preprocessing / 预处理
+我们提出 BreatheCS，对两种呼吸指标做针对性的处理，以最大程度利用BLE CS 双观测、三模态的优势，并弱化低采样率和测量噪声的影响。
+
+### 5.2 Preprocessing / 预处理
 
 **EN**: [Filter chain. Sliding window parameters.]
 
 **CN**: [滤波链：median → highpass (0.05 Hz) → bandpass (0.1–0.35 Hz)。滑窗：20 s 窗长 / 1 s 步长。]
 
-### 3.3 Stage 1: Per-Modal η·ρ Voting / 第一阶段：逐模态 η·ρ 投票
+### 5.3 Stage 1: Per-Modal η·ρ Voting / 第一阶段：逐模态 η·ρ 投票
 
-**EN**: [Formulas from paper_outline_plan §3.3. η_i, ρ_i, w_i, weighted histogram, confidence-weighted spectrum average S̄_m(f).]
+> **EN**: [Formulas from paper_outline_plan §3.3. η_i, ρ_i, w_i, weighted histogram, confidence-weighted spectrum average S̄_m(f).]
+>
+> **CN**: [公式见 paper_outline_plan.md §3.3。逐 tone 计算 η_i, ρ_i → 质量权重 w_i = η_i·max(ρ_i, 0) → 加权直方图投票 BPM → 置信度加权频谱平均 S̄_m(f)。]
 
-**CN**: [公式见 paper_outline_plan.md §3.3。逐 tone 计算 η_i, ρ_i → 质量权重 w_i = η_i·max(ρ_i, 0) → 加权直方图投票 BPM → 置信度加权频谱平均 S̄_m(f)。]
+### 
+
+**EN**: [Definition. Why product. How they complement each other.]
+
+**CN**: [η（呼吸频段能量比）和 ρ（谱峰峰度）的定义。为什么使用乘积 η·ρ 而非单一指标。两者如何互补：η 要求能量集中在呼吸频段，ρ 抑制假峰 tone。缺一不可。]
 
 ![Figure 5: η·ρ quality voting mechanism — (a) Per-tone η vs ρ scatter (72 points, one window), color = |BPM_i − BPM_voted|, marker size ∝ w_i. (b) BPM histogram: Uniform (light) vs η·ρ Voting (dark). (c) Fused spectrum comparison: Voting spectrum has cleaner peak, lower noise floor. Takeaway: η identifies energy concentration in breath band; ρ suppresses spurious-peak tones; product η·ρ ensures both hold simultaneously.](../../outputs/figures/paper_fig5_eta_rho_voting.png)
 
 > **Fig. 5 解读**: (a) 单个窗口 72 tone 的 η vs ρ 散点图，颜色=该 tone BPM 与 Voting 共识 BPM 的偏差，点大小 ∝ η·ρ 权重。右上角高 η 高 ρ 的 tone 偏差小（冷色），左下角低质量 tone 偏差大（暖色）。(b) BPM 直方图对比：等权（浅色）分布宽、峰低；η·ρ 加权投票（深色）峰更尖锐、置信度更高。实际数值：Voting BPM=8.00, Uniform BPM=8.86。(c) 融合频谱对比：η·ρ 加权谱（深色）噪声底更低、呼吸峰更突出。**结论**：η 和 ρ 互补——η 要求能量集中在呼吸频段，ρ 抑制有尖锐假峰的 tone，两者乘积作为质量权重有效。
 
-### 3.4 Stage 2a: BPM Branch — Equal Spectrum Fusion / BPM 分支：等权谱融合
+### 5.4 Stage 2a: BPM Branch — Equal Spectrum Fusion / BPM 分支：等权谱融合
 
 **EN**: [Formula: S_final = (S_remote + S_local + S_phase) / 3. Argmax + parabolic interpolation. Why equal weight: physical symmetry argument.]
 
 **CN**: [公式：S_final(f) = (S_remote(f) + S_local(f) + S_phase(f)) / 3。寻峰 + 抛物线插值。为什么等权：remote/local/phases 物理对等，不应预设哪一模态更优。实验证据：Equal (B1, 8.45%) 优于 Top2 (B3, 9.92%) 和 η-weight (B2, 9.45%)。]
 
-### 3.5 Stage 2b: Waveform Branch — Two-Level Hilbert-MRC / 波形分支：两级 Hilbert-MRC
+### 5.5 Stage 2b: Waveform Branch — Two-Level Hilbert-MRC / 波形分支：两级 Hilbert-MRC
 
 **EN**: [Level 1 formulas: Hilbert transform → analytic signal → cross-correlation phase → complex-plane rotation → weighted sum → real part. Level 2 formulas: same structure but across modals. Why complex-plane rotation ≠ time shift: no edge effects, continuous phase resolution.]
 
 **CN**: [Level 1（tone 级，72→1/模态）：Hilbert 变换 → 解析信号 → 互相关求相位差 → 复平面旋转（z' = z·e^{−jΔφ}）→ η·ρ·γ 加权叠加 → 取实部。Level 2（模态级，3→1）：同上结构，跨 remote/local/phase 执行。为什么复平面旋转 ≠ 时域平移：无边缘效应、保留所有样本、连续相位分辨率。]
 
-### 3.6 The "Unlocking" Interaction / "解锁器"交互效应
+### 5.6 The "Unlocking" Interaction / "解锁器"交互效应
 
 **EN**: [Experimental finding: A1-D ≈ A1 (no gain), Bγ→D = −1.46 pp (significant gain). Physical interpretation: sign correction leaves residual phase errors that pollute modal waveforms; Level-2 cannot recover from degraded input. Continuous phase at Level 1 preserves waveform fidelity → unlocks Level-2 gain. Cite Figure 4.]
 
@@ -255,15 +271,15 @@ $$
 
 ---
 
-## 4. Experimental Validation / 实验验证
+## 6. Experimental Validation / 实验验证
 
-### 4.1 Setup / 实验设置
+### 6.1 Setup / 实验设置
 
 **EN**: [CS metal-plate: 3 rooms, mechanical BPM ground truth. HKH: 3 rooms × 4 subjects, respiratory belt ground truth. Metrics: BPM absolute error, RMSE. Baseline methods listed.]
 
 **CN**: [CS 金属板：3 个房间，机械振动 BPM ground truth（可控、精确，但无波形 GT）。用于 §2–§3 的机制验证。HKH 真人：3 房间 × 4 受试者 = 12 条数据，呼吸带 ground truth。用于 §4 的效果验证。指标：BPM 绝对误差（breaths/min）、RMSE（波形 vs 呼吸带）。Baseline：B0 Single Remote, B1 Uniform Remote, Modal top2, T0-V3 Per-Tone Voting, WiFi MRC (Fan 2024), Zhuo2023 PCA-VMD。]
 
-### 4.2 BPM Accuracy (HKH) / BPM 精度（HKH）
+### 6.2 BPM Accuracy (HKH) / BPM 精度（HKH）
 
 **EN**: [B3 Simplified = 0.41 BPM mean abs error, Z1-no-VMD = 0.44, B2-D = 0.68, Fan2024 η-linear = 1.39. Cite Figure 6.]
 
@@ -275,7 +291,7 @@ $$
 
 > **Fig. 6 解读**: (上) 全 12 场景 BPM 排行榜。B3 Simplified（即 逐模态 Voting → 三模态等权谱融合）和 B1 Vote→Equal 并列最优，跨场景 mean abs error = 0.405 breaths/min，优于所有迁移 baseline（Zhuo2023 Z1-no-VMD 0.435, MRC-PCA 0.505）一个数量级优于 Fan 2024 系列（1.39–1.49）。(下) 按房间拆分：Room A（客厅）Zhuo2023 微弱领先（0.415 vs B3 0.405 在全量 aggregate 中），Room B+C（卧室）本项目方法系统性领先。
 
-### 4.3 Waveform Recovery Accuracy (HKH) / 波形恢复精度（HKH）
+### 6.3 Waveform Recovery Accuracy (HKH) / 波形恢复精度（HKH）
 
 **EN**: [B3 Simplified RMSE = 0.951 vs belt, B2-D same. Z1-no-VMD RMSE = 1.070. B3 is the only unified pipeline achieving both optimal BPM (0.41) and optimal waveform (0.951). Cite Figure 7.]
 
@@ -285,7 +301,7 @@ $$
 
 > **Fig. 7 解读**: BPM-RMSE 双指标散点图。每个点代表一个方法在 12 场景上的 (mean BPM abs error, mean RMSE)。B3 Simplified（★）位于左下角——同时实现最低 BPM 误差和最低 RMSE。B2-D Two-level Hilbert-MRC 波形 RMSE 同优 (0.950)，但 BPM 精度较差 (0.682)。Zhuo2023 Z1-no-VMD 在 BPM 上接近 (0.435)，但 RMSE 明显更差 (1.070)，因为其时域 PCA 对齐在低采样率下不可靠。
 
-### 4.4 Ablation Experiments / 消融实验
+### 6.4 Ablation Experiments / 消融实验
 
 **EN**: [Channel fusion: Voting > Single-best > Uniform. Modal fusion: Equal > Top2 > η-weight. Phase method: Hilbert two-level > single-level > sign-only. Cite Figure 8.]
 
@@ -297,13 +313,13 @@ $$
 
 > **Fig. 8 解读**: (上) HKH 消融排行榜：从 Single Remote baseline 到完整 B3 Simplified 管线的逐组件贡献。(下) CS 金属板跨域 waterfall 分解：η·ρ Voting 在 Uniform 基础上贡献最大单步增益；Hilbert 两级对齐与等权模态融合进一步降低误差。解锁器效应（§3.6）是解释性的关键：Hilbert 连续相位不是直接改善 BPM，而是通过保留波形保真度"解锁"第二级模态对齐的效能。
 
-### 4.5 Mechanism Validation (CS Metal-Plate) / 机制验证（CS 金属板）
+### 6.5 Mechanism Validation (CS Metal-Plate) / 机制验证（CS 金属板）
 
 **EN**: [Inter-tone phase (Figure 2). Inter-modal phase (Figure 3). Unlocking interaction (Figure 4). Quality voting (Figure 5).]
 
 **CN**: [信道间相位：PCA sign 有效但不完美，Hilbert 连续相位进一步改善（Figure 2）。模态间相位：三模态相位差场景依赖、逐窗浮动，per-window Hilbert 对齐有效解决（Figure 3）。解锁器效应：Level-2 增益依赖 Level-1 连续相位——符号校正 + Level-2 = 无增益，Hilbert + Level-2 = −1.46 pp（Figure 4）。η·ρ Voting 机制：质量加权直方图的峰值比等权直方图更尖锐、融合频谱噪声更低（Figure 5）。]
 
-### 4.6 Comparison with Prior Work / 与现有工作的比较
+### 6.6 Comparison with Prior Work / 与现有工作的比较
 
 **EN**: [WiFi MRC: 10.78%. Zhuo2023: 11.31%. B1: 8.45%. B3 on HKH: 0.41 BPM + 0.950 RMSE.]
 
@@ -319,7 +335,7 @@ $$
 
 ---
 
-## 5. Discussion / 讨论
+## 7. Discussion / 讨论
 
 **EN**: [Why spectral domain beats time domain at low sampling rates. Why equal weight is correct. Physical interpretation of unlocking effect. Limitations: complex multipath (091339), sequential sampling timing analysis [待确认]. Future: multi-person, apnea detection, dynamic branch selection.]
 
@@ -327,7 +343,7 @@ $$
 
 ---
 
-## 6. Conclusion / 结论
+## 8. Conclusion / 结论
 
 **EN**: [One paragraph summary. Reiterate three contributions.]
 
