@@ -205,7 +205,7 @@ $$
 $$
 含有多个有效成分的模型允许连续相位偏移。这是因为 $C_{d}$ 是复数，两个复数的夹角可以是任意的。因此，不同信道和不同模态可能产生指向复平面中不同方向的有效呼吸相量。
 
-我们将4.3 的实验结果中三个模态的信道波形的相位对齐，然后融合成一个，并把三个波形归一化后比较【图-3 （a）】。它们之间也存在非整周期的相位关系。这验证了我们的模型。通过将它们的相位旋转对齐，可以消除这种相位偏差 【图3-b】。同时，这种情况并非偶然现象，我们将该次金属板模拟的所有数据的做加窗处理，然后画出每个窗口内三模态的相位偏差【图3-c】，这些相位偏差几乎是完全随机的；对于另一个位置场景下的模拟，相位关系又完全不同于前一场景【图3-d】。这充分证明了本节论述的各模态见不稳定的相位关系。
+我们将4.3 的实验结果中三个模态的信道波形的相位对齐，然后融合成一个，并把三个波形归一化后比较【图-3 （a）】。它们之间也存在非整周期的相位关系。这验证了我们的模型。通过将它们的相位旋转对齐，可以消除这种相位偏差 【图3-b】。同时，这种情况并非偶然现象，我们将该次金属板模拟的所有数据的做加窗处理，然后画出每个窗口内三模态的相位偏差【图3-c】，这些相位偏差几乎是完全随机的；对于另一个位置场景下的模拟，相位关系又完全不同于前一场景【图3-d】。这充分证明了本节论述的各模态间不稳定的相位关系。
 
 
 
@@ -217,9 +217,7 @@ $$
 
 ## 5. Proposed Method: BreatheCS / 提出方法：BreatheCS
 
-> **同步说明（2026-07-24）**：本节中文正文与公式已与英文 LaTeX（`wang26csdf.tex` §V，B3 Simplified 双分支）对齐。小标题：Channel-level fusion / Modal-level fusion。波形分支仅保留相位旋转 + $\eta\cdot\rho$（或模态 $\eta$）质量加权，不含 coherence / $\gamma$ 项；主 BPM 来自等权谱融合，非波形 PSD。
-
-本节提出 BreatheCS：面向 BLE CS 呼吸感知的统一双分支管线。目标是在同一套低采样率、多信道、三模态观测上，同时给出稳健的呼吸率估计与连续呼吸波形。下文中“信道 / tone”指某一模态内 $N=72$ 路 PCT 导出的 CS 信道观测，$m\in\{l,r,\phi\}$。
+本节提出 BreatheCS：面向 BLE CS 呼吸感知的统一双分支管线。目标是在同一套低采样率、多信道、三模态观测上，同时给出稳健的呼吸率估计与连续呼吸波形。
 
 ### 5.1 Design Rationale / 设计动机
 
@@ -227,19 +225,17 @@ $$
 
 BreatheCS 用共享前端 + 两条专用分支应对这两个目标：
 
-1. **共享前端**：逐 tone 质量估计，互补指标 $\eta$（呼吸频段能量比）与 $\rho$（谱峰峰度），同时服务于谱加权与波形 MRC 权重。
-2. **BPM 分支**：逐模态 $\eta\cdot\rho$ 加权谱融合，再对三模态做等权谱融合。
-3. **波形分支**：两级 Hilbert 相干 MRC（HiCo-MRC）——先在模态内做 tone 级对齐，再跨 remote/local/phase 做模态级对齐。
-
-这一分离直接来自 §3（低采样率）与 §4（连续残余相位）：谱域分支耐受低采样率；波形分支补偿 $\pm 1$ 符号校正无法消除的连续相位。
+1. **共享前端**：逐信道质量估计，采用互补的指标 $\eta$（呼吸频段能量比）与 $\rho$（谱峰峰度）构成权重，同时服务于谱加权与波形 MRC 权重。
+2. **BPM 分支**：逐信道加权谱融合，再对三模态做加权谱融合。
+3. **波形分支**：两级 Hilbert 相干 MRC：先在模态内做channel级对齐，再跨 remote/local/phase 做模态级对齐。
 
 ### 5.2 Preprocessing / 预处理
 
-为保证公平对比，本文方法与所有 baseline 共用同一预处理链。对每个 tone、三种变量：短窗中值滤波 → $0.05\,\mathrm{Hz}$ 高通去缓变漂移 → $0.1$--$0.35\,\mathrm{Hz}$ 呼吸带通。相位变量在滤波前先做 unwrap。随后以 $20\,\mathrm{s}$ 窗长、$1\,\mathrm{s}$ 步长滑窗处理。记模态 $m$、tone $i$ 的带通波形为 $x_{m,i}(t)$。
+对每个 tone、三种变量：短窗中值滤波 → $0.05\,\mathrm{Hz}$ 高通去缓变漂移 → $0.1$--$0.35\,\mathrm{Hz}$ 呼吸带通。相位变量在滤波前先做 unwrap。随后以 $20\,\mathrm{s}$ 窗长、$1\,\mathrm{s}$ 步长滑窗处理。记模态 $m$、信道$i$ 的带通波形为 $x_{m,i}(t)$。
 
 ### 5.3 Stage 1: Per-Modal Channel Quality and Weighted Spectra / 逐模态信道质量与加权谱
 
-在进入任一分支前，为每个 tone 赋予反映呼吸频段主导性与峰值可靠性的质量分数。设 $P_{m,i}(f)$ 为（$\eta$ 用高通、$\rho$ 与 BPM 谱用带通）tone 功率谱，$\mathcal{F}_b$ 为呼吸频段，$\mathcal{F}$ 为分析频段：
+在进入任一分支前，为每个 tone 赋予反映呼吸频段主导性与峰值可靠性的质量分数。设 $P_{m,i}(f)$ 为（$\eta$ 用高通、$\rho$ 与 BPM 谱用带通）信道 功率谱，$\mathcal{F}_b$ 为呼吸频段，$\mathcal{F}$ 为分析频段：
 
 $$
 \eta_{m,i}
@@ -277,7 +273,11 @@ $$
 
 （LaTeX: `eq:eta_rho_weight`）
 
-乘积 $\eta\cdot\rho$ 互补：$\eta$ 要求能量集中在呼吸频段，$\rho$ 抑制带内能量被尖锐假峰主导的 tone；两者缺一不可。
+
+
+呼吸能量比 $\eta$ 反映呼吸频段在频带内的集中程度，$\rho$ 可以进一步估计呼吸频带内主峰的主导程度，抑制带内能量被尖锐假峰主导的信道权重。最终权重为两者的乘积 $w$。
+
+
 
 记 $S_{m,i}(f)$ 为模态 $m$、tone $i$ 的带通幅度谱。逐模态融合谱为质量加权平均：
 
@@ -289,18 +289,14 @@ $$
 
 （LaTeX: `eq:weighted_spectrum`）
 
-![Figure 5: eta-rho quality voting mechanism](../../outputs/figures/paper_fig5_eta_rho_voting.png)
+### 5.4 Stage 2a: BPM Branch — Weighted Spectrum Fusion / BPM 分支：加权谱融合
 
-> **Fig. 5 解读**: (a) 单窗 72 tone 的 $\eta$ vs $\rho$：高 $\eta$/高 $\rho$ tone 与共识 BPM 一致。(b) 直方图：$\eta\cdot\rho$ 加权峰更尖。(c) 加权谱噪声底更低、呼吸峰更突出。**结论**：$\eta$ 与 $\rho$ 互补，乘积作质量权重有效。注：直方图投票标量在 B3 Simplified 中主要用于机制示意/诊断；**最终 BPM 由加权谱等权模态融合寻峰得到**。
-
-### 5.4 Stage 2a: BPM Branch — Equal Spectrum Fusion / BPM 分支：等权谱融合
-
-remote / local / phase 物理上不同但先验对称，估计 BPM 时不预设任一模态更优。三模态谱等权融合：
+BLE CS 的PCT测量提供三种模态。在对三种模态的信道融合、模态之间的融合，然后估计 BPM 时，我们基于权重动态地决定每个窗口三模态的话语权，不预设任一模态更优。最后，三个模态的谱按其权重融合为一个：
 
 $$
 S_{\mathrm{final}}(f)
 =
-\frac{1}{3}\bigl(\bar{S}_{r}(f)+\bar{S}_{l}(f)+\bar{S}_{\phi}(f)\bigr)
+\frac{1}{3}\bigl(w_r\bar{S}_{r}(f)+w_l\bar{S}_{l}(f)+w_{\phi}\bar{S}_{\phi}(f)\bigr)
 $$
 
 （LaTeX: `eq:equal_spectrum`）
@@ -324,7 +320,13 @@ $$
 
 （LaTeX: `eq:bpm_peak`）
 
-该谱域分支是 BreatheCS 的**主 BPM 输出**。它继承质量加权信道融合的稳健性，并避免 $\sim 2\,\mathrm{Hz}$ 采样率下脆弱的时域对齐。实验上，等权模态融合优于 Top-2 与 $\eta$-加权模态融合，与 §4 的物理对称论证一致。
+该谱域分支是 BreatheCS 的**主 BPM 输出**。它继承质量加权信道融合的稳健性，并避免低采样率下脆弱的时域对齐。
+
+我们在金属板数据上对$w$ 的信道选择效果予以验证【图5】。【图5-b】显示，通过权重$w$对信道的抑制和增强，在估计BPM时，所得到的频谱投票结果要更集中于groundtruth 附近。
+
+![Figure 5: eta-rho quality voting mechanism](../../outputs/figures/paper_fig5_eta_rho_voting.png)
+
+> **Fig. 5 解读**: (a) 单窗 72 tone 的 $\eta$ vs $\rho$：高 $\eta$/高 $\rho$ tone 与共识 BPM 一致。(b) 直方图：$\eta\cdot\rho$ 加权峰更尖。(c) 加权谱噪声底更低、呼吸峰更突出。**结论**：$\eta$ 与 $\rho$ 互补，乘积作质量权重有效。注：直方图投票标量在 B3 Simplified 中主要用于机制示意/诊断；**最终 BPM 由加权谱等权模态融合寻峰得到**。
 
 ### 5.5 Stage 2b: Waveform Branch — Two-Level Hilbert-MRC / 波形分支：两级 Hilbert-MRC
 
@@ -359,7 +361,7 @@ $$
 
 #### Channel-level fusion / 信道级融合
 
-对每个模态 $m$，按质量选参考 tone：
+对每个模态 $m$，按质量选参考 信道：
 
 $$
 i_m^\star=\arg\max_i w_{m,i}
@@ -393,7 +395,7 @@ $$
 
 （LaTeX: `eq:level1_mrc`）
 
-复平面旋转优于时移：无边缘截断、保留全部样本，并补偿 $\pm 1$ 无法消除的连续相位。融合权重即 BPM 分支共用的 $\eta\cdot\rho$ 质量分，**不再引入相干度 $\gamma$ 或 coherence gate**。
+复平面旋转能补偿符号校正剩余的连续相位偏差。各个波形的融合则参考MRC（最大比合并）的思想【参考预留】，为各个波形按$w$ 赋予权重。MRC 为各个信道赋予等比于自身信噪比（SNR）的权重，以最大化提升整体的信噪比。在BreatheCS 中，我们用呼吸能量权重$w$ 模拟SNR在MRC的功能。
 
 #### Modal-level fusion / 模态级融合
 
@@ -413,13 +415,9 @@ $$
 
 （LaTeX: `eq:level2_mrc`）
 
-$y_{\mathrm{final}}(t)$ 是 BreatheCS 的主波形输出。其频谱仅作诊断保留，**不作为主 BPM**。
+$y_{\mathrm{final}}(t)$ 是 BreatheCS 的主波形输出，用于呼吸波形的恢复。
 
-### 5.6 The Unlocking Interaction / “解锁器”交互效应
-
-关键实验发现：仅当第一级使用连续 Hilbert 相位校正时，第二级模态对齐才有效。金属板跨域评估中：符号校正第一级 + 第二级几乎无增益（A1-D $\approx$ A1）；Hilbert 第一级 + 第二级约再降 $1.46$ 个百分点相对 BPM 误差。解释与 §4 残余相位模型一致：$\pm 1$ 残留的非二值相位误差污染各模态波形后，第二级无法从已退化输入中恢复；第一级连续对齐保住波形保真度，从而“解锁”模态级相干融合收益。因此波形分支在两级均保留 Hilbert 对齐，即便 BPM 分支本身走谱域。
-
-> ⚠️ **Fig. 4 状态**：解锁器消融矩阵数据已有（CS 三场景跨域：A0=12.33%, A0-D=11.09%, A1=11.06%, A1-D=11.15% [无效], Bγ=10.89%, B2-D=9.43% [有效]），论文风格消融矩阵图尚未生成。
+> 
 
 ---
 
@@ -427,15 +425,37 @@ $y_{\mathrm{final}}(t)$ 是 BreatheCS 的主波形输出。其频谱仅作诊断
 
 ### 6.1 Setup / 实验设置
 
-**EN**: [CS metal-plate: 3 rooms, mechanical BPM ground truth. HKH: 3 rooms × 4 subjects, respiratory belt ground truth. Metrics: BPM absolute error, RMSE. Baseline methods listed.]
+> **EN**: [CS metal-plate: 3 rooms, mechanical BPM ground truth. HKH: 3 rooms × 4 subjects, respiratory belt ground truth. Metrics: BPM absolute error, RMSE. Baseline methods listed.]
+>
+> **CN**: [CS 金属板：3 个房间，机械振动 BPM ground truth（可控、精确，但无波形 GT）。用于 §2–§3 的机制验证。HKH 真人：3 房间 × 4 受试者 = 12 条数据，呼吸带 ground truth。用于 §4 的效果验证。指标：BPM 绝对误差（breaths/min）、RMSE（波形 vs 呼吸带）。Baseline：B0 Single Remote, B1 Uniform Remote, Modal top2, T0-V3 Per-Tone Voting, WiFi MRC (Fan 2024), Zhuo2023 PCA-VMD。]
 
-**CN**: [CS 金属板：3 个房间，机械振动 BPM ground truth（可控、精确，但无波形 GT）。用于 §2–§3 的机制验证。HKH 真人：3 房间 × 4 受试者 = 12 条数据，呼吸带 ground truth。用于 §4 的效果验证。指标：BPM 绝对误差（breaths/min）、RMSE（波形 vs 呼吸带）。Baseline：B0 Single Remote, B1 Uniform Remote, Modal top2, T0-V3 Per-Tone Voting, WiFi MRC (Fan 2024), Zhuo2023 PCA-VMD。]
+为验证 BreatheCS 的效果，我们采集了4位subjects 的真人呼吸数据。实验共分三个场景，均为常见的室内环境：客厅的静坐，卧室的平躺、卧室的侧躺【图-实验场景】。在每个场景中，我们要求受试者佩戴HKH-11C呼吸传感器采集真实的呼吸波形。两个BLE CS 设备被安置于受试者附近，且装载6dbi 的天线。BLE CS 的平台是支持 BLE 6.0 的 Nordic nrf54L15。
 
-### 6.2 BPM Accuracy (HKH) / BPM 精度（HKH）
+我们从BLE CS initiator 一侧收集数据，因此， local PCT 即为 initiator 所测得的reflector 所发射的CS tone ，remote PCT 即为reflector 的数据。在一次CS event  结束后，reflector 将remotePCT发回 initiator，随后两侧PCT通过串口上传到我们自行设计的PC上位机。单个event数据传输的时间经过测量小于20ms. 
+
+在BLE CS的配置中，我们启用了全部72个信道，并将事件最短事件间隔设置为250ms 。但经过我们大量实验，这个参数无法在长期CS测量中稳定维持。通过将事件的最大执行时间限制设置为250-500ms，CS可以得到稳定执行。
+
+### 6.2 Baseline /比较基线
+
+基于BLE CS 的无线感知研究较为早期，据我们所知，目前尚未有比较全面的呼吸感知算法研究。基于WIFI等其他传感器的无线呼吸感知则比较完善，许多专门的信号处理和信噪比增强的方案都已得到讨论【参考预留】。在现有的基于商用设备的呼吸感知中，对于信道的融合和模态的融合已有考虑，但它们通常无法直接迁移到BLE CS上作为比较基线。
+
+较低的采样率、独有的双向PCT合成是BLE的特殊之处。现有的无线呼吸感知技术中，缺乏专门针对此特征的处理方案。为此，我们专门针对近期的各类呼吸感知工作做出针对性调整，以和我们所提出的BreatheCS做公正合理的比较。
+
+Fan 等人【Fan2024】 先计算各信道呼吸能量比（BNR），然后用MRC做多信道的加权合并。在最终决定用幅值还是相位候选时，依照BNR选择最大的一个作为最终波形。所以在我们的迁移复现中，第二阶段依最大能量比从三模态选择一个 ，与其保持一致。
+
+一些工作使用两个天线的CSI ratio 作为原始数据，信号预处理阶段有时涉及寻找CSI ratio 的最大投影方向以增强波形的显著性【Farsense 等】。这类步骤在BLE CS上无法复现，因为 BLE CS 的幅值-相位信息并不属于同一个设备。除去这一步之外，多信道的融合策略也有使用PCA【Zhuo 2023】、MRC+PCA【wi-sleep（yu2021）】的方案，这些步骤及其后续部分可以作为baseline 参与比较。
+
+为了进一步挖掘各方案的优势，对于在信号后处理部分具有独特做法的（例如zhuo 2023使用VMD获得频率成分），除了原样复现的对照外，还会有只包含融合部分的变体参与比较，以研究各部分的优势。
+
+由于BLE CS 的低采样率特性，我们为所有baseline 部署于 BreathCS 一致的预处理步骤（即章节5.2），然后，比较主要在在信道级融合与模态级融合的差异，并最终体现在BPM估计误差和恢复的波形与groundtruth的RMSE上。
+
+### 6.3 BPM Accuracy (HKH) / BPM 精度（HKH）
 
 **EN**: [B3 Simplified = 0.41 BPM mean abs error, Z1-no-VMD = 0.44, B2-D = 0.68, Fan2024 η-linear = 1.39. Cite Figure 6.]
 
 **CN**: [主结果（12-scenario aggregate）：B3 Simplified = B1 Vote→Equal = **0.405** BPM mean abs error（最优），Zhuo2023 Z1-no-VMD = 0.435，MRC-PCA η-equal PCA3→1 = 0.505，B2-D Two-level Hilbert-MRC = 0.682，Fan 2024 η-linear = 1.386。引用 Figure 6。]
+
+
 
 ![Figure 6: HKH BPM leaderboard — 10 methods × 12 scenarios (3 rooms × 4 subjects). B3 Simplified (逐模态 Voting → 三模态等权谱融合) achieves lowest BPM error (0.405 breaths/min).](../../outputs/figures/ble_hkh_paper_baselines_leaderboard_all.png)
 
@@ -443,7 +463,7 @@ $y_{\mathrm{final}}(t)$ 是 BreatheCS 的主波形输出。其频谱仅作诊断
 
 > **Fig. 6 解读**: (上) 全 12 场景 BPM 排行榜。B3 Simplified（即 逐模态 Voting → 三模态等权谱融合）和 B1 Vote→Equal 并列最优，跨场景 mean abs error = 0.405 breaths/min，优于所有迁移 baseline（Zhuo2023 Z1-no-VMD 0.435, MRC-PCA 0.505）一个数量级优于 Fan 2024 系列（1.39–1.49）。(下) 按房间拆分：Room A（客厅）Zhuo2023 微弱领先（0.415 vs B3 0.405 在全量 aggregate 中），Room B+C（卧室）本项目方法系统性领先。
 
-### 6.3 Waveform Recovery Accuracy (HKH) / 波形恢复精度（HKH）
+### 6.4 Waveform Recovery Accuracy (HKH) / 波形恢复精度（HKH）
 
 **EN**: [B3 Simplified RMSE = 0.951 vs belt, B2-D same. Z1-no-VMD RMSE = 1.070. B3 is the only unified pipeline achieving both optimal BPM (0.41) and optimal waveform (0.951). Cite Figure 7.]
 
@@ -453,7 +473,7 @@ $y_{\mathrm{final}}(t)$ 是 BreatheCS 的主波形输出。其频谱仅作诊断
 
 > **Fig. 7 解读**: BPM-RMSE 双指标散点图。每个点代表一个方法在 12 场景上的 (mean BPM abs error, mean RMSE)。B3 Simplified（★）位于左下角——同时实现最低 BPM 误差和最低 RMSE。B2-D Two-level Hilbert-MRC 波形 RMSE 同优 (0.950)，但 BPM 精度较差 (0.682)。Zhuo2023 Z1-no-VMD 在 BPM 上接近 (0.435)，但 RMSE 明显更差 (1.070)，因为其时域 PCA 对齐在低采样率下不可靠。
 
-### 6.4 Ablation Experiments / 消融实验
+### 6.5 Ablation Experiments / 消融实验
 
 **EN**: [Channel fusion: Voting > Single-best > Uniform. Modal fusion: Equal > Top2 > η-weight. Phase method: Hilbert two-level > single-level > sign-only. Cite Figure 8.]
 
@@ -492,6 +512,14 @@ $y_{\mathrm{final}}(t)$ 是 BreatheCS 的主波形输出。其频谱仅作诊断
 **EN**: [Why spectral domain beats time domain at low sampling rates. Why equal weight is correct. Physical interpretation of unlocking effect. Limitations: complex multipath (091339), sequential sampling timing analysis [待确认]. Future: multi-person, apnea detection, dynamic branch selection.]
 
 **CN**: [为什么频谱域在低采样率下优于时域：20 s 窗口仅含 ~4 周期，时域对齐的相位估计方差大；|FFT| 丢弃时间信息后对对齐不敏感。为什么等权是正确的：remote/local/phases 物理对等，预设偏好反而引入场景过拟合。解锁器效应的物理含义：连续相位保真度从前端传递到后端的信息论解释 [待确认]。不足：复杂多径（cs_091339）是全局瓶颈，tone 间相干性系统性偏低；顺序采样的精确时序分析仍需进一步工作。未来方向：多人呼吸、呼吸暂停检测、per-window 动态分支选择（根据当前窗口的信号质量在 BPM 和波形分支间自适应切换）。]
+
+
+
+### 5.6 The Unlocking Interaction / “解锁器”交互效应
+
+关键实验发现：仅当第一级使用连续 Hilbert 相位校正时，第二级模态对齐才有效。金属板跨域评估中：符号校正第一级 + 第二级几乎无增益（A1-D $\approx$ A1）；Hilbert 第一级 + 第二级约再降 $1.46$ 个百分点相对 BPM 误差。解释与 §4 残余相位模型一致：$\pm 1$ 残留的非二值相位误差污染各模态波形后，第二级无法从已退化输入中恢复；第一级连续对齐保住波形保真度，从而“解锁”模态级相干融合收益。因此波形分支在两级均保留 Hilbert 对齐，即便 BPM 分支本身走谱域。
+
+> ⚠️ **Fig. 4 状态**：解锁器消融矩阵数据已有（CS 三场景跨域：A0=12.33%, A0-D=11.09%, A1=11.06%, A1-D=11.15% [无效], Bγ=10.89%, B2-D=9.43% [有效]），论文风格消融矩阵图尚未生成。
 
 ---
 
