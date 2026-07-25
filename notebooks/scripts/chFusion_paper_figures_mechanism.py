@@ -374,8 +374,8 @@ def generate_fig2(
 
     for col, (title, data) in enumerate(
         [
-            ("(a) Raw bandpass (z-scored)", raw),
-            ("(b) After ±1 sign correction", pca_sign),
+            ("(a)", raw),
+            ("(b)", pca_sign),
         ]
     ):
         ax = fig.add_subplot(gs[0, col])
@@ -390,29 +390,25 @@ def generate_fig2(
     ax = fig.add_subplot(gs[1, :])
     for i, lab in enumerate(labels):
         ax.plot(t, hilbert_aligned[i], color=colors[i], label=lab, alpha=0.85)
-    ax.set_title("(c) After Hilbert continuous phase alignment")
+    ax.set_title("(c)")
     ax.set_xlabel("Time (s)")
     ax.set_ylabel("Amplitude")
     ax.legend(loc="upper right", fontsize=7)
 
     ax_g = fig.add_subplot(gs[2, 0])
     im0 = ax_g.imshow(gamma_good, cmap="viridis", vmin=0, vmax=1, aspect="auto")
-    ax_g.set_title(f"(d) Tone-pair γ — {good_id} (good)")
+    ax_g.set_title(f"(d) {good_id}")
     ax_g.set_xlabel("Tone rank (η·ρ ↓)")
     ax_g.set_ylabel("Tone rank (η·ρ ↓)")
     fig.colorbar(im0, ax=ax_g, fraction=0.046, pad=0.04)
 
     ax_h = fig.add_subplot(gs[2, 1])
     im1 = ax_h.imshow(gamma_hard, cmap="viridis", vmin=0, vmax=1, aspect="auto")
-    ax_h.set_title(f"(d) Tone-pair γ — {hard_id} (hard)")
+    ax_h.set_title(f"(e) {hard_id}")
     ax_h.set_xlabel("Tone rank (η·ρ ↓)")
     ax_h.set_ylabel("Tone rank (η·ρ ↓)")
     fig.colorbar(im1, ax=ax_h, fraction=0.046, pad=0.04)
 
-    fig.suptitle(
-        f"Figure 2: Inter-tone phase relationship  [{good_id}/{seg_name}/win{window_idx}]",
-        y=1.01,
-    )
     _save_figure(fig, "paper_fig2_inter_tone_phase")
     plt.close(fig)
 
@@ -610,7 +606,7 @@ def generate_fig3(
     for k in ("remote", "local", "phase"):
         if k in before:
             ax.plot(t, before[k], color=colors[k], label=k, alpha=0.9)
-    ax.set_title("(a) Level-1 modal waveforms (before Level-2 align)")
+    ax.set_title("(a)")
     ax.set_xlabel("Time (s)")
     ax.set_ylabel("Amplitude")
     ax.legend()
@@ -622,7 +618,7 @@ def generate_fig3(
             ax.plot(t, after[k], color=colors[k], label=k, alpha=0.85)
     if y_fused.size:
         ax.plot(t, y_fused, color="k", linewidth=2.2, label="fused", zorder=5)
-    ax.set_title("(b) After Level-2 Hilbert + η·γ fusion")
+    ax.set_title("(b)")
     ax.set_xlabel("Time (s)")
     ax.set_ylabel("Amplitude")
     ax.set_ylim(ylim)
@@ -633,7 +629,7 @@ def generate_fig3(
     for i, lab in enumerate(pair_labels):
         ax.plot(x, dphi1[:, i], color=pair_colors[i], label=lab, alpha=0.9)
     ax.axhline(0, color="gray", lw=0.8, ls="--")
-    ax.set_title(f"(c) Cross-window Δφ — {s1}")
+    ax.set_title(f"(c) {s1}")
     ax.set_xlabel("Window index")
     ax.set_ylabel("Δφ (rad)")
     ax.legend(fontsize=7)
@@ -643,12 +639,11 @@ def generate_fig3(
     for i, lab in enumerate(pair_labels):
         ax.plot(x2, dphi2[:, i], color=pair_colors[i], label=lab, alpha=0.9)
     ax.axhline(0, color="gray", lw=0.8, ls="--")
-    ax.set_title(f"(d) Cross-window Δφ — {s2}")
+    ax.set_title(f"(d) {s2}")
     ax.set_xlabel("Window index")
     ax.set_ylabel("Δφ (rad)")
     ax.legend(fontsize=7)
 
-    fig.suptitle("Figure 3: Inter-modal phase relationship", y=1.01)
     fig.tight_layout()
     _save_figure(fig, "paper_fig3_inter_modal_phase")
     plt.close(fig)
@@ -754,7 +749,7 @@ def generate_fig5(
         )
     ax.set_xlabel("η (energy ratio)")
     ax.set_ylabel("ρ (peak prominence)")
-    ax.set_title("(a) Per-tone η vs ρ")
+    ax.set_title("(a)")
     cbar = fig.colorbar(sc, ax=ax, fraction=0.046, pad=0.04)
     cbar.set_label("|BPM_i − BPM_voted|")
 
@@ -785,7 +780,7 @@ def generate_fig5(
         ax.axvline(bpm_voted, color="#1f77b4", ls="-", lw=1.8, label=f"Voting BPM={bpm_voted:.1f}")
     ax.set_xlabel("BPM")
     ax.set_ylabel("Count / scaled weight")
-    ax.set_title("(b) BPM histogram")
+    ax.set_title("(b)")
     ax.legend(fontsize=7)
 
     ax = axes[2]
@@ -793,13 +788,9 @@ def generate_fig5(
     ax.plot(band_freqs, s_voting, color="#1f77b4", label="S_voting (η·ρ)", alpha=0.9)
     ax.set_xlabel("Frequency (Hz)")
     ax.set_ylabel("Normalized power")
-    ax.set_title("(c) Fused spectrum")
+    ax.set_title("(c)")
     ax.legend(fontsize=7)
 
-    fig.suptitle(
-        f"Figure 5: η·ρ quality voting  [{sid}/{seg_name}/win{window_idx}]",
-        y=1.02,
-    )
     fig.tight_layout()
     _save_figure(fig, "paper_fig5_eta_rho_voting")
     plt.close(fig)
@@ -942,10 +933,6 @@ def generate_figS1(
     ax.set_xlabel("Window index")
     ax.set_ylabel(f"γ (tone {t_i}, {t_j})")
     ax.set_ylim(0, 1.05)
-    ax.set_title(
-        f"Figure S1: Tone-pair coherence stability  (pair={t_i},{t_j}; "
-        f"segs {seg_g}/{seg_h})"
-    )
     ax.legend()
     fig.tight_layout()
     _save_figure(fig, "paper_figS1_coherence_stability")

@@ -323,10 +323,23 @@ def plot_paper_ablation_grouped(
 
 | 字段 | 内容 |
 |------|------|
-| **验证状态** | 待实现 |
-| **实际脚本** | — |
-| **报告链接** | — |
-| **一句话结论** | — |
+| **验证状态** | 已完成 |
+| **实际脚本** | `notebooks/scripts/chFusion_paper_figure_redraw.py`；`src/ble_analysis/paper_naming.py` |
+| **报告链接** | `docs/reports/paper_figure_redraw_report.md` |
+| **一句话结论** | 第六章结果图已按论文名称重绘；BreatheCS BPM=0.405（谱分支）；RMSE 表已写入 draft；Single Remote 因缺 HKH abs-BPM 数据未入 Fig 6a |
+
+实际产出路径：
+- 脚本：`notebooks/scripts/chFusion_paper_figure_redraw.py`
+- 模块：`src/ble_analysis/paper_naming.py`
+- 数值结果：`outputs/reports/paper_figure_redraw_results.json`、`outputs/reports/paper_fig6_4_rmse_table.md`
+- 图表：`outputs/figures/paper_fig6a_*.png/.pdf`、`paper_fig6b_*`、`paper_fig7_*`、`paper_fig8a_*`（含 faceted）、`paper_fig8b_*`
+- 报告：`docs/reports/paper_figure_redraw_report.md`
+- Draft：`docs/plans/paper_draft_skeleton.md` §6.3–§6.5 已更新图引用
+
+遗留问题：
+- Single (Remote) 未入 Fig 6a（数据缺失）
+- Fig 8a grouped vs faceted 待用户择一
+- Phase 消融组中谱方法与波形方法 BPM 并列时需正文说明口径
 
 ---
 

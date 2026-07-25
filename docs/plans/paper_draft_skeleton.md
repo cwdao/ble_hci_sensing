@@ -4,7 +4,7 @@
 
 > **DRAFT v0.3** — 骨架稿 + 已插入可用配图。每节仅写核心句子。先英后中。细节由用户补充。  
 > **日期**：2026-07-18  
-> **配图状态**：Fig 2 ✅ | Fig 3 ✅ | Fig 4 ❌ (数据已有，图未生成) | Fig 5 ✅ | Fig 6 ✅ | Fig 7 ✅ | Fig 8 ✅ | Fig S1 ✅ | Fig 1 ❌ (需手绘架构图)
+> **配图状态**：Fig 2 ✅ | Fig 3 ✅ | Fig 4 ❌ (数据已有，图未生成) | Fig 5 ✅ | Fig 6 ✅ (论文名重绘) | Fig 7 ✅ (论文名重绘) | Fig 8 ✅ (论文名重绘；8a 含 grouped+faceted) | Fig S1 ✅ | Fig 1 ❌ (需手绘架构图)
 
 ---
 
@@ -151,7 +151,7 @@ $$
 
 因此，本文将信道间关系建模为二值主符号关系与逐窗口连续残余相位的组合，并通过复平面旋转进行补偿。
 
-![Figure 2: Inter-tone phase relationship — (a) 4 tones raw bandpass waveforms, (b) after PCA sign correction (±1 only), (c) after Hilbert continuous phase alignment → near-perfect overlap, (d) 72×72 coherence matrix γ_ij (good scenario cs_095806 | hard scenario cs_091339). Takeaway: Fresnel ±1 is the first-order baseline; sequential sampling introduces additional continuous phase offsets that only Hilbert alignment can compensate.](../../outputs/figures/paper_fig2_inter_tone_phase.png)
+![Figure 2: Inter-tone phase relationship. (a) Raw bandpass; (b) after ±1 sign; (c) after Hilbert; (d–e) 72×72 γ heatmaps (good/hard). Fresnel ±1 is first-order; sequential sampling needs continuous phase.](../../outputs/figures/paper_fig2_inter_tone_phase.png)
 
 > **Fig. 2 解读**: (a) 4 个代表 tone（#58 ref, #48 同相 γ≈0.83, #45 反相 Δφ≈π, #69 中间相位 Δφ≈−0.83）的原始带通波形叠加。(b) PCA ±1 符号校正后：反相 tone 被翻转，但中间相位 tone 仍有明显残余错位。(c) Hilbert 连续相位对齐后：四条波形近乎完美重合。(d) 72×72 tone-pair 相干性热力图：cs_095806（左，good）左上角高 γ 结构密集；cs_091339（右，hard）整体 γ 更低且碎片化。**结论**：菲涅尔区 ±1 是有效的一阶近似，但顺序采样引入了超越 ±1 的连续相位分量，Hilbert 对齐可进一步补偿。另见 [Figure S1](#supplementary-figure-s1) 跨窗口 γ 稳定性对比。
 
@@ -209,7 +209,7 @@ $$
 
 
 
-![Figure 3: Inter-modal phase relationship — (a) Three modal waveforms after Level-1 fusion, BEFORE Level-2 alignment, (b) AFTER Level-2 Hilbert alignment + η-weighted fusion, (c) cross-window Δφ time series (cs_095806), (d) same Δφ plot for different room (cs_102621). Takeaway: modal-to-modal phase is non-fixed, scene-dependent, and per-window Hilbert alignment effectively resolves it.](../../outputs/figures/paper_fig3_inter_modal_phase.png)
+![Figure 3: Inter-modal phase relationship. (a) Before Level-2 align; (b) after Level-2 Hilbert + η fusion; (c–d) cross-window Δφ in two rooms. Modal phase is non-fixed and scene-dependent.](../../outputs/figures/paper_fig3_inter_modal_phase.png)
 
 > **Fig. 3 解读**: (a) 三模态（remote/local/phase）经 Level-1 Hilbert tone 融合后的波形，Level-2 对齐前可见明显相位差异。(b) Level-2 Hilbert 对齐 + $\eta$ 加权融合后：三波形对齐，融合波形（粗黑线）跟踪一致性。(c) cs_095806 全 segment 跨窗模态间相位差 Δφ 序列：Δφ 非固定，逐窗浮动。(d) cs_102621（不同房间）同款图：Δφ 基线不同，确认模态间相位关系场景依赖。**结论**：模态相位不可预设，必须每窗估计，等权融合是正确的先验。
 
@@ -324,7 +324,7 @@ $$
 
 我们在金属板数据上对$w$ 的信道选择效果予以验证【图5】。【图5-b】显示，通过权重$w$对信道的抑制和增强，在估计BPM时，所得到的频谱投票结果要更集中于groundtruth 附近。
 
-![Figure 5: eta-rho quality voting mechanism](../../outputs/figures/paper_fig5_eta_rho_voting.png)
+![Figure 5: η·ρ quality voting. (a) Per-tone η vs ρ; (b) BPM histogram uniform vs voting; (c) fused spectrum.](../../outputs/figures/paper_fig5_eta_rho_voting.png)
 
 > **Fig. 5 解读**: (a) 单窗 72 tone 的 $\eta$ vs $\rho$：高 $\eta$/高 $\rho$ tone 与共识 BPM 一致。(b) 直方图：$\eta\cdot\rho$ 加权峰更尖。(c) 加权谱噪声底更低、呼吸峰更突出。**结论**：$\eta$ 与 $\rho$ 互补，乘积作质量权重有效。注：直方图投票标量在 B3 Simplified 中主要用于机制示意/诊断；**最终 BPM 由加权谱等权模态融合寻峰得到**。
 
@@ -463,13 +463,13 @@ Fan 等人【Fan2024】 先计算各信道呼吸能量比（BNR），然后用MR
 
 （简化代号，让图更清晰。或者我们干脆在正文里对各个方案详细表述，然后表格中只放简化的代号，比如 zhuo 23 ,zhuo23-a 这种。或者干脆就考虑其他展示方式，表格会好一些还是更差一些呢）
 
+> **配图更新（执行侧）**：已按论文名重绘；BreatheCS BPM=0.405（谱分支）；Fig 6b 与 Fig 6a 同方法集（含 ClessBreath）。图内无标题，说明见题注。
 
+![Figure 6a: HKH BPM leaderboard across 12 scenarios. BreatheCS (spectral BPM, ★) = 0.405 breaths/min mean abs error; paper method names.](../../outputs/figures/paper_fig6a_bpm_leaderboard.png)
 
-![Figure 6: HKH BPM leaderboard — 10 methods × 12 scenarios (3 rooms × 4 subjects). B3 Simplified (逐模态 Voting → 三模态等权谱融合) achieves lowest BPM error (0.405 breaths/min).](../../outputs/figures/ble_hkh_paper_baselines_leaderboard_all.png)
+![Figure 6b: HKH BPM by room for the same methods as Fig 6a (incl. ClessBreath). Rooms: Living sitting / Bedroom flat / Bedroom side.](../../outputs/figures/paper_fig6b_bpm_by_room.png)
 
-![Figure 6b: HKH per-room BPM breakdown. Room A (Living room): Zhu2023 Z1-no-VMD = 0.415. Room B+C (Bedroom): B3/B1 methods lead.](../../outputs/figures/ble_hkh_paper_baselines_by_room.png)
-
-> **Fig. 6 解读**: (上) 全 12 场景 BPM 排行榜。B3 Simplified（即 逐模态 Voting → 三模态等权谱融合）和 B1 Vote→Equal 并列最优，跨场景 mean abs error = 0.405 breaths/min，优于所有迁移 baseline（Zhuo2023 Z1-no-VMD 0.435, MRC-PCA 0.505）一个数量级优于 Fan 2024 系列（1.39–1.49）。(下) 按房间拆分：Room A（客厅）Zhuo2023 微弱领先（0.415 vs B3 0.405 在全量 aggregate 中），Room B+C（卧室）本项目方法系统性领先。
+> **Fig. 6 解读**: (上) 全 12 场景 BPM 排行榜。**BreatheCS**（谱分支）= 0.405，优于 Pos-Free (PCA) 0.435、WiFi-Sleep (MRC-PCA) 0.505；ClessBreath 系列约 1.39–1.49。(下) 按房间拆分，方法集与 Fig 6a 一致。
 
 ### 6.4 Waveform Recovery Accuracy (HKH) / 波形恢复精度（HKH）
 
@@ -479,17 +479,28 @@ Fan 等人【Fan2024】 先计算各信道呼吸能量比（BNR），然后用MR
 
 这一章节同样是和上面的baseline 比较波形恢复的性能，也就是RMSE误差比较。我认为至少也应该像6.3一样，把各类方法画图比较，图7感觉好像暂时在这章用不上。
 
-![Figure 7: BPM vs RMSE trade-off across methods on HKH 12 scenarios. B3 Simplified (★) achieves the best joint BPM+RMSE — lowest BPM error AND lowest waveform RMSE simultaneously.](../../outputs/figures/ble_hkh_b3_bpm_vs_rmse.png)
+> **配图更新（执行侧）**：§6.4 主展示用 RMSE 表（BreatheCS 统一管线一行，不含单独 Wave 行）；Fig 7 为 BPM×RMSE 散点，位置暂维持。图内无标题。
 
-> **Fig. 7 解读**: BPM-RMSE 双指标散点图。每个点代表一个方法在 12 场景上的 (mean BPM abs error, mean RMSE)。B3 Simplified（★）位于左下角——同时实现最低 BPM 误差和最低 RMSE。B2-D Two-level Hilbert-MRC 波形 RMSE 同优 (0.950)，但 BPM 精度较差 (0.682)。Zhuo2023 Z1-no-VMD 在 BPM 上接近 (0.435)，但 RMSE 明显更差 (1.070)，因为其时域 PCA 对齐在低采样率下不可靠。
+| Method | RMSE mean | RMSE std |
+|---|---:|---:|
+| BreatheCS ★ | 0.951 | 0.192 |
+| ClessBreath (η-linear) | 1.025 | 0.241 |
+| ClessBreath (η-equal) | 1.046 | 0.211 |
+| WiFi-Sleep (MRC-PCA) | 1.063 | 0.245 |
+| Pos-Free (PCA) | 1.070 | 0.250 |
+| PCA sign only | 1.085 | 0.182 |
+
+> Data: HKH 12 scenarios，z-score 对齐 vs 呼吸带。
+
+![Figure 7: BPM vs RMSE trade-off on HKH 12 scenarios. BreatheCS (★) best joint; BreatheCS-Wave (◆) shown only for branch contrast, not as a separate table row.](../../outputs/figures/paper_fig7_bpm_vs_rmse.png)
+
+> **Fig. 7 解读**: 每个点为方法在 12 场景上的 (BPM abs err, RMSE)。BreatheCS（★）左下角最优联合表现。
 
 ### 6.5 Ablation Experiments / 消融实验
 
 > **EN**: [Channel fusion: Voting > Single-best > Uniform. Modal fusion: Equal > Top2 > η-weight. Phase method: Hilbert two-level > single-level > sign-only. Cite Figure 8.]
 >
 > **CN**: [信道融合消融：Voting (η·ρ 加权) > Single-best (max-η) > Uniform (等权)。模态融合消融：Equal (1:1:1) > Top2 > η-weight → 对称对待被验证。相位方法消融：Hilbert 两级 > Hilbert 单级 > Corr sign > PCA sign。解锁器交互效应（§3.6）进一步证实第一级 Hilbert 的逻辑必要性。引用 Figure 8。]
-
-
 
 本章节通过比较不同融合权重分配方案（包括不使用融合，仅保留最大变量）验证 BreatheCS 的性能。BreatheCS 作为信道+模态的两级融合方案，每一级都会利用所有可用的信息做融合。当消融需要某一级不再融合时，我们就选择该层级上能量比最大的一个作为最终的BPM和呼吸波形的候选。
 
@@ -522,11 +533,15 @@ Fan 等人【Fan2024】 先计算各信道呼吸能量比（BNR），然后用MR
 
 目前的图问题在于有许多代号，导致分类不够清晰，不好比较。由于前面两章已经比较了一些代表性相关工作的方案，它们或多或少有某一级的融合，因此这里不再根据融合策略拆分不同的子项。
 
-![Figure 8a: HKH ablation leaderboard — cumulative contribution of each pipeline component. B3 Simplified (full pipeline) achieves lowest BPM error.](../../outputs/figures/ble_hkh_b3_ablation_leaderboard.png)
+> **配图更新（执行侧，待你确认方向）**：当前 Fig 8a/8b 是按 *plan §3.5* 的「信道 / 模态 / 相位」分组重绘的，**并未完整实现上面原文 1/2/3 点消融矩阵**。若应按原文重做，需另开实验/重绘。下列图仅作临时对照，图内无总标题。
 
-![Figure 8b: CS metal-plate waterfall decomposition — cumulative BPM error reduction as components are added. Voting (η·ρ weighted) provides the largest single gain over Uniform.](../../outputs/figures/b2_coherent_mrc_waterfall_decomposition.png)
+![Figure 8a: HKH ablation by dimension (grouped) — interim mapping from existing A1/A3/A4/A5 keys; may not match §6.5 prose 1/2/3.](../../outputs/figures/paper_fig8a_ablation_hkh.png)
 
-> **Fig. 8 解读**: (上) HKH 消融排行榜：从 Single Remote baseline 到完整 B3 Simplified 管线的逐组件贡献。(下) CS 金属板跨域 waterfall 分解：η·ρ Voting 在 Uniform 基础上贡献最大单步增益；Hilbert 两级对齐与等权模态融合进一步降低误差。解锁器效应（§3.6）是解释性的关键：Hilbert 连续相位不是直接改善 BPM，而是通过保留波形保真度"解锁"第二级模态对齐的效能。
+![Figure 8a (alt): HKH ablation faceted 1×3 — choose later.](../../outputs/figures/paper_fig8a_ablation_hkh_faceted.png)
+
+![Figure 8b: CS metal-plate waterfall (phase/alignment path; relative BPM err %). Not HKH.](../../outputs/figures/paper_fig8b_waterfall_cs.png)
+
+> **Fig. 8 解读（临时）**: (上) HKH 按 plan 维度分组。(下) CS 金属板 waterfall。与上文「时域/谱域 × 融合层级 + 单模态」原文需求可能不一致，见对话说明。
 
 ---
 
