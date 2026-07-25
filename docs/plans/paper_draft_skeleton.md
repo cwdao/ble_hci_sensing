@@ -4,7 +4,7 @@
 
 > **DRAFT v0.3** — 骨架稿 + 已插入可用配图。每节仅写核心句子。先英后中。细节由用户补充。  
 > **日期**：2026-07-18  
-> **配图状态**：Fig 2 ✅ | Fig 3 ✅ | Fig 4 ❌ (数据已有，图未生成) | Fig 5 ✅ | Fig 6 ✅ (论文名重绘) | Fig 7 ✅ (论文名重绘) | Fig 8 ✅ (论文名重绘；8a 含 grouped+faceted) | Fig S1 ✅ | Fig 1 ❌ (需手绘架构图)
+> **配图状态**：Fig 2 ✅ | Fig 3 ✅ | Fig 4 ❌ | Fig 5 ✅ | Fig 6 ✅ | Fig 7 ✅ | Fig 8 ✅（draft 1/2/3 消融矩阵） | Fig S1 ✅ | Fig 1 ❌
 
 ---
 
@@ -155,6 +155,11 @@ $$
 
 > **Fig. 2 解读**: (a) 4 个代表 tone（#58 ref, #48 同相 γ≈0.83, #45 反相 Δφ≈π, #69 中间相位 Δφ≈−0.83）的原始带通波形叠加。(b) PCA ±1 符号校正后：反相 tone 被翻转，但中间相位 tone 仍有明显残余错位。(c) Hilbert 连续相位对齐后：四条波形近乎完美重合。(d) 72×72 tone-pair 相干性热力图：cs_095806（左，good）左上角高 γ 结构密集；cs_091339（右，hard）整体 γ 更低且碎片化。**结论**：菲涅尔区 ±1 是有效的一阶近似，但顺序采样引入了超越 ±1 的连续相位分量，Hilbert 对齐可进一步补偿。另见 [Figure S1](#supplementary-figure-s1) 跨窗口 γ 稳定性对比。
 
+<a id="supplementary-figure-s1"></a>
+
+![Figure S1: Tone-pair coherence γ stability across windows (good vs hard CS metal-plate scenario).](../../outputs/figures/paper_figS1_coherence_stability.png)
+
+> **Fig. S1 解读**: 同一 tone pair 跨窗口 γ；good 场景高且稳，hard 场景低且波动大。
 ### 4.3 Inter-Modal Phase Relationship / 模态间（变量间）相位关系
 
 > **EN**: [Remote vs local vs phase: relative phase depends on multipath geometry. Different rooms → different relationships. Per-window variation observed. Cannot hardcode. Cite Figure 3.]
@@ -449,7 +454,7 @@ Fan 等人【Fan2024】 先计算各信道呼吸能量比（BNR），然后用MR
 
 由于BLE CS 的低采样率特性，我们为所有baseline 部署于 BreathCS 一致的预处理步骤（即章节5.2），然后，比较主要在在信道级融合与模态级融合的差异，并最终体现在BPM估计误差和恢复的波形与groundtruth的RMSE上。
 
-### 6.3 BPM Accuracy (HKH) / BPM 精度（HKH）
+### 6.3 BPM Accuracy/ BPM 精度
 
 > **EN**: [B3 Simplified = 0.41 BPM mean abs error, Z1-no-VMD = 0.44, B2-D = 0.68, Fan2024 η-linear = 1.39. Cite Figure 6.]
 >
@@ -471,7 +476,7 @@ Fan 等人【Fan2024】 先计算各信道呼吸能量比（BNR），然后用MR
 
 > **Fig. 6 解读**: (上) 全 12 场景 BPM 排行榜。**BreatheCS**（谱分支）= 0.405，优于 Pos-Free (PCA) 0.435、WiFi-Sleep (MRC-PCA) 0.505；ClessBreath 系列约 1.39–1.49。(下) 按房间拆分，方法集与 Fig 6a 一致。
 
-### 6.4 Waveform Recovery Accuracy (HKH) / 波形恢复精度（HKH）
+### 6.4 Waveform Recovery Accuracy / 波形恢复精度
 
 > **EN**: [B3 Simplified RMSE = 0.951 vs belt, B2-D same. Z1-no-VMD RMSE = 1.070. B3 is the only unified pipeline achieving both optimal BPM (0.41) and optimal waveform (0.951). Cite Figure 7.]
 >
@@ -533,15 +538,15 @@ Fan 等人【Fan2024】 先计算各信道呼吸能量比（BNR），然后用MR
 
 目前的图问题在于有许多代号，导致分类不够清晰，不好比较。由于前面两章已经比较了一些代表性相关工作的方案，它们或多或少有某一级的融合，因此这里不再根据融合策略拆分不同的子项。
 
-> **配图更新（执行侧，待你确认方向）**：当前 Fig 8a/8b 是按 *plan §3.5* 的「信道 / 模态 / 相位」分组重绘的，**并未完整实现上面原文 1/2/3 点消融矩阵**。若应按原文重做，需另开实验/重绘。下列图仅作临时对照，图内无总标题。
+> **配图更新（执行侧）**：按上文 1/2/3 点重跑 HKH 消融矩阵（`docs/plans/paper_ablation_draft_align_plan.md`）。图内仅保留面板号；题注如下。旧 plan 维度分组图保留但不作为正文主图。
 
-![Figure 8a: HKH ablation by dimension (grouped) — interim mapping from existing A1/A3/A4/A5 keys; may not match §6.5 prose 1/2/3.](../../outputs/figures/paper_fig8a_ablation_hkh.png)
+![Figure 8a: Draft ablation — (a) spectral fusion levels; (b) waveform fusion levels. Bars left→right conceptually: no fusion → channel only → modal only → BreatheCS.](../../outputs/figures/paper_fig8a_ablation_draft_bpm.png)
 
-![Figure 8a (alt): HKH ablation faceted 1×3 — choose later.](../../outputs/figures/paper_fig8a_ablation_hkh_faceted.png)
+![Figure 8a′: Waveform-fusion RMSE for the same four waveform levels.](../../outputs/figures/paper_fig8a_ablation_draft_rmse.png)
 
-![Figure 8b: CS metal-plate waterfall (phase/alignment path; relative BPM err %). Not HKH.](../../outputs/figures/paper_fig8b_waterfall_cs.png)
+![Figure 8c: Single-modal (Remote / Local / Phase) vs BreatheCS (spectral BPM).](../../outputs/figures/paper_fig8c_ablation_draft_modal.png)
 
-> **Fig. 8 解读（临时）**: (上) HKH 按 plan 维度分组。(下) CS 金属板 waterfall。与上文「时域/谱域 × 融合层级 + 单模态」原文需求可能不一致，见对话说明。
+> **Fig. 8 解读**: (a)(b) 分别对应原文谱域 / 时域四档消融；(c) 单模态局限。数值见 `outputs/reports/ble_hkh_draft_ablation_summary.json`。
 
 ---
 

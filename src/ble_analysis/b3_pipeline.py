@@ -60,6 +60,10 @@ class B3VariantConfig:
     use_eta_rho_weights: bool = True
     use_multi_modal: bool = True
     use_two_level_hilbert: bool = True
+    # Draft §6.5 ablation extensions (optional; defaults preserve legacy behavior)
+    modal_variables: Optional[Tuple[str, ...]] = None
+    modal_combine: str = "fuse"  # "fuse" | "pick_best"
+    bpm_source: str = "spectral"  # "spectral" | "waveform"
 
 
 B3_SIMPLIFIED_CONFIG = B3VariantConfig()
@@ -92,6 +96,120 @@ B3_VARIANT_SPECS: Tuple[Tuple[str, str, B3VariantConfig], ...] = (
     ),
 )
 
+# Draft §6.5 matrix: spectral / waveform × fusion level + single-modal
+DRAFT_ABLATION_SPECS: Tuple[Tuple[str, str, B3VariantConfig], ...] = (
+    # --- Spectral (BPM only) ---
+    (
+        "Spec · no fusion",
+        "draft_s_none",
+        B3VariantConfig(
+            use_voting=False,
+            use_two_level_hilbert=False,
+            modal_combine="pick_best",
+            bpm_source="spectral",
+        ),
+    ),
+    (
+        "Spec · channel only",
+        "draft_s_channel",
+        B3VariantConfig(
+            use_voting=True,
+            use_two_level_hilbert=False,
+            modal_combine="pick_best",
+            bpm_source="spectral",
+        ),
+    ),
+    (
+        "Spec · modal only",
+        "draft_s_modal",
+        B3VariantConfig(
+            use_voting=False,
+            use_two_level_hilbert=False,
+            modal_combine="fuse",
+            bpm_source="spectral",
+        ),
+    ),
+    (
+        "Spec · BreatheCS",
+        "draft_s_full",
+        B3VariantConfig(
+            use_voting=True,
+            use_two_level_hilbert=False,
+            modal_combine="fuse",
+            bpm_source="spectral",
+        ),
+    ),
+    # --- Waveform (BPM from waveform PSD + RMSE) ---
+    (
+        "Wave · no fusion",
+        "draft_w_none",
+        B3VariantConfig(
+            use_voting=False,
+            use_two_level_hilbert=True,
+            modal_combine="pick_best",
+            bpm_source="waveform",
+        ),
+    ),
+    (
+        "Wave · channel only",
+        "draft_w_channel",
+        B3VariantConfig(
+            use_voting=True,
+            use_two_level_hilbert=True,
+            modal_combine="pick_best",
+            bpm_source="waveform",
+        ),
+    ),
+    (
+        "Wave · modal only",
+        "draft_w_modal",
+        B3VariantConfig(
+            use_voting=False,
+            use_two_level_hilbert=True,
+            modal_combine="fuse",
+            bpm_source="waveform",
+        ),
+    ),
+    (
+        "Wave · BreatheCS",
+        "draft_w_full",
+        B3VariantConfig(
+            use_voting=True,
+            use_two_level_hilbert=True,
+            modal_combine="fuse",
+            bpm_source="waveform",
+        ),
+    ),
+    # --- Single modal (full channel fusion within one modal) ---
+    (
+        "Single · Remote",
+        "draft_m_remote",
+        B3VariantConfig(
+            use_multi_modal=False,
+            modal_variables=("remote_amplitudes",),
+            bpm_source="spectral",
+        ),
+    ),
+    (
+        "Single · Local",
+        "draft_m_local",
+        B3VariantConfig(
+            use_multi_modal=False,
+            modal_variables=("local_amplitudes",),
+            bpm_source="spectral",
+        ),
+    ),
+    (
+        "Single · Phase",
+        "draft_m_phase",
+        B3VariantConfig(
+            use_multi_modal=False,
+            modal_variables=("phases",),
+            bpm_source="spectral",
+        ),
+    ),
+)
+
 EXTERNAL_BASELINE_SPECS: Tuple[Tuple[str, str], ...] = (
     ("B1 Vote→Equal", "b1_vote_modal_equal"),
     ("B2-D Two-level Hilbert-MRC", "b2_d_two_level"),
@@ -102,6 +220,7 @@ __all__ = [
     "B3VariantConfig",
     "B3_SIMPLIFIED_CONFIG",
     "B3_VARIANT_SPECS",
+    "DRAFT_ABLATION_SPECS",
     "EXTERNAL_BASELINE_SPECS",
     "MODAL_SHORT",
     "estimate_b3_window",
@@ -111,8 +230,10 @@ __all__ = [
 ]
 
 
-def _active_modal_variables(use_multi_modal: bool) -> Tuple[str, ...]:
-    if use_multi_modal:
+def _active_modal_variables(variant: B3VariantConfig) -> Tuple[str, ...]:
+    if variant.modal_variables is not None:
+        return variant.modal_variables
+    if variant.use_multi_modal:
         return MODAL_VOTING_VARIABLES
     return ("remote_amplitudes",)
 
@@ -220,16 +341,25 @@ def _single_best_eta_bpm(
     eta: np.ndarray,
     rho: np.ndarray,
     bpm_per_tone: np.ndarray,
+    spectra: np.ndarray,
     *,
     use_eta_rho_weights: bool,
-) -> Tuple[float, float]:
+) -> Tuple[float, float, np.ndarray, np.ndarray]:
+    """Pick best-η (or η·ρ) tone; also return one-hot weighted spectrum + weights."""
     quality = eta * np.clip(rho, 0.0, None) if use_eta_rho_weights else eta
     mask = np.isfinite(quality) & np.isfinite(bpm_per_tone)
+    band_len = spectra.shape[1] if spectra.ndim == 2 and spectra.size else 1
     if not np.any(mask):
-        return float("nan"), 0.0
+        return float("nan"), 0.0, np.zeros(band_len, dtype=float), np.zeros_like(quality, dtype=float)
     idx = int(np.argmax(np.where(mask, quality, -np.inf)))
     conf = float(quality[idx] / (np.sum(quality[mask]) + 1e-12))
-    return float(bpm_per_tone[idx]), conf
+    weights = np.zeros_like(quality, dtype=float)
+    weights[idx] = 1.0
+    if spectra.ndim == 2 and spectra.shape[0] > idx:
+        weighted_spectrum = np.asarray(spectra[idx], dtype=float).copy()
+    else:
+        weighted_spectrum = np.zeros(band_len, dtype=float)
+    return float(bpm_per_tone[idx]), conf, weighted_spectrum, weights
 
 
 def estimate_b3_window(
@@ -261,7 +391,7 @@ def estimate_b3_window(
     hann = hann if hann is not None else np.hanning(win_len)
 
     strategy = _voting_strategy(variant.use_eta_rho_weights)
-    active_vars = _active_modal_variables(variant.use_multi_modal)
+    active_vars = _active_modal_variables(variant)
     modal_results: Dict[str, dict] = {}
     modal_spectra: Dict[str, np.ndarray] = {}
     modal_scores: Dict[str, float] = {}
@@ -300,32 +430,53 @@ def estimate_b3_window(
                 strategy=strategy,
             )
         else:
-            bpm_single, conf = _single_best_eta_bpm(
-                eta, rho, bpm_per_tone, use_eta_rho_weights=variant.use_eta_rho_weights
+            bpm_single, conf, wspec, weights = _single_best_eta_bpm(
+                eta,
+                rho,
+                bpm_per_tone,
+                spectra,
+                use_eta_rho_weights=variant.use_eta_rho_weights,
             )
             modal_results[short] = {
                 "voted_bpm": bpm_single,
                 "confidence": conf,
-                "weights": _vote_weights(eta, rho, strategy, cfg.eps),
+                "weighted_spectrum": wspec,
+                "weights": weights,
                 "bpm_per_tone": bpm_per_tone,
             }
 
         if variant.use_two_level_hilbert:
-            X, eta_mrc, rho_mrc = _collect_modal_window_matrix(
-                ch_list, ch_map, variable, st, end, fs, cfg
-            )
-            y_modal, tone_info = coherent_mrc_fuse_tones(
-                X,
-                eta_mrc,
-                rho_mrc,
-                phase_method="hilbert",
-                weight_mode="coherence_gated",
-                fs=fs,
-                min_coherence=0.0,
-            )
-            modal_waveforms[short] = y_modal
-            modal_etas[short] = _energy_ratio(y_modal, fs, cfg)
-            modal_results[short]["tone_info"] = tone_info
+            if variant.use_voting:
+                X, eta_mrc, rho_mrc = _collect_modal_window_matrix(
+                    ch_list, ch_map, variable, st, end, fs, cfg
+                )
+                y_modal, tone_info = coherent_mrc_fuse_tones(
+                    X,
+                    eta_mrc,
+                    rho_mrc,
+                    phase_method="hilbert",
+                    weight_mode="coherence_gated",
+                    fs=fs,
+                    min_coherence=0.0,
+                )
+                modal_waveforms[short] = y_modal
+                modal_etas[short] = _energy_ratio(y_modal, fs, cfg)
+                modal_results[short]["tone_info"] = tone_info
+            else:
+                # Channel pick-max: use the single best-η tone waveform
+                X, eta_mrc, rho_mrc = _collect_modal_window_matrix(
+                    ch_list, ch_map, variable, st, end, fs, cfg
+                )
+                quality = eta_mrc * np.clip(rho_mrc, 0.0, None) if variant.use_eta_rho_weights else eta_mrc
+                mask = np.isfinite(quality)
+                if X.size and np.any(mask):
+                    idx = int(np.argmax(np.where(mask, quality, -np.inf)))
+                    y_modal = np.asarray(X[idx], dtype=float)
+                    modal_waveforms[short] = y_modal
+                    modal_etas[short] = _energy_ratio(y_modal, fs, cfg)
+                else:
+                    modal_waveforms[short] = np.asarray([], dtype=float)
+                    modal_etas[short] = 0.0
         else:
             if variant.use_voting:
                 spec, _bpm, info = per_modal_voting_spectrum(
@@ -343,19 +494,9 @@ def estimate_b3_window(
                     hann,
                 )
             else:
-                spec, _bpm, info = per_modal_uniform_spectrum(
-                    ch_list,
-                    ch_map,
-                    variable,
-                    st,
-                    end,
-                    fs,
-                    cfg,
-                    nfft,
-                    band_mask,
-                    band_freqs,
-                    hann,
-                )
+                # Reuse best-tone spectrum already computed
+                spec = np.asarray(modal_results[short]["weighted_spectrum"], dtype=float)
+                info = {"score": float(modal_results[short].get("confidence", 0.0))}
             modal_spectra[short] = spec
             modal_scores[short] = float(info.get("score", info.get("conf", 0.0)))
 
@@ -379,8 +520,21 @@ def estimate_b3_window(
         spectra_for_modal[short] = ws_arr
         scores_for_modal[short] = float(res.get("confidence", 0.0))
 
+    def _pick_best_modal_bpm(spectra_map: Dict[str, np.ndarray], scores_map: Dict[str, float]) -> float:
+        if not spectra_map:
+            return float("nan")
+        best_k = max(spectra_map.keys(), key=lambda k: scores_map.get(k, 0.0))
+        spec = np.asarray(spectra_map[best_k], dtype=float)
+        if spec.size == 0 or float(np.sum(spec)) <= cfg.eps:
+            return float("nan")
+        k = int(np.argmax(spec))
+        f_peak = _parabolic_peak_freq(band_freqs, spec, k, cfg.eps)
+        return float(60.0 * f_peak)
+
     if variant.use_two_level_hilbert:
-        if spectra_for_modal:
+        if variant.modal_combine == "pick_best":
+            bpm_vote = _pick_best_modal_bpm(spectra_for_modal, scores_for_modal)
+        elif spectra_for_modal:
             bpm_vote, _sel = modal_fusion_from_spectra(
                 spectra_for_modal,
                 scores_for_modal,
@@ -391,32 +545,45 @@ def estimate_b3_window(
         else:
             bpm_vote = float("nan")
     else:
-        bpm_vote, _sel = modal_fusion_from_spectra(
-            modal_spectra,
-            modal_scores,
-            "equal",
-            band_freqs,
-            cfg,
-        )
+        src_spectra = modal_spectra if modal_spectra else spectra_for_modal
+        src_scores = modal_scores if modal_scores else scores_for_modal
+        if variant.modal_combine == "pick_best":
+            bpm_vote = _pick_best_modal_bpm(src_spectra, src_scores)
+        else:
+            bpm_vote, _sel = modal_fusion_from_spectra(
+                src_spectra,
+                src_scores,
+                "equal",
+                band_freqs,
+                cfg,
+            )
 
     y_final: Optional[np.ndarray] = None
     bpm_wf = float("nan")
 
     if variant.use_two_level_hilbert and modal_waveforms:
-        if len(modal_waveforms) == 1:
-            y_final = next(iter(modal_waveforms.values()))
-            modal_info = {"phase_aligned": False, "modal_keys": list(modal_waveforms.keys())}
+        usable = {k: v for k, v in modal_waveforms.items() if np.asarray(v).size > 0}
+        if not usable:
+            y_final = None
+        elif variant.modal_combine == "pick_best" or len(usable) == 1:
+            best_k = max(usable.keys(), key=lambda k: modal_etas.get(k, 0.0))
+            y_final = usable[best_k]
+            modal_info = {"phase_aligned": False, "modal_keys": [best_k], "combine": "pick_best"}
         else:
             y_final, modal_info = coherent_mrc_fuse_modals(
-                modal_waveforms,
+                usable,
                 modal_etas,
                 modal_weight_mode="eta_coherence",
                 use_phase_align=True,
             )
-        bpm_out = estimate_bpm_from_waveform_multi(y_final, fs, cfg=cfg)
-        bpm_wf = float(bpm_out.get("bpm_psd", float("nan")))
+        if y_final is not None and len(y_final) >= 4:
+            bpm_out = estimate_bpm_from_waveform_multi(y_final, fs, cfg=cfg)
+            bpm_wf = float(bpm_out.get("bpm_psd", float("nan")))
 
-    primary_bpm = float(bpm_vote)
+    if variant.bpm_source == "waveform":
+        primary_bpm = float(bpm_wf)
+    else:
+        primary_bpm = float(bpm_vote)
 
     return {
         "bpm": primary_bpm,
@@ -448,6 +615,8 @@ def validate_b3_variant_against_hkh(
     """Window-level BPM + RMSE for one B3 variant vs HKH GT."""
     if variant is None:
         matched = next((v for _l, k, v in B3_VARIANT_SPECS if k == variant_key), None)
+        if matched is None:
+            matched = next((v for _l, k, v in DRAFT_ABLATION_SPECS if k == variant_key), None)
         if matched is None:
             raise ValueError(f"Unknown B3 variant: {variant_key}")
         variant = matched
@@ -534,7 +703,11 @@ def validate_b3_variant_against_hkh(
     abs_err = np.where(valid_bpm, np.abs(bpm_est_arr - bpm_hkh_arr), np.nan)
     rel_err = np.where(valid_bpm, abs_err / bpm_hkh_arr * 100.0, np.nan)
 
-    label = next((lbl for lbl, key, _ in B3_VARIANT_SPECS if key == variant_key), variant_key)
+    label = next((lbl for lbl, key, _ in B3_VARIANT_SPECS if key == variant_key), None)
+    if label is None:
+        label = next((lbl for lbl, key, _ in DRAFT_ABLATION_SPECS if key == variant_key), variant_key)
+
+    has_waveform = bool(variant.use_two_level_hilbert)
 
     result = {
         "segment": seg_name,
@@ -550,14 +723,14 @@ def validate_b3_variant_against_hkh(
         "bpm_abs_err": abs_err,
         "bpm_rel_err_pct": rel_err,
         "rmse": rmse_arr,
-        "has_waveform": variant.use_two_level_hilbert,
+        "has_waveform": has_waveform,
         "summary": {
             "bpm_mean_abs_err": float(np.nanmean(abs_err)),
             "bpm_std_abs_err": float(np.nanstd(abs_err)),
             "bpm_mean_rel_err_pct": float(np.nanmean(rel_err)),
             "bpm_std_rel_err_pct": float(np.nanstd(rel_err)),
-            "rmse_mean": float(np.nanmean(rmse_arr)) if variant.use_two_level_hilbert else float("nan"),
-            "rmse_std": float(np.nanstd(rmse_arr)) if variant.use_two_level_hilbert else float("nan"),
+            "rmse_mean": float(np.nanmean(rmse_arr)) if has_waveform else float("nan"),
+            "rmse_std": float(np.nanstd(rmse_arr)) if has_waveform else float("nan"),
             "n_valid_bpm": int(np.sum(valid_bpm)),
             "n_valid_rmse": int(np.sum(np.isfinite(rmse_arr))),
         },
