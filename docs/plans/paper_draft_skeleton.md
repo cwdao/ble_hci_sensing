@@ -16,11 +16,11 @@
 
 ---
 
-## 1. Introduction / 引言
+## 1. Introduction / 引言（待定）
 
 **EN—Motivation**: Contactless breathing sensing enables health monitoring without wearable devices. BLE CS, standardized in Bluetooth 5.2, offers a unique opportunity: it is ubiquitous (every smartphone), privacy-preserving (on-device), and provides 72-tone channel measurements across 72 MHz bandwidth.
 
-**CN—动机**: 非接触式呼吸感知使无需穿戴设备的健康监测成为可能。BLE CS（Bluetooth 5.2 标准）提供了一个独特的机会：它无处不在（每部智能手机）、保护隐私（端侧处理）、并提供跨 72 MHz 带宽的 72 tone 信道测量。
+**CN—动机**: 非接触式呼吸感知使无需穿戴设备的健康监测成为可能。BLE CS（Bluetooth 6.0 标准）提供了一个独特的机会：它无处不在（每部智能手机）、保护隐私（端侧处理）、并提供跨 72 MHz 带宽的 72 tone 信道测量。
 
 **EN—Gap**: Prior work on wireless breathing sensing has focused on WiFi CSI or FMCW radar. BLE CS differs in three fundamental ways that demand a dedicated approach: [list three constraints briefly].
 
@@ -30,7 +30,7 @@
 
 **CN—贡献**: (C1) 首次全面建模 BLE CS 用于呼吸感知的理论机制，识别并实验验证了三个物理约束。(C2) [名称待定] 统一管线，应对全部三个约束。(C3) 在可控场景和真实场景上的双重验证。
 
-## 2.Background and Related work
+## 2.Background and Related work（待定）
 
 
 
@@ -157,9 +157,9 @@ $$
 
 ### 4.3 Inter-Modal Phase Relationship / 模态间（变量间）相位关系
 
-**EN**: [Remote vs local vs phase: relative phase depends on multipath geometry. Different rooms → different relationships. Per-window variation observed. Cannot hardcode. Cite Figure 3.]
-
-**CN**: [Remote 与 local 与 phase 之间：相对相位取决于多径几何。不同房间 → 不同的相位关系。观察到逐窗变化。不可硬编码。引用 Figure 3。]
+> **EN**: [Remote vs local vs phase: relative phase depends on multipath geometry. Different rooms → different relationships. Per-window variation observed. Cannot hardcode. Cite Figure 3.]
+>
+> **CN**: [Remote 与 local 与 phase 之间：相对相位取决于多径几何。不同房间 → 不同的相位关系。观察到逐窗变化。不可硬编码。引用 Figure 3。]
 
 本章第一节已经证明三种模态之间是独立的物理量。为了增大感知性能、拟合原始呼吸波形，有必要研究三者波形间的相位关系，以讨论融合各观测模态的方案。
 
@@ -451,9 +451,17 @@ Fan 等人【Fan2024】 先计算各信道呼吸能量比（BNR），然后用MR
 
 ### 6.3 BPM Accuracy (HKH) / BPM 精度（HKH）
 
-**EN**: [B3 Simplified = 0.41 BPM mean abs error, Z1-no-VMD = 0.44, B2-D = 0.68, Fan2024 η-linear = 1.39. Cite Figure 6.]
+> **EN**: [B3 Simplified = 0.41 BPM mean abs error, Z1-no-VMD = 0.44, B2-D = 0.68, Fan2024 η-linear = 1.39. Cite Figure 6.]
+>
+> **CN**: [主结果（12-scenario aggregate）：B3 Simplified = B1 Vote→Equal = **0.405** BPM mean abs error（最优），Zhuo2023 Z1-no-VMD = 0.435，MRC-PCA η-equal PCA3→1 = 0.505，B2-D Two-level Hilbert-MRC = 0.682，Fan 2024 η-linear = 1.386。引用 Figure 6。]
 
-**CN**: [主结果（12-scenario aggregate）：B3 Simplified = B1 Vote→Equal = **0.405** BPM mean abs error（最优），Zhuo2023 Z1-no-VMD = 0.435，MRC-PCA η-equal PCA3→1 = 0.505，B2-D Two-level Hilbert-MRC = 0.682，Fan 2024 η-linear = 1.386。引用 Figure 6。]
+这一章节展示不同的baseline 及其变体在BLE CS 数据上的性能，并于 breatheCS 作比较。这里我希望，如果几乎是原样迁移的，比如zhuo 2023 单级PCA然后VMD就是主baseline ，双级PCA就是变体，那主baseline 里第二级就是选一个最大模态就可以。我们可以在实验中制作很多变体，但最后论文中没必要都放出来。可能需要优化一下展示方式，比如各个方法的具体名称如何简洁的表达。
+
+尽管BreatheCS是两个分支的组合，但在最终绘图的时候，要只保留最终的名字，而不是分支的名（目前两个图里的ref 都是分支名字，而且不是论文里的名称，是跑算法时候的代号）。这块也应该考虑。
+
+同时，目前的图里BPM没有 BreatheCS 的BPM，用的是波形分支的结果，这显然是不合适的，因为波形分支在BPM估计中不占优势。不要使用波形分支，直接用BPM分支并标注为BreatheCS 即可。对于fig 6，不论是按房间还是全场景的总排名都是这样。
+
+（简化代号，让图更清晰。或者我们干脆在正文里对各个方案详细表述，然后表格中只放简化的代号，比如 zhuo 23 ,zhuo23-a 这种。或者干脆就考虑其他展示方式，表格会好一些还是更差一些呢）
 
 
 
@@ -465,9 +473,11 @@ Fan 等人【Fan2024】 先计算各信道呼吸能量比（BNR），然后用MR
 
 ### 6.4 Waveform Recovery Accuracy (HKH) / 波形恢复精度（HKH）
 
-**EN**: [B3 Simplified RMSE = 0.951 vs belt, B2-D same. Z1-no-VMD RMSE = 1.070. B3 is the only unified pipeline achieving both optimal BPM (0.41) and optimal waveform (0.951). Cite Figure 7.]
+> **EN**: [B3 Simplified RMSE = 0.951 vs belt, B2-D same. Z1-no-VMD RMSE = 1.070. B3 is the only unified pipeline achieving both optimal BPM (0.41) and optimal waveform (0.951). Cite Figure 7.]
+>
+> **CN**: [B3 Simplified RMSE = **0.951**（vs 呼吸带），B2-D 同值 0.950。Z1-no-VMD RMSE = 1.070。B3 是唯一同时输出最优 BPM (0.405) 和最优波形 (0.951) 的统一管线。引用 Figure 7。]
 
-**CN**: [B3 Simplified RMSE = **0.951**（vs 呼吸带），B2-D 同值 0.950。Z1-no-VMD RMSE = 1.070。B3 是唯一同时输出最优 BPM (0.405) 和最优波形 (0.951) 的统一管线。引用 Figure 7。]
+这一章节同样是和上面的baseline 比较波形恢复的性能，也就是RMSE误差比较。我认为至少也应该像6.3一样，把各类方法画图比较，图7感觉好像暂时在这章用不上。
 
 ![Figure 7: BPM vs RMSE trade-off across methods on HKH 12 scenarios. B3 Simplified (★) achieves the best joint BPM+RMSE — lowest BPM error AND lowest waveform RMSE simultaneously.](../../outputs/figures/ble_hkh_b3_bpm_vs_rmse.png)
 
@@ -475,35 +485,48 @@ Fan 等人【Fan2024】 先计算各信道呼吸能量比（BNR），然后用MR
 
 ### 6.5 Ablation Experiments / 消融实验
 
-**EN**: [Channel fusion: Voting > Single-best > Uniform. Modal fusion: Equal > Top2 > η-weight. Phase method: Hilbert two-level > single-level > sign-only. Cite Figure 8.]
+> **EN**: [Channel fusion: Voting > Single-best > Uniform. Modal fusion: Equal > Top2 > η-weight. Phase method: Hilbert two-level > single-level > sign-only. Cite Figure 8.]
+>
+> **CN**: [信道融合消融：Voting (η·ρ 加权) > Single-best (max-η) > Uniform (等权)。模态融合消融：Equal (1:1:1) > Top2 > η-weight → 对称对待被验证。相位方法消融：Hilbert 两级 > Hilbert 单级 > Corr sign > PCA sign。解锁器交互效应（§3.6）进一步证实第一级 Hilbert 的逻辑必要性。引用 Figure 8。]
 
-**CN**: [信道融合消融：Voting (η·ρ 加权) > Single-best (max-η) > Uniform (等权)。模态融合消融：Equal (1:1:1) > Top2 > η-weight → 对称对待被验证。相位方法消融：Hilbert 两级 > Hilbert 单级 > Corr sign > PCA sign。解锁器交互效应（§3.6）进一步证实第一级 Hilbert 的逻辑必要性。引用 Figure 8。]
+
+
+本章节通过比较不同融合权重分配方案（包括不使用融合，仅保留最大变量）验证 BreatheCS 的性能。BreatheCS 作为信道+模态的两级融合方案，每一级都会利用所有可用的信息做融合。当消融需要某一级不再融合时，我们就选择该层级上能量比最大的一个作为最终的BPM和呼吸波形的候选。
+
+（这块做个表格好还是画图好呢）
+
+每种方案都会计算BPM和RMSE 误差：
+
+1.时域波形的融合（有波形的话，既能有BPM，也有RMSE）：
+
+- 不融合：两级均只选择最大能量比的信号
+- 仅信道融合，模态选最大；
+- 仅模态融合，信道选最大；
+- BreatheCS （本文方案）
+
+
+
+2.频域的谱融合（此类方案没有波形输出，只有BPM估计）：
+
+- 不融合：两级均只选择最大能量比的信号
+- 仅信道融合，模态选最大；
+- 仅模态融合，信道选最大；
+- BreatheCS  （本文方案）
+
+3.局限单一模态的方案
+这个是指在1，2中，全程只考虑同一个模态的情况，最后比较的结果图就是三个模态+breatheCS的比较。
+
+
+
+通过上述三点，应该能充分展示信道融合、模态融合的性能优势，同时展示BreatheCS 的优势。（是否存在解锁器效应，则需要在结果中尝试发掘）。
+
+目前的图问题在于有许多代号，导致分类不够清晰，不好比较。由于前面两章已经比较了一些代表性相关工作的方案，它们或多或少有某一级的融合，因此这里不再根据融合策略拆分不同的子项。
 
 ![Figure 8a: HKH ablation leaderboard — cumulative contribution of each pipeline component. B3 Simplified (full pipeline) achieves lowest BPM error.](../../outputs/figures/ble_hkh_b3_ablation_leaderboard.png)
 
 ![Figure 8b: CS metal-plate waterfall decomposition — cumulative BPM error reduction as components are added. Voting (η·ρ weighted) provides the largest single gain over Uniform.](../../outputs/figures/b2_coherent_mrc_waterfall_decomposition.png)
 
 > **Fig. 8 解读**: (上) HKH 消融排行榜：从 Single Remote baseline 到完整 B3 Simplified 管线的逐组件贡献。(下) CS 金属板跨域 waterfall 分解：η·ρ Voting 在 Uniform 基础上贡献最大单步增益；Hilbert 两级对齐与等权模态融合进一步降低误差。解锁器效应（§3.6）是解释性的关键：Hilbert 连续相位不是直接改善 BPM，而是通过保留波形保真度"解锁"第二级模态对齐的效能。
-
-### 6.5 Mechanism Validation (CS Metal-Plate) / 机制验证（CS 金属板）
-
-**EN**: [Inter-tone phase (Figure 2). Inter-modal phase (Figure 3). Unlocking interaction (Figure 4). Quality voting (Figure 5).]
-
-**CN**: [信道间相位：PCA sign 有效但不完美，Hilbert 连续相位进一步改善（Figure 2）。模态间相位：三模态相位差场景依赖、逐窗浮动，per-window Hilbert 对齐有效解决（Figure 3）。解锁器效应：Level-2 增益依赖 Level-1 连续相位——符号校正 + Level-2 = 无增益，Hilbert + Level-2 = −1.46 pp（Figure 4）。η·ρ Voting 机制：质量加权直方图的峰值比等权直方图更尖锐、融合频谱噪声更低（Figure 5）。]
-
-### 6.6 Comparison with Prior Work / 与现有工作的比较
-
-**EN**: [WiFi MRC: 10.78%. Zhuo2023: 11.31%. B1: 8.45%. B3 on HKH: 0.41 BPM + 0.950 RMSE.]
-
-**CN**: [CS 金属板跨域：B1 (8.45%) < WiFi MRC (10.78%) < Zhuo2023 (11.31%)。B1 在 BPM 精度上系统性优于迁移到 BLE CS 的 WiFi 时域 MRC 方法。HKH 真人：B3 Simplified (0.41 BPM + 0.950 RMSE) 是唯一同时最优的统一管线。]
-
----
-
-### Supplementary Figure S1: Tone-Pair Coherence Stability / 补充图 S1：Tone 对相干性稳定性
-
-![Figure S1: Tone-pair coherence γ stability across windows — same tone pair (58, 69) tracked across all windows of segment 1b. cs_095806 (good): γ = 0.901 ± 0.075, stable high. cs_091339 (hard): γ = 0.485 ± 0.345, fluctuates strongly. Takeaway: tone coherence is scenario-dependent; hard multipath environments systematically degrade inter-tone phase consistency.](../../outputs/figures/paper_figS1_coherence_stability.png)
-
-> **Fig. S1 解读**: 同一 tone pair (#58, #69) 在 good scenario (cs_095806) 和 hard scenario (cs_091339) 同 segment `1b` 上的跨窗口 γ 序列。Good: γ 均值 0.90，std 仅 0.075，跨窗稳定。Hard: γ 均值 0.49，std 达 0.345，大幅波动。**结论**：tone 间相干性场景依赖，复杂多径环境（cs_091339）会导致信道间相位一致性系统性退化——这解释了为何该场景在所有方法上都是全局瓶颈。
 
 ---
 
@@ -515,7 +538,7 @@ Fan 等人【Fan2024】 先计算各信道呼吸能量比（BNR），然后用MR
 
 
 
-### 5.6 The Unlocking Interaction / “解锁器”交互效应
+### 5.6 The Unlocking Interaction / “解锁器”交互效应（待定）
 
 关键实验发现：仅当第一级使用连续 Hilbert 相位校正时，第二级模态对齐才有效。金属板跨域评估中：符号校正第一级 + 第二级几乎无增益（A1-D $\approx$ A1）；Hilbert 第一级 + 第二级约再降 $1.46$ 个百分点相对 BPM 误差。解释与 §4 残余相位模型一致：$\pm 1$ 残留的非二值相位误差污染各模态波形后，第二级无法从已退化输入中恢复；第一级连续对齐保住波形保真度，从而“解锁”模态级相干融合收益。因此波形分支在两级均保留 Hilbert 对齐，即便 BPM 分支本身走谱域。
 
@@ -523,7 +546,7 @@ Fan 等人【Fan2024】 先计算各信道呼吸能量比（BNR），然后用MR
 
 ---
 
-## 8. Conclusion / 结论
+## 8. Conclusion / 结论（待定）
 
 **EN**: [One paragraph summary. Reiterate three contributions.]
 
