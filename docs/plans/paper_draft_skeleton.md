@@ -468,7 +468,38 @@ Fan 等人【Fan2024】 先计算各信道呼吸能量比（BNR），然后用MR
 
 （简化代号，让图更清晰。或者我们干脆在正文里对各个方案详细表述，然后表格中只放简化的代号，比如 zhuo 23 ,zhuo23-a 这种。或者干脆就考虑其他展示方式，表格会好一些还是更差一些呢）
 
-> **配图更新（执行侧）**：已按论文名重绘；BreatheCS BPM=0.405（谱分支）；Fig 6b 与 Fig 6a 同方法集（含 ClessBreath）。图内无标题，说明见题注。
+> **配图更新（执行侧）**：已按论文名重绘；BreatheCS BPM=0.405（谱分支）；Fig 6b 与 Fig 6a 同方法集（含 ClessBreath）。图内无标题，说明见题注。  
+> **表格对照**：下面同时给出与 Fig 6a/6b 同口径的数值表，便于比较「图 vs 表」哪种更适合正文。
+
+#### Table 6.3-A · BPM overall（对应 Fig 6a）
+
+| Method | BPM abs err mean ↓ | std（跨场景） |
+|---|---:|---:|
+| BreatheCS ★（谱分支） | **0.405** | 0.150 |
+| Pos-Free (PCA) | 0.435 | 0.123 |
+| WiFi-Sleep (MRC-PCA) | 0.505 | 0.149 |
+| BreatheCS-Wave（时域分支，对照） | 0.682 | 0.599 |
+| WiFi-Sleep (√η) | 1.023 | 1.257 |
+| PCA sign only | 1.317 | 0.646 |
+| ClessBreath (η-linear) | 1.386 | 1.685 |
+| ClessBreath (η-equal) | 1.486 | 1.527 |
+
+> HKH 12-scenario mean。BreatheCS = 谱分支 BPM；BreatheCS-Wave 仅作双分支对照，非主方法行。
+
+#### Table 6.3-B · BPM by room（对应 Fig 6b）
+
+| Method | Room A（客厅静坐） | Room B（卧室平躺） | Room C（卧室侧躺） |
+|---|---:|---:|---:|
+| BreatheCS ★ | **0.383** | 0.456 | **0.377** |
+| Pos-Free (PCA) | 0.415 | **0.436** | 0.455 |
+| WiFi-Sleep (MRC-PCA) | 0.609 | 0.451 | 0.455 |
+| BreatheCS-Wave | 0.830 | 0.497 | 0.719 |
+| WiFi-Sleep (√η) | 1.521 | 0.532 | 1.016 |
+| PCA sign only | 1.365 | 1.212 | 1.373 |
+| ClessBreath (η-linear) | 1.498 | 1.225 | 1.434 |
+| ClessBreath (η-equal) | 1.400 | 2.038 | 1.022 |
+
+> 每房间 4 subjects 均值。单位：BPM abs err。
 
 ![Figure 6a: HKH BPM leaderboard across 12 scenarios. BreatheCS (spectral BPM, ★) = 0.405 breaths/min mean abs error; paper method names.](../../outputs/figures/paper_fig6a_bpm_leaderboard.png)
 
@@ -484,18 +515,22 @@ Fan 等人【Fan2024】 先计算各信道呼吸能量比（BNR），然后用MR
 
 这一章节同样是和上面的baseline 比较波形恢复的性能，也就是RMSE误差比较。我认为至少也应该像6.3一样，把各类方法画图比较，图7感觉好像暂时在这章用不上。
 
-> **配图更新（执行侧）**：§6.4 主展示用 RMSE 表（BreatheCS 统一管线一行，不含单独 Wave 行）；Fig 7 为 BPM×RMSE 散点，位置暂维持。图内无标题。
+> **配图更新（执行侧）**：§6.4 主展示用表；Fig 7 为 BPM×RMSE 散点。下面 Table 6.4 把 BPM 与 RMSE 合在一张表，便于和 Fig 7 对照。
 
-| Method | RMSE mean | RMSE std |
-|---|---:|---:|
-| BreatheCS ★ | 0.951 | 0.192 |
-| ClessBreath (η-linear) | 1.025 | 0.241 |
-| ClessBreath (η-equal) | 1.046 | 0.211 |
-| WiFi-Sleep (MRC-PCA) | 1.063 | 0.245 |
-| Pos-Free (PCA) | 1.070 | 0.250 |
-| PCA sign only | 1.085 | 0.182 |
+#### Table 6.4 · BPM × RMSE（对应 Fig 7）
 
-> Data: HKH 12 scenarios，z-score 对齐 vs 呼吸带。
+| Method | BPM abs err mean | RMSE mean | RMSE std |
+|---|---:|---:|---:|
+| BreatheCS ★ | **0.405** | **0.951** | 0.192 |
+| Pos-Free (PCA) | 0.435 | 1.070 | 0.250 |
+| WiFi-Sleep (MRC-PCA) | 0.505 | 1.063 | 0.245 |
+| BreatheCS-Wave（时域分支对照） | 0.682 | 0.950 | 0.195 |
+| WiFi-Sleep (√η) | 1.023 | 1.054 | — |
+| PCA sign only | 1.317 | 1.085 | 0.182 |
+| ClessBreath (η-linear) | 1.386 | 1.025 | 0.241 |
+| ClessBreath (η-equal) | 1.486 | 1.046 | 0.211 |
+
+> HKH 12 scenarios；RMSE = z-score 对齐 vs 呼吸带。BreatheCS 主方法取谱 BPM + 统一管线波形 RMSE；BreatheCS-Wave 行仅对照。√η 的 RMSE std 未单列于 redraw 表，故标 —。
 
 ![Figure 7: BPM vs RMSE trade-off on HKH 12 scenarios. BreatheCS (★) best joint; BreatheCS-Wave (◆) shown only for branch contrast, not as a separate table row.](../../outputs/figures/paper_fig7_bpm_vs_rmse.png)
 
@@ -538,19 +573,33 @@ Fan 等人【Fan2024】 先计算各信道呼吸能量比（BNR），然后用MR
 
 目前的图问题在于有许多代号，导致分类不够清晰，不好比较。由于前面两章已经比较了一些代表性相关工作的方案，它们或多或少有某一级的融合，因此这里不再根据融合策略拆分不同的子项。
 
-> **配图更新（执行侧）**：Fig 8 两组三连图 —— (a)(b)(c) 融合层级；(d)(e)(f) 单模态。数值 3 位小数；BreatheCS 红柱+黑边。
+> **配图更新（执行侧）**：Fig 8 两组三连图 —— (a)(b)(c) 融合层级；(d)(e)(f) 单模态。数值 3 位小数；BreatheCS 红柱+黑边。  
+> **表格对照**：Table 8-A/8-B 与图同口径，便于比较图/表可读性。
+
+#### Table 8-A · Fusion levels（对应 Fig 8a–c）
+
+| Fusion level | Spec BPM ↓ | Wave BPM ↓ | Wave RMSE ↓ |
+|---|---:|---:|---:|
+| No fusion | 1.640 | 1.192 | 1.007 |
+| Channel only | **0.381** | 1.003 | 0.962 |
+| Modal only | 0.655 | 1.025 | 0.986 |
+| BreatheCS ★ | 0.405 | **0.744** | **0.951** |
+
+> 谱域无波形 RMSE（—）。Channel only 在谱 BPM 上略优于等权三模态 BreatheCS。
+
+#### Table 8-B · Single-modal（对应 Fig 8d–f）
+
+| Domain | Remote | Local | Phase | BreatheCS (3-modal) |
+|---|---:|---:|---:|---:|
+| Spectral BPM | **0.376** | 0.378 | 2.191 | 0.405 |
+| Waveform BPM | **0.399** | 0.439 | 2.395 | 0.744 |
+| Waveform RMSE | **0.931** | 0.947 | 1.109 | 0.951 |
+
+> HKH 12-scenario mean。谱域无 RMSE。Phase 单独极差；Remote/Local 常略优于三模态等权。汇总：`outputs/reports/ble_hkh_draft_ablation_summary.json`。
 
 ![Figure 8a–c: Fusion-level ablation. (a) Spectral BPM; (b) Waveform BPM; (c) Waveform RMSE. Bars: no fusion / channel only / modal only / BreatheCS.](../../outputs/figures/paper_fig8_abc_fusion.png)
 
 ![Figure 8d–f: Single-modal ablation. (d) Spectral BPM; (e) Waveform BPM; (f) Waveform RMSE. Remote / Local / Phase vs BreatheCS.](../../outputs/figures/paper_fig8_def_single_modal.png)
-
-| Domain | Remote | Local | Phase | BreatheCS (3-modal) |
-|---|---:|---:|---:|---:|
-| Spectral BPM | 0.376 | 0.378 | 2.191 | 0.405 |
-| Waveform BPM | 0.399 | 0.439 | 2.395 | 0.744 |
-| Waveform RMSE | 0.931 | 0.947 | 1.109 | 0.951 |
-
-> HKH 12-scenario mean。谱域无 RMSE。汇总：`outputs/reports/ble_hkh_draft_ablation_summary.json`。
 
 > **Fig. 8 解读**: (a–c) 信道/模态融合层级；(d–f) 把完整管线限制在单一模态。BreatheCS 谱分支为逐模态 η·ρ 加权谱 → **三模态等权**融合；时域分支为两级 Hilbert-MRC。单模态表显示 Phase 单独很差，Remote/Local 幅值常略优于三模态等权——见报告讨论。
 
