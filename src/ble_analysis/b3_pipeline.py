@@ -180,32 +180,65 @@ DRAFT_ABLATION_SPECS: Tuple[Tuple[str, str, B3VariantConfig], ...] = (
             bpm_source="waveform",
         ),
     ),
-    # --- Single modal (full channel fusion within one modal) ---
+    # --- Single modal: spectral (BPM only) vs waveform (BPM+RMSE) ---
     (
-        "Single · Remote",
-        "draft_m_remote",
+        "Spec · Remote only",
+        "draft_ms_remote",
         B3VariantConfig(
             use_multi_modal=False,
+            use_two_level_hilbert=False,
             modal_variables=("remote_amplitudes",),
             bpm_source="spectral",
         ),
     ),
     (
-        "Single · Local",
-        "draft_m_local",
+        "Spec · Local only",
+        "draft_ms_local",
         B3VariantConfig(
             use_multi_modal=False,
+            use_two_level_hilbert=False,
             modal_variables=("local_amplitudes",),
             bpm_source="spectral",
         ),
     ),
     (
-        "Single · Phase",
-        "draft_m_phase",
+        "Spec · Phase only",
+        "draft_ms_phase",
         B3VariantConfig(
             use_multi_modal=False,
+            use_two_level_hilbert=False,
             modal_variables=("phases",),
             bpm_source="spectral",
+        ),
+    ),
+    (
+        "Wave · Remote only",
+        "draft_mw_remote",
+        B3VariantConfig(
+            use_multi_modal=False,
+            use_two_level_hilbert=True,
+            modal_variables=("remote_amplitudes",),
+            bpm_source="waveform",
+        ),
+    ),
+    (
+        "Wave · Local only",
+        "draft_mw_local",
+        B3VariantConfig(
+            use_multi_modal=False,
+            use_two_level_hilbert=True,
+            modal_variables=("local_amplitudes",),
+            bpm_source="waveform",
+        ),
+    ),
+    (
+        "Wave · Phase only",
+        "draft_mw_phase",
+        B3VariantConfig(
+            use_multi_modal=False,
+            use_two_level_hilbert=True,
+            modal_variables=("phases",),
+            bpm_source="waveform",
         ),
     ),
 )

@@ -538,15 +538,21 @@ Fan 等人【Fan2024】 先计算各信道呼吸能量比（BNR），然后用MR
 
 目前的图问题在于有许多代号，导致分类不够清晰，不好比较。由于前面两章已经比较了一些代表性相关工作的方案，它们或多或少有某一级的融合，因此这里不再根据融合策略拆分不同的子项。
 
-> **配图更新（执行侧）**：按上文 1/2/3 点重跑 HKH 消融矩阵（`docs/plans/paper_ablation_draft_align_plan.md`）。图内仅保留面板号；题注如下。旧 plan 维度分组图保留但不作为正文主图。
+> **配图更新（执行侧）**：Fig 8 两组三连图 —— (a)(b)(c) 融合层级；(d)(e)(f) 单模态。数值 3 位小数；BreatheCS 红柱+黑边。
 
-![Figure 8a: Draft ablation — (a) spectral fusion levels; (b) waveform fusion levels. Bars left→right conceptually: no fusion → channel only → modal only → BreatheCS.](../../outputs/figures/paper_fig8a_ablation_draft_bpm.png)
+![Figure 8a–c: Fusion-level ablation. (a) Spectral BPM; (b) Waveform BPM; (c) Waveform RMSE. Bars: no fusion / channel only / modal only / BreatheCS.](../../outputs/figures/paper_fig8_abc_fusion.png)
 
-![Figure 8a′: Waveform-fusion RMSE for the same four waveform levels.](../../outputs/figures/paper_fig8a_ablation_draft_rmse.png)
+![Figure 8d–f: Single-modal ablation. (d) Spectral BPM; (e) Waveform BPM; (f) Waveform RMSE. Remote / Local / Phase vs BreatheCS.](../../outputs/figures/paper_fig8_def_single_modal.png)
 
-![Figure 8c: Single-modal (Remote / Local / Phase) vs BreatheCS (spectral BPM).](../../outputs/figures/paper_fig8c_ablation_draft_modal.png)
+| Domain | Remote | Local | Phase | BreatheCS (3-modal) |
+|---|---:|---:|---:|---:|
+| Spectral BPM | 0.376 | 0.378 | 2.191 | 0.405 |
+| Waveform BPM | 0.399 | 0.439 | 2.395 | 0.744 |
+| Waveform RMSE | 0.931 | 0.947 | 1.109 | 0.951 |
 
-> **Fig. 8 解读**: (a)(b) 分别对应原文谱域 / 时域四档消融；(c) 单模态局限。数值见 `outputs/reports/ble_hkh_draft_ablation_summary.json`。
+> HKH 12-scenario mean。谱域无 RMSE。汇总：`outputs/reports/ble_hkh_draft_ablation_summary.json`。
+
+> **Fig. 8 解读**: (a–c) 信道/模态融合层级；(d–f) 把完整管线限制在单一模态。BreatheCS 谱分支为逐模态 η·ρ 加权谱 → **三模态等权**融合；时域分支为两级 Hilbert-MRC。单模态表显示 Phase 单独很差，Remote/Local 幅值常略优于三模态等权——见报告讨论。
 
 ---
 
