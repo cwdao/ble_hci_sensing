@@ -1,6 +1,6 @@
-# BreatheCS: Measurement-Aware Respiratory Rate and Waveform Sensing with Bluetooth Channel Sounding
+# BreatheCS: Spectral Fusion and Coherent Waveform Reconstruction for Contactless Respiration Sensing with Bidirectional Bluetooth Channel Sounding
 
-# BreatheCS：面向 BLE 信道探测的测量感知呼吸率与波形感知
+# BreatheCS：融合双向 BLE 信道探测测量的非接触式呼吸感知——频谱融合与相干波形重建
 
 > **DRAFT v0.4** — 根据 5.6sol 建议重定位：论文主线从"Phase 零陷填充"转向"BLE CS 不是低采样率 WiFi CSI——双向 PCT 观测结构需要不同的融合原则"。Abstract/Introduction/Related Work/Conclusion 全面重写。  
 > **日期**：2026-07-26  
