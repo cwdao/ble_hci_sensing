@@ -294,6 +294,34 @@ DRAFT_ABLATION_SPECS: Tuple[Tuple[str, str, B3VariantConfig], ...] = (
     ),
 )
 
+# Unified pipeline final (docs/plans/unified_pipeline_final_plan.md)
+UNIFIED_PIPELINE_SPECS: Tuple[Tuple[str, str, B3VariantConfig], ...] = (
+    (
+        "Amplitude-only BreatheCS (R+L η-weighted spectral)",
+        "candidate_a",
+        B3VariantConfig(
+            use_voting=True,
+            use_two_level_hilbert=False,
+            modal_variables=("remote_amplitudes", "local_amplitudes"),
+            modal_combine="fuse",
+            bpm_source="spectral",
+            modal_weight_mode="eta",
+        ),
+    ),
+    (
+        "R+L coherent MRC waveform (no Phase)",
+        "rl_waveform",
+        B3VariantConfig(
+            use_voting=True,
+            use_two_level_hilbert=True,
+            modal_variables=("remote_amplitudes", "local_amplitudes"),
+            modal_combine="fuse",
+            bpm_source="waveform",
+            modal_weight_mode="eta",
+        ),
+    ),
+)
+
 EXTERNAL_BASELINE_SPECS: Tuple[Tuple[str, str], ...] = (
     ("B1 Vote→Equal", "b1_vote_modal_equal"),
     ("B2-D Two-level Hilbert-MRC", "b2_d_two_level"),
@@ -305,6 +333,7 @@ __all__ = [
     "B3_SIMPLIFIED_CONFIG",
     "B3_VARIANT_SPECS",
     "DRAFT_ABLATION_SPECS",
+    "UNIFIED_PIPELINE_SPECS",
     "EXTERNAL_BASELINE_SPECS",
     "MODAL_SHORT",
     "estimate_b3_window",
@@ -776,7 +805,11 @@ def estimate_b3_window(
             y_final, modal_info = coherent_mrc_fuse_modals(
                 usable,
                 modal_etas,
-                modal_weight_mode="eta_coherence",
+                modal_weight_mode=(
+                    "eta"
+                    if getattr(variant, "modal_weight_mode", "equal") in ("eta", "eta_only")
+                    else "eta_coherence"
+                ),
                 use_phase_align=True,
             )
         if y_final is not None and len(y_final) >= 4:

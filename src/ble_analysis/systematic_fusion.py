@@ -5,7 +5,7 @@ See ``docs/plans/systematic_modal_channel_fusion_plan.md``.
 
 from __future__ import annotations
 
-from typing import Any, Dict, List, Literal, Optional, Sequence, Tuple
+from typing import Any, Dict, List, Literal, Optional, Sequence, Set, Tuple
 
 import numpy as np
 
@@ -41,7 +41,7 @@ from ble_analysis.voting_fusion import (
 
 ChannelStrategy = Literal["vote", "votep", "uniform"]
 ModalStrategy = Literal["phase_only", "equal", "eta", "top2"]
-ModalFusionWeightMode = Literal["equal", "energy_ratio", "top2_equal", "custom"]
+ModalFusionWeightMode = Literal["equal", "energy_ratio", "top2_equal", "custom", "eta_only"]
 
 VAR_SHORT = {
     "remote_amplitudes": "remote",
@@ -297,6 +297,12 @@ def modal_fusion_from_spectra(
             if custom_weights is None:
                 raise ValueError("weight_mode='custom' requires custom_weights")
             w_list.append(float(max(custom_weights.get(k, 0.0), 0.0)))
+        elif weight_mode == "eta_only":
+            # Caller should put η into ``scores`` (or pass via custom_weights).
+            if custom_weights is not None:
+                w_list.append(float(max(custom_weights.get(k, 0.0), 0.0)))
+            else:
+                w_list.append(float(max(score, 0.0)))
         else:
             w_list.append(score)
     w_arr = np.asarray(w_list, dtype=float)
@@ -305,6 +311,39 @@ def modal_fusion_from_spectra(
     w_arr = w_arr / np.sum(w_arr)
     fused = np.sum(w_arr[:, None] * np.vstack(spec_list), axis=0)
     return _bpm_from_fused_spectrum(fused, band_freqs, cfg), list(spectra.keys())
+
+
+def modal_fusion_eta_only(
+    spectra_map: Dict[str, np.ndarray],
+    eta_map: Dict[str, float],
+    band_freqs: np.ndarray,
+    cfg: ChFusionConfig,
+    *,
+    active_modals: Optional[Set[str]] = None,
+) -> Tuple[float, np.ndarray]:
+    """η-weighted spectral fusion over active modals.
+
+    ``active_modals`` uses spectrum keys (remote/local/phase). If None, use all.
+    Returns ``(bpm, fused_spectrum)``.
+    """
+    keys = list(spectra_map.keys())
+    if active_modals is not None:
+        keys = [k for k in keys if k in active_modals]
+    if not keys:
+        return float("nan"), np.asarray([], dtype=float)
+
+    specs = []
+    weights = []
+    for k in keys:
+        specs.append(np.asarray(spectra_map[k], dtype=float))
+        weights.append(float(max(eta_map.get(k, 0.0), 0.0)))
+    w = np.asarray(weights, dtype=float)
+    if float(np.sum(w)) <= cfg.eps:
+        w = np.ones(len(keys), dtype=float)
+    w = w / float(np.sum(w))
+    fused = np.sum(w[:, None] * np.vstack(specs), axis=0)
+    bpm = _bpm_from_fused_spectrum(fused, band_freqs, cfg)
+    return float(bpm), fused
 
 
 def _compute_persistence_masks_by_var(

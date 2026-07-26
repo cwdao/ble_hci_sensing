@@ -3,7 +3,7 @@
 > **来源**：Phase 互补投影实验 (`phase_unique_role_adaptive_fusion`) + 消融矩阵 (`paper_ablation_draft_align`) + 模态质量门控 (`modal_quality_gating`) + 波形 MRC (`b2_coherent_mrc`)  
 > **目标报告**：`docs/reports/unified_pipeline_final_report.md`  
 > **日期**：2026-07-26  
-> **验证状态**：待实现
+> **验证状态**：已完成（2026-07-26）
 
 ---
 
@@ -534,20 +534,43 @@ python notebooks/scripts/chFusion_unified_pipeline.py
 
 | 字段 | 内容 |
 |------|------|
-| **验证状态** | 待实现 |
-| **实际脚本** | — |
-| **报告链接** | — |
-| **一句话结论** | — |
+| **验证状态** | **已完成**（2026-07-26） |
+| **实际脚本** | `notebooks/scripts/chFusion_unified_pipeline.py` |
+| **报告链接** | [`docs/reports/unified_pipeline_final_report.md`](../reports/unified_pipeline_final_report.md) |
+| **一句话结论** | 4/4 LOSO fold 选 θ=+∞ → Candidate B≡A；推荐 Amplitude-only（Voting→R+L η-weighted）为主方法；CS 上三模态优势无法由当前 conf 闸门自动恢复。 |
 
-### 保留问题
+### 实际产出路径
+
+- 谱域：`outputs/reports/unified_pipeline_spectral_summary.json`
+- LOSO：`outputs/reports/unified_pipeline_gate_loso.json`
+- 波形：`outputs/reports/unified_pipeline_waveform_hkh_summary.json`
+- 诊断：`outputs/reports/unified_pipeline_phase_diagnostics.json`
+- CSV：`outputs/reports/unified_pipeline_per_recording.csv`
+- 图：`outputs/figures/unified_pipeline_*.png`
+
+### 关键数字（执行回填）
+
+| 域 | 方法 | 指标 | 值 |
+|----|------|------|-----:|
+| HKH | Candidate A / B | BPM abs err | **0.3717** |
+| HKH | Remote | BPM abs err | 0.3760 |
+| HKH | Equal-3 | BPM abs err | 0.4050 |
+| HKH | LOSO θ | — | **4/4 = +∞** |
+| CS | Candidate A / B (θ=+∞) | BPM rel % | 12.80 |
+| CS | Equal-3 | BPM rel % | **10.14** |
+| HKH | R+L waveform | window-mean RMSE | 0.937 |
+| HKH | Remote waveform | window-mean RMSE | 0.931 |
+| HKH | R+L waveform | recording-level RMSE | **0.666** |
+
+### 保留问题（执行后）
 
 | ID | 问题 | 备注 |
 |----|------|------|
-| Q1 | R+L waveform RMSE 是否优于 Remote-only 0.931？ | 首次测量 |
-| Q2 | Candidate B 在 held-out HKH 上是否不劣于 Candidate A？ | LOSO 4-fold |
-| Q3 | Candidate B 在 CS 上是否自动启用 Phase → 恢复三模态优势？ | CS 用 HKH LOSO 中位数 θ |
-| Q4 | LOSO 所选 θ 是否跨 fold 稳定？最常被选的是否为 +∞？ | 若 +∞ 最优 → Phase 不应进入主方法 |
-| Q5 | Candidate A 的 R+L 0.372 是否在同一脚本中稳定复现？ | 组装确认 |
+| Q1 | R+L waveform RMSE 是否优于 Remote-only 0.931？ | window-mean：否（0.937≈0.931）；recording-level：是（0.666\<0.684） |
+| Q2 | Candidate B 在 held-out HKH 上是否不劣于 A？ | 是，但因 θ=+∞ 而完全相同，无增益 |
+| Q3 | Candidate B 在 CS 上是否自动启用 Phase？ | **否**（θ=+∞，激活率 0） |
+| Q4 | LOSO θ 是否稳定？最常被选是否为 +∞？ | **是：4/4 +∞** → Phase 不应进入主方法 |
+| Q5 | Candidate A 的 R+L 0.372 是否复现？ | **是（0.3717）** |
 
 ---
 

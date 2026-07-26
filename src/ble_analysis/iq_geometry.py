@@ -249,6 +249,83 @@ def recording_level_paired_bootstrap(
     return {"n_recordings": n, "recordings": recordings, "pairs": pairs}
 
 
+def subject_cluster_paired_bootstrap(
+    results: Mapping[str, Mapping[str, float]],
+    recording_to_subject: Mapping[str, str],
+    n_bootstrap: int = 10000,
+    *,
+    seed: int = 0,
+    alpha: float = 0.05,
+) -> Dict[str, Any]:
+    """Paired bootstrap that resamples *subjects* (clusters), not recordings.
+
+    Within each resampled subject, all of that subject's recordings are kept.
+    """
+    methods = list(results.keys())
+    rec_sets = [set(results[m].keys()) for m in methods]
+    recordings = sorted(set.intersection(*rec_sets)) if rec_sets else []
+    if len(recordings) < 2:
+        return {"n_recordings": len(recordings), "n_subjects": 0, "pairs": {}}
+
+    subjects = sorted({recording_to_subject[r] for r in recordings if r in recording_to_subject})
+    subj_to_recs: Dict[str, List[str]] = {s: [] for s in subjects}
+    for r in recordings:
+        s = recording_to_subject.get(r)
+        if s is not None:
+            subj_to_recs[s].append(r)
+
+    rng = np.random.default_rng(seed)
+    n_subj = len(subjects)
+    pairs: Dict[str, Any] = {}
+    for i, a in enumerate(methods):
+        for b in methods[i + 1 :]:
+            # observed = mean over all recordings of (a-b)
+            obs_diffs = [
+                float(results[a][r]) - float(results[b][r])
+                for r in recordings
+                if np.isfinite(results[a][r]) and np.isfinite(results[b][r])
+            ]
+            observed = float(np.mean(obs_diffs)) if obs_diffs else float("nan")
+            boots = np.empty(n_bootstrap, dtype=float)
+            for k in range(n_bootstrap):
+                chosen = [subjects[j] for j in rng.integers(0, n_subj, size=n_subj)]
+                diffs = []
+                for s in chosen:
+                    for r in subj_to_recs[s]:
+                        va = results[a].get(r)
+                        vb = results[b].get(r)
+                        if va is None or vb is None:
+                            continue
+                        if np.isfinite(va) and np.isfinite(vb):
+                            diffs.append(float(va) - float(vb))
+                boots[k] = float(np.mean(diffs)) if diffs else float("nan")
+            finite = boots[np.isfinite(boots)]
+            if finite.size == 0:
+                lo = hi = float("nan")
+                includes = True
+            else:
+                lo = float(np.quantile(finite, alpha / 2))
+                hi = float(np.quantile(finite, 1 - alpha / 2))
+                includes = bool(lo <= 0.0 <= hi)
+            pairs[f"{a}__vs__{b}"] = {
+                "method_a": a,
+                "method_b": b,
+                "mean_diff_a_minus_b": observed,
+                "ci_low": lo,
+                "ci_high": hi,
+                "ci_includes_0": includes,
+                "n_recordings": len(recordings),
+                "n_subjects": n_subj,
+            }
+    return {
+        "n_recordings": len(recordings),
+        "n_subjects": n_subj,
+        "subjects": subjects,
+        "recordings": recordings,
+        "pairs": pairs,
+    }
+
+
 def compute_amplitude_joint_weakness(
     eta_r: np.ndarray,
     eta_l: np.ndarray,

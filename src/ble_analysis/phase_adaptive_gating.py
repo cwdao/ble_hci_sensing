@@ -1,13 +1,42 @@
 """Phase adaptive gating (E2/E3) — simplified variants for Phase Plan v2.0.
 
 D1=C → at most 2–3 variants; thresholds via leave-one-subject-out.
+Also: confidence gate for unified Amplitude-only vs Phase-gated pipeline.
 """
 
 from __future__ import annotations
 
-from typing import Dict, Optional, Tuple
+from typing import Dict, Mapping, Optional, Set, Tuple
 
 import numpy as np
+
+
+def gate_by_confidence(
+    conf_per_modal: Mapping[str, float],
+    theta_conf: float = 0.35,
+) -> Set[str]:
+    """Return active modal short-names under Phase confidence gate.
+
+    Always keeps Remote/Local. Adds Phase only when ``conf_P >= theta_conf``.
+    ``theta_conf=+inf`` never includes Phase (Candidate A).
+    """
+    active: Set[str] = {"R", "L"}
+    # Accept both short keys used in packs ("phase") and plan keys ("P")
+    conf_p = float(
+        conf_per_modal.get(
+            "P",
+            conf_per_modal.get("phase", 0.0),
+        )
+    )
+    if np.isfinite(theta_conf) and conf_p >= float(theta_conf):
+        active.add("P")
+    return active
+
+
+def active_modals_to_spectrum_keys(active: Set[str]) -> Set[str]:
+    """Map {R,L,P} → {remote,local,phase} for spectrum dict keys."""
+    mapping = {"R": "remote", "L": "local", "P": "phase"}
+    return {mapping[k] for k in active if k in mapping}
 
 
 def classify_window_condition(

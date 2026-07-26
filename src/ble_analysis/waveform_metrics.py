@@ -1,8 +1,8 @@
-"""波形对比指标：z-score、符号对齐、窗级 RMSE。"""
+"""波形对比指标：z-score、符号对齐、窗级/录制级 RMSE。"""
 
 from __future__ import annotations
 
-from typing import Tuple
+from typing import Dict, List, Sequence, Tuple
 
 import numpy as np
 
@@ -78,3 +78,96 @@ def window_rmse_against_reference(
         ref = resample_to_length(ref, n)
 
     return rmse_with_sign_alignment(est, ref)
+
+
+def stitch_overlapping_windows(
+    windows: Sequence[np.ndarray],
+    starts: Sequence[int],
+    total_len: int,
+) -> np.ndarray:
+    """Overlap-average stitch of window waveforms onto a common timeline."""
+    if total_len <= 0 or not windows:
+        return np.asarray([], dtype=float)
+    acc = np.zeros(total_len, dtype=float)
+    wgt = np.zeros(total_len, dtype=float)
+    for y, st in zip(windows, starts):
+        yy = np.asarray(y, dtype=float)
+        if yy.size < 2 or not np.any(np.isfinite(yy)):
+            continue
+        st_i = int(st)
+        end_i = min(st_i + len(yy), total_len)
+        if end_i <= st_i:
+            continue
+        sl = slice(st_i, end_i)
+        n = end_i - st_i
+        chunk = yy[:n]
+        finite = np.isfinite(chunk)
+        acc[sl] = np.where(finite, acc[sl] + np.where(finite, chunk, 0.0), acc[sl])
+        wgt[sl] = np.where(finite, wgt[sl] + 1.0, wgt[sl])
+    out = np.full(total_len, np.nan, dtype=float)
+    mask = wgt > 0
+    out[mask] = acc[mask] / wgt[mask]
+    return out
+
+
+def recording_level_rmse(
+    est: np.ndarray,
+    ref: np.ndarray,
+    *,
+    max_lag: int = 0,
+) -> Dict[str, float]:
+    """Recording-level RMSE with one global polarity and optional lag search.
+
+    Protocol (unified_pipeline_final_plan):
+      - z-score on the full recording (not per-window)
+      - single global polarity flip
+      - optional fixed lag (samples) searched once over ±max_lag
+      - no per-window GT-driven re-alignment
+    """
+    a = np.asarray(est, dtype=float)
+    b = np.asarray(ref, dtype=float)
+    n = min(len(a), len(b))
+    if n < 8:
+        return {"rmse": float("nan"), "sign": 1.0, "lag": 0.0, "n": float(n)}
+    a = a[:n].copy()
+    b = b[:n].copy()
+    valid = np.isfinite(a) & np.isfinite(b)
+    if int(np.sum(valid)) < 8:
+        return {
+            "rmse": float("nan"),
+            "sign": 1.0,
+            "lag": 0.0,
+            "n": float(np.sum(valid)),
+        }
+
+    # Dense fill for lag search: replace invalid with local mean of valid
+    fill_a = float(np.nanmean(a[valid]))
+    fill_b = float(np.nanmean(b[valid]))
+    a_f = np.where(valid, a, fill_a)
+    b_f = np.where(valid, b, fill_b)
+    za_full = zscore(a_f)
+    zb_full = zscore(b_f)
+
+    best = {"rmse": float("inf"), "sign": 1.0, "lag": 0.0}
+    lags = range(-int(max_lag), int(max_lag) + 1) if max_lag > 0 else [0]
+    for lag in lags:
+        for sign in (1.0, -1.0):
+            if lag == 0:
+                ea = za_full
+                rb = sign * zb_full
+            elif lag > 0:
+                ea = za_full[lag:]
+                rb = sign * zb_full[:-lag]
+            else:
+                ea = za_full[:lag]
+                rb = sign * zb_full[-lag:]
+            m = min(len(ea), len(rb))
+            if m < 8:
+                continue
+            r = rmse(ea[:m], rb[:m])
+            if np.isfinite(r) and r < best["rmse"]:
+                best = {"rmse": float(r), "sign": float(sign), "lag": float(lag)}
+    if not np.isfinite(best["rmse"]) or best["rmse"] == float("inf"):
+        best["rmse"] = float("nan")
+    best["n"] = float(n)
+    return best
