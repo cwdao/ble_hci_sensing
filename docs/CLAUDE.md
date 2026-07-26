@@ -108,11 +108,32 @@ Claude/DeepSeek 不负责：
 - 不得擅自重命名项目已有指标和方法。
 - 公式、符号和术语必须尽量与项目一致。
 - 不确定处必须标记 `[待确认]`，不要编造论文结论或实验结果。
+- **物理约束**：remote/local 物理对等，门控 fallback 不得硬编码为特定模态（如 Remote）；三种可用变量（remote_amplitudes / local_amplitudes / phases）应对称对待，由每窗信号质量动态选择。
+
+### 2.1 论文正文写作规范
+
+**适用范围**：`docs/paper_draft/` 下的所有论文正文级文档。
+
+写作时必须遵守以下原则：
+
+| 原则 | 说明 |
+|------|------|
+| **简洁句优先** | 用简单句把意思表达清楚，避免层层嵌套的从句。一段只说一件事。 |
+| **减少修辞** | 少用"remarkably"、"interestingly"、"strikingly"等修饰性副词。让数据本身说话。 |
+| **不做过度防御** | 不要在每句话后面加"under the evaluated conditions"、"within the scope of this study"等限定。这些限定应集中在 Limitations 一节统一处理，而不是散布全文。 |
+| **叙事驱动** | 围绕研究问题组织文字，不要写成算法模块的平铺罗列。每一段应推进一个论证步骤。 |
+| **中文版灵活** | 中文版意思相同即可，不要求逐句直译，可按中文表达习惯调整句式。 |
+
+**反模式**（避免的写法）：
+
+- ❌ "Interestingly, we remarkably found that..." → ✅ "We found that..."
+- ❌ "Under the specific conditions evaluated in this work and within the scope of the current experimental setup..." → ✅ 直接说结论，限定词集中放 Limitations
+- ❌ 一大段包含三个以上的论证方向 → ✅ 拆成多段，每段一个点
 
 项目既有命名包括：
 
 - `η`：能量比
-- `ρ`：峰度
+- `ρ`：峰值突出度 (peak prominence)
 - `BPM`
 - `Single`
 - `Uniform`
