@@ -64,6 +64,12 @@ class B3VariantConfig:
     modal_variables: Optional[Tuple[str, ...]] = None
     modal_combine: str = "fuse"  # "fuse" | "pick_best"
     bpm_source: str = "spectral"  # "spectral" | "waveform"
+    # Modal quality gating (docs/plans/modal_quality_gating_plan.md)
+    # equal | eta | eta_rho | eta_coherence | eta_rho_conf | custom
+    modal_weight_mode: str = "equal"
+    # Phase soft/hard gate: if q_phase < threshold, multiply w_phase by alpha
+    phase_gate_threshold: Optional[float] = None
+    phase_gate_alpha: float = 1.0  # 0=hard exclude, <1 soft attenuate
 
 
 B3_SIMPLIFIED_CONFIG = B3VariantConfig()
@@ -241,6 +247,51 @@ DRAFT_ABLATION_SPECS: Tuple[Tuple[str, str, B3VariantConfig], ...] = (
             bpm_source="waveform",
         ),
     ),
+    # --- E3 quality-weighted modal fusion (spectral) ---
+    (
+        "Spec · η-weighted modal",
+        "e3a_eta_weighted",
+        B3VariantConfig(
+            use_voting=True,
+            use_two_level_hilbert=False,
+            modal_combine="fuse",
+            bpm_source="spectral",
+            modal_weight_mode="eta",
+        ),
+    ),
+    (
+        "Spec · η·ρ-weighted modal",
+        "e3b_eta_rho_weighted",
+        B3VariantConfig(
+            use_voting=True,
+            use_two_level_hilbert=False,
+            modal_combine="fuse",
+            bpm_source="spectral",
+            modal_weight_mode="eta_rho",
+        ),
+    ),
+    (
+        "Spec · η·γ-weighted modal",
+        "e3c_eta_coherence_weighted",
+        B3VariantConfig(
+            use_voting=True,
+            use_two_level_hilbert=False,
+            modal_combine="fuse",
+            bpm_source="spectral",
+            modal_weight_mode="eta_coherence",
+        ),
+    ),
+    (
+        "Spec · η·ρ·conf-weighted modal",
+        "e3d_eta_rho_conf_weighted",
+        B3VariantConfig(
+            use_voting=True,
+            use_two_level_hilbert=False,
+            modal_combine="fuse",
+            bpm_source="spectral",
+            modal_weight_mode="eta_rho_conf",
+        ),
+    ),
 )
 
 EXTERNAL_BASELINE_SPECS: Tuple[Tuple[str, str], ...] = (
@@ -344,6 +395,8 @@ def _vote_bpm_per_modal(
             "weighted_spectrum": zero,
             "weights": weights,
             "bpm_per_tone": bpm_per_tone,
+            "mean_eta": 0.0,
+            "mean_rho": 0.0,
         }
 
     voted_bpm, _conf_flag, win_mass = vote_bpm_weighted_histogram(
@@ -359,6 +412,8 @@ def _vote_bpm_per_modal(
     weighted_spectrum = _weighted_spectrum_average(
         spectra, spec_weights, band_stub, cfg.eps
     )
+    mean_eta = float(np.mean(eta[mask])) if np.any(mask) else 0.0
+    mean_rho = float(np.mean(rho[mask])) if np.any(mask) else 0.0
 
     return {
         "voted_bpm": float(voted_bpm),
@@ -367,6 +422,8 @@ def _vote_bpm_per_modal(
         "weights": weights,
         "bpm_per_tone": bpm_per_tone,
         "winning_mass": float(win_mass),
+        "mean_eta": mean_eta,
+        "mean_rho": mean_rho,
     }
 
 
@@ -377,13 +434,20 @@ def _single_best_eta_bpm(
     spectra: np.ndarray,
     *,
     use_eta_rho_weights: bool,
-) -> Tuple[float, float, np.ndarray, np.ndarray]:
+) -> Tuple[float, float, np.ndarray, np.ndarray, float, float]:
     """Pick best-η (or η·ρ) tone; also return one-hot weighted spectrum + weights."""
     quality = eta * np.clip(rho, 0.0, None) if use_eta_rho_weights else eta
     mask = np.isfinite(quality) & np.isfinite(bpm_per_tone)
     band_len = spectra.shape[1] if spectra.ndim == 2 and spectra.size else 1
     if not np.any(mask):
-        return float("nan"), 0.0, np.zeros(band_len, dtype=float), np.zeros_like(quality, dtype=float)
+        return (
+            float("nan"),
+            0.0,
+            np.zeros(band_len, dtype=float),
+            np.zeros_like(quality, dtype=float),
+            0.0,
+            0.0,
+        )
     idx = int(np.argmax(np.where(mask, quality, -np.inf)))
     conf = float(quality[idx] / (np.sum(quality[mask]) + 1e-12))
     weights = np.zeros_like(quality, dtype=float)
@@ -392,7 +456,80 @@ def _single_best_eta_bpm(
         weighted_spectrum = np.asarray(spectra[idx], dtype=float).copy()
     else:
         weighted_spectrum = np.zeros(band_len, dtype=float)
-    return float(bpm_per_tone[idx]), conf, weighted_spectrum, weights
+    mean_eta = float(eta[idx]) if np.isfinite(eta[idx]) else 0.0
+    mean_rho = float(rho[idx]) if np.isfinite(rho[idx]) else 0.0
+    return float(bpm_per_tone[idx]), conf, weighted_spectrum, weights, mean_eta, mean_rho
+
+
+def _spectral_cosine(a: np.ndarray, b: np.ndarray, eps: float = 1e-12) -> float:
+    aa = np.asarray(a, dtype=float).ravel()
+    bb = np.asarray(b, dtype=float).ravel()
+    if aa.size == 0 or bb.size == 0 or aa.size != bb.size:
+        return 0.0
+    na = float(np.linalg.norm(aa))
+    nb = float(np.linalg.norm(bb))
+    if na <= eps or nb <= eps:
+        return 0.0
+    return float(np.clip(np.dot(aa, bb) / (na * nb), 0.0, 1.0))
+
+
+def _modal_quality_weights(
+    modal_results: Dict[str, dict],
+    spectra: Dict[str, np.ndarray],
+    *,
+    weight_mode: str,
+    eps: float = 1e-12,
+) -> Dict[str, float]:
+    """Build per-modal fusion weights from quality metrics."""
+    if weight_mode in ("equal", ""):
+        return {k: 1.0 for k in spectra}
+
+    # Reference modal for coherence: prefer remote, else first key
+    ref_key = "remote" if "remote" in spectra else (next(iter(spectra.keys())) if spectra else None)
+    ref_spec = spectra.get(ref_key) if ref_key is not None else None
+
+    weights: Dict[str, float] = {}
+    for k in spectra:
+        res = modal_results.get(k, {})
+        eta = float(res.get("mean_eta", 0.0))
+        rho = float(res.get("mean_rho", 0.0))
+        conf = float(res.get("confidence", 0.0))
+        rho_pos = max(rho, 0.0)
+        if weight_mode == "eta":
+            w = max(eta, 0.0)
+        elif weight_mode == "eta_rho":
+            w = max(eta, 0.0) * rho_pos
+        elif weight_mode == "eta_coherence":
+            gamma = 1.0 if (ref_spec is None or k == ref_key) else _spectral_cosine(
+                spectra[k], ref_spec, eps
+            )
+            w = max(eta, 0.0) * float(gamma)
+        elif weight_mode == "eta_rho_conf":
+            w = max(eta, 0.0) * rho_pos * max(conf, 0.0)
+        else:
+            w = 1.0
+        weights[k] = float(w)
+    return weights
+
+
+def _apply_phase_gate(
+    weights: Dict[str, float],
+    modal_results: Dict[str, dict],
+    *,
+    threshold: Optional[float],
+    alpha: float,
+) -> Dict[str, float]:
+    """Attenuate phase weight when q_phase < threshold."""
+    if threshold is None or "phase" not in weights:
+        return weights
+    out = dict(weights)
+    res = modal_results.get("phase", {})
+    eta = float(res.get("mean_eta", 0.0))
+    rho = float(res.get("mean_rho", 0.0))
+    q_phase = max(eta, 0.0) * max(rho, 0.0)
+    if q_phase < float(threshold):
+        out["phase"] = float(out["phase"]) * float(np.clip(alpha, 0.0, 1.0))
+    return out
 
 
 def estimate_b3_window(
@@ -463,7 +600,7 @@ def estimate_b3_window(
                 strategy=strategy,
             )
         else:
-            bpm_single, conf, wspec, weights = _single_best_eta_bpm(
+            bpm_single, conf, wspec, weights, mean_eta, mean_rho = _single_best_eta_bpm(
                 eta,
                 rho,
                 bpm_per_tone,
@@ -476,7 +613,15 @@ def estimate_b3_window(
                 "weighted_spectrum": wspec,
                 "weights": weights,
                 "bpm_per_tone": bpm_per_tone,
+                "mean_eta": mean_eta,
+                "mean_rho": mean_rho,
             }
+
+        # Ensure mean_eta / mean_rho always present (voting path already sets them)
+        if "mean_eta" not in modal_results[short]:
+            mask = np.isfinite(eta) & np.isfinite(rho)
+            modal_results[short]["mean_eta"] = float(np.mean(eta[mask])) if np.any(mask) else 0.0
+            modal_results[short]["mean_rho"] = float(np.mean(rho[mask])) if np.any(mask) else 0.0
 
         if variant.use_two_level_hilbert:
             if variant.use_voting:
@@ -532,6 +677,11 @@ def estimate_b3_window(
                 info = {"score": float(modal_results[short].get("confidence", 0.0))}
             modal_spectra[short] = spec
             modal_scores[short] = float(info.get("score", info.get("conf", 0.0)))
+            # Prefer voting-info mean_eta/rho when available
+            if "mean_eta" in info:
+                modal_results[short]["mean_eta"] = float(info["mean_eta"])
+            if "mean_rho" in info:
+                modal_results[short]["mean_rho"] = float(info["mean_rho"])
 
     if not modal_results:
         return {
@@ -564,17 +714,43 @@ def estimate_b3_window(
         f_peak = _parabolic_peak_freq(band_freqs, spec, k, cfg.eps)
         return float(60.0 * f_peak)
 
+    def _fuse_modal_spectra(
+        spectra_map: Dict[str, np.ndarray],
+        scores_map: Dict[str, float],
+    ) -> float:
+        if not spectra_map:
+            return float("nan")
+        weight_mode = getattr(variant, "modal_weight_mode", "equal") or "equal"
+        if weight_mode == "equal":
+            bpm, _sel = modal_fusion_from_spectra(
+                spectra_map, scores_map, "equal", band_freqs, cfg
+            )
+            return float(bpm)
+
+        custom = _modal_quality_weights(
+            modal_results, spectra_map, weight_mode=weight_mode, eps=cfg.eps
+        )
+        custom = _apply_phase_gate(
+            custom,
+            modal_results,
+            threshold=getattr(variant, "phase_gate_threshold", None),
+            alpha=float(getattr(variant, "phase_gate_alpha", 1.0)),
+        )
+        bpm, _sel = modal_fusion_from_spectra(
+            spectra_map,
+            scores_map,
+            "custom",
+            band_freqs,
+            cfg,
+            custom_weights=custom,
+        )
+        return float(bpm)
+
     if variant.use_two_level_hilbert:
         if variant.modal_combine == "pick_best":
             bpm_vote = _pick_best_modal_bpm(spectra_for_modal, scores_for_modal)
         elif spectra_for_modal:
-            bpm_vote, _sel = modal_fusion_from_spectra(
-                spectra_for_modal,
-                scores_for_modal,
-                "equal",
-                band_freqs,
-                cfg,
-            )
+            bpm_vote = _fuse_modal_spectra(spectra_for_modal, scores_for_modal)
         else:
             bpm_vote = float("nan")
     else:
@@ -583,13 +759,7 @@ def estimate_b3_window(
         if variant.modal_combine == "pick_best":
             bpm_vote = _pick_best_modal_bpm(src_spectra, src_scores)
         else:
-            bpm_vote, _sel = modal_fusion_from_spectra(
-                src_spectra,
-                src_scores,
-                "equal",
-                band_freqs,
-                cfg,
-            )
+            bpm_vote = _fuse_modal_spectra(src_spectra, src_scores)
 
     y_final: Optional[np.ndarray] = None
     bpm_wf = float("nan")

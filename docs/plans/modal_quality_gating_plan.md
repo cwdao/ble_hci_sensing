@@ -3,7 +3,7 @@
 > **来源**：`paper_draft_skeleton.md` §6.5 消融实验结果分析 + HKH 12 场景消融数据  
 > **目标报告**：`docs/reports/modal_quality_gating_report.md`  
 > **日期**：2026-07-26  
-> **验证状态**：待实现
+> **验证状态**：已完成
 
 ---
 
@@ -432,19 +432,24 @@ per_window_record = {
 
 | 字段 | 内容 |
 |------|------|
-| **验证状态** | 待实现 |
-| **实际脚本** | — |
-| **报告链接** | — |
-| **一句话结论** | — |
+| **验证状态** | 已完成 |
+| **实际脚本** | `notebooks/scripts/chFusion_modal_oracle_diag.py`、`notebooks/scripts/chFusion_modal_quality_gating.py` |
+| **报告链接** | `docs/reports/modal_quality_gating_report.md` |
+| **一句话结论** | HKH：质量加权（最佳 E3d=0.384）优于等权（0.405）但未优于 Remote/Channel-only；CS：等权仍最优（10.14%），Phase 并不系统性崩坏；E4 门控相对 E3 无实质增益。 |
+
+实际产出路径：
+- 数值：`outputs/reports/modal_oracle_per_window.npy`、`modal_oracle_summary.json`、`modal_quality_gating_hkh_summary.json`、`modal_quality_gating_cs_summary.json`
+- 图表：`outputs/figures/modal_oracle_*.png`、`modal_selection_metric_accuracy.png`、`modal_quality_*.png`、`modal_quality_gating_*_leaderboard.png`
+- 模块改动：`src/ble_analysis/b3_pipeline.py`（质量权重 + Phase gate）、`src/ble_analysis/systematic_fusion.py`（`weight_mode="custom"`）
 
 ### 保留问题
 
 | ID | 问题 | 备注 |
 |----|------|------|
-| Q1 | Phase 在 CS 金属板上是否和 HKH 一样差？ | CS 金属板单模态消融未跑；若 Phase 在金属板上不差，说明问题在 HKH 数据特性 |
-| Q2 | η-only vs η·ρ 在模态级选择上谁更准？ | 信道级 η·ρ 更好（T0-V3 > T0-V2），但模态级可能不同（仅 3 个模态，差异大） |
-| Q3 | Phase 的最优窗口是否有可辨识的质量特征？ | E1 诊断回答——若 Phase 最优的窗口有系统性高 η/ρ，门控可精确启用 |
-| Q4 | 质量加权融合在 CS 金属板场景是否也有增益？ | 需 E3 对照实验回答 |
+| Q1 | Phase 在 CS 金属板上是否和 HKH 一样差？ | ✅ **已回答：否**。CS Phase-only 10.9%（接近 Equal 10.1%）；oracle 中 Phase 最优占 14.4%。HKH 上 Phase 系统性崩坏（2.191）。 |
+| Q2 | η-only vs η·ρ 在模态级选择上谁更准？ | ✅ **已回答：η-only hit 更高**（HKH 63.6% vs 54.3%）；但选中后误差 conf 更低。硬选整体仍劣于融合。 |
+| Q3 | Phase 的最优窗口是否有可辨识的质量特征？ | 部分：Phase-best 窗 η/ρ 均值偏高，但分布与全体重叠大，难以靠单一阈值精确启用。 |
+| Q4 | 质量加权融合在 CS 金属板场景是否也有增益？ | ✅ **已回答：无增益**。CS 上等权最优；E3/E4 均略差。 |
 | Q5 | Phase 是否在波形恢复（RMSE）上有独特贡献，即使 BPM 很差？ | 本轮聚焦 BPM；波形分支的 Phase 角色留待后续 plan |
 
 ---

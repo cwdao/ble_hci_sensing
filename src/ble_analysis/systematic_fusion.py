@@ -41,7 +41,7 @@ from ble_analysis.voting_fusion import (
 
 ChannelStrategy = Literal["vote", "votep", "uniform"]
 ModalStrategy = Literal["phase_only", "equal", "eta", "top2"]
-ModalFusionWeightMode = Literal["equal", "energy_ratio", "top2_equal"]
+ModalFusionWeightMode = Literal["equal", "energy_ratio", "top2_equal", "custom"]
 
 VAR_SHORT = {
     "remote_amplitudes": "remote",
@@ -252,10 +252,12 @@ def per_modal_voting_spectrum(
     spec_weights = weights * mask.astype(float)
     fused = _weighted_spectrum_average(spectra, spec_weights, band_freqs, cfg.eps)
     mean_eta = float(np.mean(eta[mask])) if np.any(mask) else 0.0
+    mean_rho = float(np.mean(rho[mask])) if np.any(mask) else 0.0
 
     return fused, bpm, {
         "conf": conf,
         "mean_eta": mean_eta,
+        "mean_rho": mean_rho,
         "score": conf,
         "n_effective_tones": int(np.sum(mask)),
         "winning_mass": win_mass,
@@ -268,8 +270,12 @@ def modal_fusion_from_spectra(
     weight_mode: ModalFusionWeightMode,
     band_freqs: np.ndarray,
     cfg: ChFusionConfig,
+    custom_weights: Optional[Dict[str, float]] = None,
 ) -> Tuple[float, List[str]]:
-    """Fuse per-modal spectra; returns BPM and selected modal keys (for top2)."""
+    """Fuse per-modal spectra; returns BPM and selected modal keys (for top2).
+
+    ``weight_mode="custom"`` uses ``custom_weights`` (keys match ``spectra``).
+    """
     if not spectra:
         return float("nan"), []
 
@@ -283,10 +289,14 @@ def modal_fusion_from_spectra(
 
     w_list = []
     spec_list = []
-    for _k, spec, score in entries:
+    for k, spec, score in entries:
         spec_list.append(spec)
         if weight_mode == "equal":
             w_list.append(1.0)
+        elif weight_mode == "custom":
+            if custom_weights is None:
+                raise ValueError("weight_mode='custom' requires custom_weights")
+            w_list.append(float(max(custom_weights.get(k, 0.0), 0.0)))
         else:
             w_list.append(score)
     w_arr = np.asarray(w_list, dtype=float)
