@@ -4,7 +4,7 @@
 > **v1.0 来源**：`modal_quality_gating` 实验结论 + `paper_ablation_draft_align` 消融矩阵  
 > **目标报告**：`docs/reports/phase_unique_role_adaptive_fusion_report.md`  
 > **日期**：2026-07-26  
-> **验证状态**：待实现
+> **验证状态**：已完成（2026-07-26）
 
 ---
 
@@ -833,10 +833,36 @@ def tiebreak_gated_fusion(
 
 | 字段 | 内容 |
 |------|------|
-| **验证状态** | 待实现 |
-| **实际脚本** | — |
-| **报告链接** | — |
-| **一句话结论** | — |
+| **验证状态** | **已完成**（2026-07-26） |
+| **实际脚本** | `chFusion_phase_p0_audit.py`、`chFusion_phase_diagnostics.py`、`chFusion_phase_adaptive_fusion.py` |
+| **报告链接** | `docs/reports/phase_unique_role_adaptive_fusion_report.md` |
+| **一句话结论** | Phase BPM oracle 空间有限（D1=C）；互补投影/波形假设未成立；简化门控 LOSO 相对 R+L 无显著增益（D3=B）；HKH 上 R+L 优于三模态等权 |
+
+### 实际产出路径
+
+- P0：`outputs/reports/phase_p0_*.json`、`outputs/figures/phase_p0_*.png`
+- E1/E4/E5：`outputs/reports/phase_e1_*.json`、`phase_e4_*.json`、`phase_e5_*.json`、`outputs/figures/phase_e*.png`
+- E2/E3：`outputs/reports/phase_adaptive_fusion_*_summary.json`、`outputs/figures/phase_adaptive_fusion_*_leaderboard.png`
+- Dependencies 回填：D1/D2/D3/D4/D5/D7
+- 报告：`docs/reports/phase_unique_role_adaptive_fusion_report.md`
+
+### 结论摘要
+
+1. **不要**把 Phase BPM rescue 写成主贡献（D1=C + D3=B + H1/H2 失败）
+2. **要**诚实报告 HKH 上 Remote/R+L 优于 Equal（D4=B；本实验 R+L=0.372 vs Equal=0.405）
+3. **要**修正 ρ 叙事与模态级指标建议（E4）；跨域用 ρ/conf 解释（E5）
+4. P2 受控实验（D6）仍待确认
+
+### P0 → 后续执行闸门（终态）
+
+| 项 | 结论 | 动作 |
+|----|------|------|
+| D1 | 条件 C | 已按简化 E2/E3 执行完毕 |
+| D2 | 条件 B | 物理叙事保守 |
+| D3 | 条件 B | Phase gate 不升级 |
+| D4 | 条件 B | 排名叙述改 comparable / Remote 更优 |
+| D5 | 条件 B | 救援分散但低频 |
+| D7 | 已完成 | §5.3 / §7.4 可改 |
 
 ### 保留问题
 

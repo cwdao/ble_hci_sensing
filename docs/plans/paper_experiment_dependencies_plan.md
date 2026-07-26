@@ -39,8 +39,16 @@ P2: 受控实验可行？
 | 字段 | 内容 |
 |------|------|
 | **实验** | P0a：每条 HKH recording 的 Δ_oracle = E[min(e_R,e_L)] − E[min(e_R,e_L,e_P)] |
-| **当前状态** | ❌ 未执行 |
+| **当前状态** | ✅ 已执行（2026-07-26）→ **条件 C** |
 | **优先级** | 🔴 P0（最高——决定 Phase BPM 路线是否值得投入） |
+| **结果文件** | `outputs/reports/phase_p0_oracle_delta.json` |
+
+### D1 · 状态更新 2026-07-26
+
+**实验结果**：12 条 HKH recording；mean Δ_oracle = **0.0283** BPM，median = 0.0291；≥0.05：2 条；≤0.01：2 条；中间带 0.01–0.05：**8 条**。max=0.059（room_B-sbj_C），min=0.0（room_C-sbj_A）。
+**判定**：条件 C（灰色地带）
+**建议的论文调整**：定位为 "modest conditional improvement"；不承诺强 Phase BPM 收益；若做门控，变体 ≤2–3 且必须 leave-one-out。
+**对执行的门控含义**：允许在 **E1/E4/E5 完成后** 进入简化版 E2/E3；**现在不要写门控代码**。
 
 **条件 A**：Δ_oracle ≥ 0.05 BPM 在多数 recording 上
 
@@ -83,8 +91,17 @@ P2: 受控实验可行？
 | 字段 | 内容 |
 |------|------|
 | **实验** | P0b：用原始 PCT IQ 计算径向/切向呼吸能量，检验 Phase-best 窗是否对应径向能量系统性下降 |
-| **当前状态** | ❌ 未执行 |
+| **当前状态** | ✅ 已执行（2026-07-26）→ **条件 B（偏 partial）** |
 | **优先级** | 🔴 P0 |
+| **结果文件** | `outputs/reports/phase_p0_iq_geometry.json`、`outputs/figures/phase_p0_radial_tangential_energy.png` |
+
+### D2 · 状态更新 2026-07-26
+
+**实验结果**：Phase-best (n=105) vs Remote-best (n=1549)：
+- 联合径向 E_rad,joint：Phase-best **略高**（18.11M vs 18.10M，相对差 ~0.05%）——**不符合**「径向系统性偏低」预测
+- 切向 E_tan,P：Phase-best **略高**（39.46M vs 37.86M，相对差 ~4.2%）——方向符合但幅度弱
+**判定**：条件 B（无清晰互补投影模式）；切向仅有弱方向性信号，不足支撑强物理叙事
+**建议的论文调整**：保持 §4.1 抽象级径向/切向表述，**不强调实验已验证机制**；§7.4 承认 IQ 几何未给出简单 radial-vs-tangential 解释。
 
 **条件 A**：互补投影成立
 
@@ -115,9 +132,18 @@ P2: 受控实验可行？
 | 字段 | 内容 |
 |------|------|
 | **实验** | E2 tie-breaker + E3 conditional activation，leave-one-subject-out 评估 |
-| **当前状态** | ❌ 未执行 |
+| **当前状态** | ✅ 已执行（2026-07-26）→ **条件 B** |
 | **优先级** | 🟡 P1（取决于 D1 结果） |
-| **前置** | D1 条件 A 或 C（即 oracle 显示有空间） |
+| **前置** | D1 条件 C → 已按灰色地带简化为 3 变体 |
+| **结果文件** | `outputs/reports/phase_adaptive_fusion_hkh_summary.json`、`phase_adaptive_fusion_cs_summary.json` |
+
+### D3 · 状态更新 2026-07-26
+
+**实验结果**：
+- HKH（LOSO，全部折 `T_agree=1.0`）：R+L=**0.372**；e3_conditional=0.376；e2_tiebreak=0.376；Equal=0.405。R+L vs 门控 paired CI **含 0**（无显著增益）
+- CS（t=1.0）：Equal=**10.14%** 最优；tie-break=10.77%；conditional=11.29%；R+L=14.05%（无 Phase 很差）
+**判定**：条件 B（leave-one-out 下无显著优于 R+L+Remote 的 Phase rescue 算法贡献）
+**建议的论文调整**：Abstract 保持不承诺 Phase BPM；§5.4 等权/自适应门控不升级为推荐；§7.4 诚实报告 gate 失败；可强调 HKH 上 **R+L 优于三模态等权** 这一旁路发现。
 
 **条件 A**：在 leave-one-out 下显著优于 R+L default 和 Remote-only
 
@@ -148,8 +174,18 @@ P2: 受控实验可行？
 | 字段 | 内容 |
 |------|------|
 | **实验** | P0c：Recording-level paired bootstrap 95% CI |
-| **当前状态** | ❌ 未执行 |
+| **当前状态** | ✅ 已执行（2026-07-26）→ **条件 B** |
 | **优先级** | 🔴 P0 |
+| **结果文件** | `outputs/reports/phase_p0_statistical_audit.json`、`outputs/figures/phase_p0_statistical_audit.png` |
+
+### D4 · 状态更新 2026-07-26
+
+**实验结果**（recording-level paired bootstrap，B=10000）：
+- Remote (0.376) − Equal (0.405)：mean_diff = **−0.029**，95% CI **[−0.058, −0.004]**，**不含 0** → Remote 显著优于 Equal
+- Remote − Channel (0.381)：CI 含 0（不可区分）
+- Channel − Equal：CI 含 0（边界）
+**判定**：条件 B（Remote 显著优于 BreatheCS Equal）
+**建议的论文调整**：Abstract/§6.3/§8 不得声称 BreatheCS BPM 最优；须诚实报告 Remote-only 消融在 HKH BPM 上更优；§5.4 考虑是否修正默认模态融合策略。
 
 **条件 A**：差异不显著（CI 包含 0）
 
@@ -179,8 +215,15 @@ P2: 受控实验可行？
 | 字段 | 内容 |
 |------|------|
 | **实验** | P0c：Phase-best 窗口的连续段数 vs 窗口总数；subject 分布 |
-| **当前状态** | ❌ 未执行 |
+| **当前状态** | ✅ 已执行（2026-07-26）→ **条件 B** |
 | **优先级** | 🟡 P1 |
+| **结果文件** | `outputs/reports/phase_p0_statistical_audit.json`（`phase_best_clustering`） |
+
+### D5 · 状态更新 2026-07-26
+
+**实验结果**：Phase-best 共 **105** 窗，跨 recording 连续段合计 **58** 段；top-2 subject 占比 **37.1%**（room_A-sbj_A:23 + room_A-sbj_C:16）；分布覆盖 11/12 recording（仅 room_C-sbj_A = 0）。
+**判定**：条件 B（较分散，非少数连续段垄断）
+**建议的论文调整**：可描述为低频但较广的条件性救援；仍应报告段数/subject 分布，避免「105 次独立救援」措辞。
 
 **条件 A**：高度聚集
 
@@ -232,39 +275,55 @@ P2: 受控实验可行？
 | 字段 | 内容 |
 |------|------|
 | **实验** | E4 + E5 诊断 |
-| **当前状态** | ❌ 未执行 |
+| **当前状态** | ✅ 已执行（2026-07-26） |
 | **优先级** | 🟡 P1 |
+| **结果文件** | `outputs/reports/phase_e4_channel_vs_modal_rho.json`、`phase_e5_hkh_vs_cs.json`、`phase_e1_diagnostics.json` |
 
-**影响**：
-```text
-→ E4 结果影响 [skeleton §5.3] 中的 ρ 使用建议（信道级 vs 模态级）
-→ E5 结果影响 [skeleton §7.4] 中 Phase 跨域差异的物理解释
-→ 这些主要是 Discussion 层面的充实/修正，不影响 Abstract 和核心贡献
-```
+### D7 · 状态更新 2026-07-26
 
+**E4 实验结果**：
+- 模态级 hit：HKH η-only **63.6%** > η·ρ **54.3%**；CS η **33.4%** > η·ρ **32.3%**
+- 分歧窗：HKH η 胜 424 vs ηρ 胜 262（n_disagree=762）；CS 上 ηρ 误选 Phase 更明显（22/91）
+- ρ 定义提醒：ρ=峰值/带内均值**奖励尖峰（含假峰）**，不是“抑制假峰”
+
+**E5 实验结果**：
+- H5a（HKH Phase η 方差更大）：**不成立**（HKH std 0.083 ≈ CS 0.086）
+- H5b（HKH Phase ρ 更低）：**成立**（3.41 vs 9.98）
+- H5c（HKH Phase conf 更低）：**成立**（0.324 vs 0.402）
+- Phase abs err：HKH **2.09** vs CS **1.26**
+
+**建议的论文调整**：
+- [skeleton §5.3] 明确：**信道级可用 η·ρ，模态级优先 η-only**；修正 ρ 文字描述
+- [skeleton §7.4] 跨域：HKH Phase 峰钝/置信低（ρ、conf），而非单纯 η 方差更大
+
+**附：同批 E1 诊断摘要（供 D3 前置判断）**：
+- E1a H1（q_amp）：HKH/CS **均不支持**（Phase-best q_amp 不系统性偏低；双弱比例 ~44%）
+- E1b H2（波形）：Phase-best 窗内 Δr_P mean=**−0.081**，Phase 波形**未**优于幅值（H2 不支持）
+- E1c：HKH rescue_rate=**0.180**，unique_correct=**0.012**，destruction_rate=**0.487**；R-L 误差相关 0.84 vs R-P 0.10
+→ Phase 偶有救援，但破坏风险高；与 D1=C 一致，E2/E3 仅做简化确认
 ---
 
 ## 检查表 & 时间线
 
 ### 执行前
 
-- [ ] 确认 Phase Plan v2.0 P0–E5 的执行可行性
+- [x] 确认 Phase Plan v2.0 P0–E5 的执行可行性
 - [ ] 确认受控实验（P2）的硬件和时间可行性
-- [ ] 将本文件交给 Cursor Composer：实验完成后回填 §D1–D7 的实验结果
+- [x] 将本文件交给 Cursor Composer：实验完成后回填 §D1–D7 的实验结果（P0 项已回填）
 
 ### P0 完成后
 
-- [ ] **D1**：Δ_oracle 值填入 → 决定是否继续 E2/E3
-- [ ] **D2**：IQ 几何诊断结果 → 决定物理叙事强度
-- [ ] **D4**：显著性检验 → 调整论文排名叙述
-- [ ] **D5**：窗口聚集性 → 调整"救援"叙述
-- [ ] 根据以上 4 项结果，**更新 skeleton 中受影响段落**
+- [x] **D1**：Δ_oracle 值填入 → **条件 C**（mean 0.028；简化 E2/E3，且须先做完 E1/E4/E5）
+- [x] **D2**：IQ 几何诊断结果 → **条件 B / partial**（无清晰互补投影；叙事保守）
+- [x] **D4**：显著性检验 → **条件 B**（Remote 显著优于 Equal）
+- [x] **D5**：窗口聚集性 → **条件 B**（105 窗 / 58 段，较分散）
+- [ ] 根据以上 4 项结果，**更新 skeleton 中受影响段落**（交给 Claude/DeepSeek Review）
 
 ### E1–E5 完成后
 
-- [ ] **D3**：Phase gate 结果 → 决定 Phase 在论文中的最终定位
-- [ ] **D7**：E4/E5 诊断 → 充实 Discussion
-- [ ] 最终定稿 Abstract、§7 Discussion、§8 Conclusion
+- [x] **D3**：Phase gate 结果 → **条件 B**（无显著 BPM 增益；Phase 不升级为算法贡献）
+- [x] **D7**：E4/E5 诊断 → 已回填
+- [ ] 最终定稿 Abstract、§7 Discussion、§8 Conclusion（交给 Claude/DeepSeek Review）
 
 ### 受控实验可行性确认后
 
