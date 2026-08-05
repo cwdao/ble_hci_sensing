@@ -38,8 +38,8 @@
 
 | 域 | 场景 | 指标 | 角色 |
 |----|------|------|------|
-| HKH | 12 recordings | BPM abs err；Wave RMSE | **主评估** |
-| CS | 3 metal-plate | BPM rel err % | **参考附录** |
+| HKH | 12 recordings | BPM abs err（mean±std）；Wave RMSE（mean±std） | **主评估** |
+| CS | 3 metal-plate | BPM rel err %（mean±std） | **参考附录** |
 
 - **Baseline**：论文现状 η·ρ（BreatheCS / draft 消融 / B2-D / B3）
 - **待测**：对应 η-only 配对；Part 2 G0–G4（η-only tones）
@@ -51,56 +51,71 @@
 
 ### 4.1 Part 1 — HKH 谱域配对（主表）
 
+> 数字为跨 12 场景 mean ± std（BPM abs err）。  
+> 单模态 / 幅值双模态 / 三模态均列出，便于对照 Phase 贡献。
+
 | 方法 | η·ρ | η-only | Δ (η−η·ρ) |
 |------|----:|-------:|----------:|
-| Remote only | 0.376 | **0.366** | −0.010 |
-| Local only | 0.378 | **0.376** | −0.002 |
-| Channel only | **0.381** | 0.391 | +0.011 |
-| **BreatheCS（Vote→3-modal equal）** | **0.405** | **0.403** | **−0.002** |
-| B3 unified | 0.405 | 0.403 | −0.002 |
-| Modal only | 0.655 | 1.116 | +0.461 |
-| No fusion | 1.640 | 2.403 | +0.764 |
-| Phase only | 2.191 | 2.250 | +0.059 |
-| BreatheCS-Wave (B2-D) | 0.682 | 0.756 | +0.074 |
+| Remote only | 0.376±0.115 | **0.366±0.120** | −0.010 |
+| Local only | 0.378±0.119 | **0.376±0.128** | −0.002 |
+| **Amplitude-only（R+L equal）** | **0.372±0.118** | **0.371±0.128** | −0.001 |
+| Phase only | 2.191±1.302 | 2.250±1.413 | +0.059 |
+| Channel only | 0.381±0.116 | 0.391±0.114 | +0.011 |
+| **BreatheCS（Vote→3-modal equal）** | **0.405±0.144** | **0.403±0.152** | **−0.002** |
+| B3 unified | 0.405±0.144 | 0.403±0.152 | −0.002 |
+| Modal only | 0.655±0.245 | 1.116±1.857 | +0.461 |
+| No fusion | 1.640±0.464 | 2.403±1.804 | +0.764 |
+| BreatheCS-Wave (B2-D) | 0.682±0.574 | 0.756±0.738 | +0.074 |
 
 来源：`outputs/reports/eta_only_ablation_delta.csv`、`eta_only_ablation_hkh_leaderboard.json`  
-BreatheCS η·ρ = **0.405** 与论文 Table 6.3-A / Channel-only **0.381** 对齐。
+要点：HKH 上 **R+L（0.372）优于三模态 BreatheCS（0.405）**；Remote/Local 单模态也略优于三模态。
 
 图：`outputs/figures/eta_only_ablation_figG1_hkh_leaderboard.png`、`eta_only_ablation_figG2_hkh_ablation.png`
 
 ### 4.2 Part 1 — HKH 波形消融（RMSE）
 
+> Wave BPM / RMSE 均为跨场景 mean ± std。
+
 | 方法 | Wave BPM η·ρ | Wave BPM η | RMSE η·ρ | RMSE η |
 |------|-------------:|-----------:|---------:|-------:|
-| Wave · BreatheCS | 0.744 | 0.817 | **0.951** | 0.994 |
-| Wave · Channel only | 1.003 | 1.145 | 0.962 | 1.008 |
-| Wave · Remote only | 0.399 | 0.501 | 0.931 | 0.989 |
-| Wave · Phase only | 2.395 | 2.236 | 1.109 | 1.124 |
+| Wave · Remote only | 0.399±0.121 | 0.501±0.326 | 0.931±0.207 | 0.989±0.207 |
+| Wave · Local only | 0.439±0.217 | 0.464±0.240 | 0.947±0.214 | 0.981±0.196 |
+| Wave · Phase only | 2.395±1.169 | 2.236±1.492 | 1.109±0.111 | 1.124±0.121 |
+| Wave · Channel only | 1.003±1.193 | 1.145±1.506 | 0.962±0.195 | 1.008±0.205 |
+| Wave · BreatheCS | 0.744±0.706 | 0.817±0.871 | **0.951±0.184** | 0.994±0.192 |
 
 η-only 在波形支路普遍轻度退化（BPM 与 RMSE）。
 
 ### 4.3 Part 1 — CS 参考附录
 
+> 跨 3 场景 mean ± std（BPM rel err %）。
+
 | 方法 | η·ρ (%) | η-only (%) | Δ (pp) |
 |------|--------:|-----------:|-------:|
-| **BreatheCS** | **10.14** | 10.72 | **+0.58** |
-| Channel only | 12.51 | 13.68 | +1.17 |
-| Remote only | 11.23 | 12.03 | +0.79 |
-| Phase only | 10.92 | 11.39 | +0.47 |
-| B2-D | 9.45 | 10.87 | +1.42 |
-| Modal only | 13.40 | **12.39** | −1.01 |
+| Remote only | 11.23±4.16 | 12.03±3.87 | +0.79 |
+| Local only | 16.21±11.65 | 16.23±10.10 | +0.02 |
+| Amplitude-only（R+L） | 14.05±8.62 | 14.64±7.97 | +0.59 |
+| Phase only | 10.92±4.12 | 11.39±3.17 | +0.47 |
+| Channel only | 12.51±7.68 | 13.68±7.25 | +1.17 |
+| **BreatheCS** | **10.14±3.90** | 10.72±3.29 | **+0.58** |
+| Modal only | 13.40±6.01 | **12.39±4.51** | −1.01 |
+| B2-D | 9.45±3.70 | 10.87±5.06 | +1.42 |
+
+CS 上 Phase / 三模态明显优于 R+L（Local 拖累）；与 HKH「幅值双模态更优」形成对照。
 
 图：`outputs/figures/eta_only_ablation_figG3_cs_leaderboard.png`
 
 ### 4.4 Part 2 — Phase η-BPM Gate
 
-| Gate | HKH BPM | HKH open ratio | CS BPM % | CS open ratio |
-|------|--------:|---------------:|---------:|--------------:|
-| G0 R+L only | **0.371** | 0% | 14.64 | 0% |
-| G1 η-relaxed | 0.382 | 6.8% | 12.72 | 22.9% |
-| G2 η-strict | 0.381 | 6.1% | 14.38 | 7.6% |
-| G3 η+BPM | **0.371** | 1.3% | 14.61 | 3.7% |
-| G4-upper 3-modal | 0.403 | 100% | **10.72** | 100% |
+> HKH/CS BPM 为跨场景 mean ± std；open ratio 为跨场景均值。
+
+| Gate | HKH BPM | HKH open | CS BPM % | CS open |
+|------|--------:|---------:|---------:|--------:|
+| G0 R+L only | **0.371±0.128** | 0% | 14.64±7.97 | 0% |
+| G1 η-relaxed | 0.382±0.140 | 6.8% | 12.72±5.32 | 22.9% |
+| G2 η-strict | 0.381±0.139 | 6.1% | 14.38±7.67 | 7.6% |
+| G3 η+BPM | **0.371±0.128** | 1.3% | 14.61±7.94 | 3.7% |
+| G4-upper 3-modal | 0.403±0.152 | 100% | **10.72±3.29** | 100% |
 
 - HKH：G3 ≈ G0（几乎不打开 Phase）；G1/G2 打开的窗 Phase 误差高（open-phase err ≈ 5–6），相对 G0 有害。
 - CS：open ratio **未**出现 CS ≫ HKH 的期望自适应；G3 几乎退化为 R+L，而 CS 最优仍是 G4 常开三模态。

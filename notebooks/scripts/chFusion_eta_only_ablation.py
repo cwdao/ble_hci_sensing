@@ -123,6 +123,8 @@ DESC_LABELS = {
     "draft_ms_local_eta": "Local only η-only",
     "draft_ms_phase": "Phase only",
     "draft_ms_phase_eta": "Phase only η-only",
+    "draft_s_rl": "Amplitude-only (R+L equal)",
+    "draft_s_rl_eta": "Amplitude-only η-only (R+L equal)",
     "b3_b1_equal": "BreatheCS unified (B3)",
     "b3_b1_equal_eta": "BreatheCS unified η-only (B3)",
     "b2_d_two_level": "BreatheCS-Wave (B2-D)",
@@ -455,6 +457,7 @@ def run_spectral_and_gate_for_scenario(bundle: dict) -> dict:
         # η·ρ spectral methods from voting packs
         sp_r, sc_r = pack_rho["spectra"], pack_rho["scores"]
         _record("draft_s_full", _fuse_equal(sp_r, ["remote", "local", "phase"], bf, cfg))
+        _record("draft_s_rl", _fuse_equal(sp_r, ["remote", "local"], bf, cfg))
         _record("draft_s_channel", _pick_best_modal(sp_r, sc_r, bf, cfg))
         _record("draft_ms_remote", _bpm_from_spectrum(sp_r["remote"], bf, cfg.eps))
         _record("draft_ms_local", _bpm_from_spectrum(sp_r["local"], bf, cfg.eps))
@@ -463,6 +466,7 @@ def run_spectral_and_gate_for_scenario(bundle: dict) -> dict:
         # η-only spectral methods from voting packs
         sp_e, sc_e = pack_eta["spectra"], pack_eta["scores"]
         _record("draft_s_full_eta", _fuse_equal(sp_e, ["remote", "local", "phase"], bf, cfg))
+        _record("draft_s_rl_eta", _fuse_equal(sp_e, ["remote", "local"], bf, cfg))
         _record("draft_s_channel_eta", _pick_best_modal(sp_e, sc_e, bf, cfg))
         _record("draft_ms_remote_eta", _bpm_from_spectrum(sp_e["remote"], bf, cfg.eps))
         _record("draft_ms_local_eta", _bpm_from_spectrum(sp_e["local"], bf, cfg.eps))
@@ -718,13 +722,17 @@ def build_delta_table(agg: dict, pairs: Sequence[Tuple[str, str]]) -> List[dict]
             continue
         b = methods[base]["cross_mean"]
         e = methods[eta_key]["cross_mean"]
+        bs = methods[base].get("cross_std")
+        es = methods[eta_key].get("cross_std")
         rows.append(
             {
                 "base": base,
                 "eta": eta_key,
                 "label": DESC_LABELS.get(base, base),
                 "base_mean": b,
+                "base_std": bs,
                 "eta_mean": e,
+                "eta_std": es,
                 "delta_eta_minus_base": (e - b) if np.isfinite(e) and np.isfinite(b) else float("nan"),
             }
         )
@@ -733,6 +741,7 @@ def build_delta_table(agg: dict, pairs: Sequence[Tuple[str, str]]) -> List[dict]
 
 SPECTRAL_PAIRS = [
     ("draft_s_full", "draft_s_full_eta"),
+    ("draft_s_rl", "draft_s_rl_eta"),
     ("draft_s_none", "draft_s_none_eta"),
     ("draft_s_channel", "draft_s_channel_eta"),
     ("draft_s_modal", "draft_s_modal_eta"),
@@ -746,23 +755,66 @@ SPECTRAL_PAIRS = [
 
 def plot_hkh_leaderboard(hkh_agg: dict, gate_keys: Sequence[str], path_stem: str) -> Path:
     rows = []
-    for base, eta_key in SPECTRAL_PAIRS[:7]:  # spectral + breathecs
+    pairs = [
+        ("draft_ms_remote", "draft_ms_remote_eta"),
+        ("draft_ms_local", "draft_ms_local_eta"),
+        ("draft_s_rl", "draft_s_rl_eta"),
+        ("draft_ms_phase", "draft_ms_phase_eta"),
+        ("draft_s_channel", "draft_s_channel_eta"),
+        ("draft_s_full", "draft_s_full_eta"),
+        ("draft_s_modal", "draft_s_modal_eta"),
+        ("draft_s_none", "draft_s_none_eta"),
+        ("b2_d_two_level", "b2_d_two_level_eta"),
+    ]
+    for base, eta_key in pairs:
         if base in hkh_agg["methods"]:
-            rows.append((DESC_LABELS.get(base, base) + " [η·ρ]", hkh_agg["methods"][base]["cross_mean"], "#4C78A8"))
+            m = hkh_agg["methods"][base]
+            rows.append(
+                (
+                    DESC_LABELS.get(base, base) + " [η·ρ]",
+                    m["cross_mean"],
+                    m.get("cross_std", 0.0) or 0.0,
+                    "#4C78A8",
+                )
+            )
         if eta_key in hkh_agg["methods"]:
-            rows.append((DESC_LABELS.get(eta_key, eta_key), hkh_agg["methods"][eta_key]["cross_mean"], "#F58518"))
+            m = hkh_agg["methods"][eta_key]
+            rows.append(
+                (
+                    DESC_LABELS.get(eta_key, eta_key),
+                    m["cross_mean"],
+                    m.get("cross_std", 0.0) or 0.0,
+                    "#F58518",
+                )
+            )
     for g in ("G0", "G3", "G4"):
         k = GATE_KEYS[g]
         if k in hkh_agg["methods"]:
-            rows.append((DESC_LABELS[k], hkh_agg["methods"][k]["cross_mean"], "#54A24B"))
-    rows = [(l, v, c) for l, v, c in rows if np.isfinite(v)]
+            m = hkh_agg["methods"][k]
+            rows.append(
+                (
+                    DESC_LABELS[k],
+                    m["cross_mean"],
+                    m.get("cross_std", 0.0) or 0.0,
+                    "#54A24B",
+                )
+            )
+    rows = [(l, v, s, c) for l, v, s, c in rows if np.isfinite(v)]
     rows = sorted(rows, key=lambda x: x[1], reverse=True)
     fig, ax = plt.subplots(figsize=(10, max(4, 0.35 * len(rows))))
     y = np.arange(len(rows))
-    ax.barh(y, [r[1] for r in rows], color=[r[2] for r in rows], alpha=0.9)
+    ax.barh(
+        y,
+        [r[1] for r in rows],
+        xerr=[r[2] for r in rows],
+        color=[r[3] for r in rows],
+        alpha=0.9,
+        capsize=3,
+        ecolor="#444444",
+    )
     ax.set_yticks(y)
     ax.set_yticklabels([r[0] for r in rows], fontsize=8)
-    ax.set_xlabel("HKH mean BPM abs err")
+    ax.set_xlabel("HKH mean ± std BPM abs err (across scenarios)")
     ax.set_title("η-only ablation + Phase gate (HKH)")
     ax.invert_yaxis()
     fig.tight_layout()
@@ -770,12 +822,22 @@ def plot_hkh_leaderboard(hkh_agg: dict, gate_keys: Sequence[str], path_stem: str
 
 
 def plot_ablation_bars(hkh_agg: dict, path_stem: str) -> Path:
-    names = ["No fusion", "Channel only", "Modal only", "BreatheCS", "Remote", "Local", "Phase"]
+    names = [
+        "No fusion",
+        "Channel only",
+        "Modal only",
+        "BreatheCS",
+        "Amplitude R+L",
+        "Remote",
+        "Local",
+        "Phase",
+    ]
     bases = [
         "draft_s_none",
         "draft_s_channel",
         "draft_s_modal",
         "draft_s_full",
+        "draft_s_rl",
         "draft_ms_remote",
         "draft_ms_local",
         "draft_ms_phase",
@@ -784,13 +846,15 @@ def plot_ablation_bars(hkh_agg: dict, path_stem: str) -> Path:
     x = np.arange(len(names))
     w = 0.35
     bvals = [hkh_agg["methods"].get(k, {}).get("cross_mean", np.nan) for k in bases]
+    bstds = [hkh_agg["methods"].get(k, {}).get("cross_std", 0.0) or 0.0 for k in bases]
     evals = [hkh_agg["methods"].get(k, {}).get("cross_mean", np.nan) for k in etas]
-    fig, ax = plt.subplots(figsize=(11, 4.5))
-    ax.bar(x - w / 2, bvals, w, label="η·ρ", color="#4C78A8")
-    ax.bar(x + w / 2, evals, w, label="η-only", color="#F58518")
+    estds = [hkh_agg["methods"].get(k, {}).get("cross_std", 0.0) or 0.0 for k in etas]
+    fig, ax = plt.subplots(figsize=(12, 4.5))
+    ax.bar(x - w / 2, bvals, w, yerr=bstds, capsize=3, label="η·ρ", color="#4C78A8", ecolor="#444444")
+    ax.bar(x + w / 2, evals, w, yerr=estds, capsize=3, label="η-only", color="#F58518", ecolor="#444444")
     ax.set_xticks(x)
     ax.set_xticklabels(names, rotation=20, ha="right")
-    ax.set_ylabel("HKH BPM abs err")
+    ax.set_ylabel("HKH BPM abs err (mean ± std)")
     ax.set_title("HKH spectral ablation: η·ρ vs η-only")
     ax.legend()
     fig.tight_layout()
@@ -798,22 +862,34 @@ def plot_ablation_bars(hkh_agg: dict, path_stem: str) -> Path:
 
 
 def plot_cs_leaderboard(cs_agg: dict, path_stem: str) -> Path:
-    pairs = SPECTRAL_PAIRS[:7]
-    labels, bvals, evals = [], [], []
+    # Prefer modal-completeness order for CS reference appendix
+    pairs = [
+        ("draft_ms_remote", "draft_ms_remote_eta"),
+        ("draft_ms_local", "draft_ms_local_eta"),
+        ("draft_s_rl", "draft_s_rl_eta"),
+        ("draft_ms_phase", "draft_ms_phase_eta"),
+        ("draft_s_channel", "draft_s_channel_eta"),
+        ("draft_s_full", "draft_s_full_eta"),
+        ("draft_s_modal", "draft_s_modal_eta"),
+        ("b2_d_two_level", "b2_d_two_level_eta"),
+    ]
+    labels, bvals, evals, bstds, estds = [], [], [], [], []
     for b, e in pairs:
         if b not in cs_agg["methods"]:
             continue
         labels.append(DESC_LABELS.get(b, b))
         bvals.append(cs_agg["methods"][b]["cross_mean"])
+        bstds.append(cs_agg["methods"][b].get("cross_std", 0.0) or 0.0)
         evals.append(cs_agg["methods"].get(e, {}).get("cross_mean", np.nan))
+        estds.append(cs_agg["methods"].get(e, {}).get("cross_std", 0.0) or 0.0)
     x = np.arange(len(labels))
     w = 0.35
-    fig, ax = plt.subplots(figsize=(11, 4.5))
-    ax.bar(x - w / 2, bvals, w, label="η·ρ", color="#4C78A8")
-    ax.bar(x + w / 2, evals, w, label="η-only", color="#F58518")
+    fig, ax = plt.subplots(figsize=(12, 4.5))
+    ax.bar(x - w / 2, bvals, w, yerr=bstds, capsize=3, label="η·ρ", color="#4C78A8", ecolor="#444444")
+    ax.bar(x + w / 2, evals, w, yerr=estds, capsize=3, label="η-only", color="#F58518", ecolor="#444444")
     ax.set_xticks(x)
     ax.set_xticklabels(labels, rotation=25, ha="right", fontsize=8)
-    ax.set_ylabel("CS mean BPM rel err %")
+    ax.set_ylabel("CS BPM rel err % (mean ± std)")
     ax.set_title("CS metal-plate reference: η·ρ vs η-only")
     ax.legend()
     fig.tight_layout()
@@ -824,13 +900,27 @@ def plot_rho_dist(hkh_agg: dict, cs_agg: dict, path_stem: str) -> Path:
     fig, ax = plt.subplots(figsize=(7, 4))
     mods = ["remote", "local", "phase"]
     x = np.arange(len(mods))
-    hkh_v = [hkh_agg["rho"].get(m, {}).get("mean", np.nan) for m in mods]
-    cs_v = [cs_agg["rho"].get(m, {}).get("mean", np.nan) for m in mods]
-    ax.bar(x - 0.2, cs_v, 0.4, label="CS (metal)", color="#4C78A8")
-    ax.bar(x + 0.2, hkh_v, 0.4, label="HKH (human)", color="#F58518")
+
+    def _rho_mean_std(agg: dict, m: str) -> Tuple[float, float]:
+        block = agg.get("rho", {}).get(m, {})
+        mean = block.get("mean", np.nan)
+        per = block.get("per_scenario") or []
+        std = float(np.std(per)) if len(per) else float("nan")
+        return mean, std
+
+    hkh_v, hkh_s, cs_v, cs_s = [], [], [], []
+    for m in mods:
+        hm, hs = _rho_mean_std(hkh_agg, m)
+        cm, cstd = _rho_mean_std(cs_agg, m)
+        hkh_v.append(hm)
+        hkh_s.append(0.0 if not np.isfinite(hs) else hs)
+        cs_v.append(cm)
+        cs_s.append(0.0 if not np.isfinite(cstd) else cstd)
+    ax.bar(x - 0.2, cs_v, 0.4, yerr=cs_s, capsize=3, label="CS (metal)", color="#4C78A8", ecolor="#444444")
+    ax.bar(x + 0.2, hkh_v, 0.4, yerr=hkh_s, capsize=3, label="HKH (human)", color="#F58518", ecolor="#444444")
     ax.set_xticks(x)
     ax.set_xticklabels(mods)
-    ax.set_ylabel("mean ρ (window-level)")
+    ax.set_ylabel("mean ρ ± std (across scenarios)")
     ax.set_title("ρ scale: CS vs HKH")
     ax.legend()
     fig.tight_layout()
@@ -845,9 +935,13 @@ def plot_gate_behavior(hkh_agg: dict, cs_agg: dict, path_stem: str) -> Path:
         (axes[1], cs_agg, "CS"),
     ):
         ratios = [agg["gate"][g]["open_ratio_mean"] for g in gs]
-        ax.bar(gs, ratios, color="#54A24B", alpha=0.85)
+        rstds = []
+        for g in gs:
+            per = agg["gate"][g].get("per_scenario_open_ratio") or []
+            rstds.append(float(np.std(per)) if len(per) else 0.0)
+        ax.bar(gs, ratios, yerr=rstds, capsize=3, color="#54A24B", alpha=0.85, ecolor="#444444")
         ax.set_ylim(0, 1.05)
-        ax.set_ylabel("Phase gate open ratio")
+        ax.set_ylabel("Phase gate open ratio (mean ± std)")
         ax.set_title(f"Gate open ratio — {title}")
     fig.tight_layout()
     return _save_figure(fig, path_stem)
@@ -883,8 +977,12 @@ def main():
     delta_path = REPORTS_DIR / "eta_only_ablation_delta.csv"
 
     if args.plot_only:
-        hkh_agg = json.loads(hkh_sum_path.read_text(encoding="utf-8"))
-        cs_agg = json.loads(cs_sum_path.read_text(encoding="utf-8"))
+        def _load(path: Path) -> dict:
+            text = path.read_text(encoding="utf-8").replace("NaN", "null").replace("Infinity", "null")
+            return json.loads(text)
+
+        hkh_agg = _load(hkh_sum_path)
+        cs_agg = _load(cs_sum_path)
         plot_hkh_leaderboard(hkh_agg, GATE_KEYS, "eta_only_ablation_figG1_hkh_leaderboard")
         plot_ablation_bars(hkh_agg, "eta_only_ablation_figG2_hkh_ablation")
         plot_cs_leaderboard(cs_agg, "eta_only_ablation_figG3_cs_leaderboard")
@@ -926,19 +1024,32 @@ def main():
     hkh_agg = aggregate_domain(hkh_results) if hkh_results else {}
     cs_agg = aggregate_domain(cs_results) if cs_results else {}
 
-    # Merge B3 / wave means into HKH agg methods
-    if args.skip_wave and hkh_sum_path.exists():
-        prev = json.loads(hkh_sum_path.read_text(encoding="utf-8"))
+    # Merge B3 / wave / B2 means into HKH agg methods when skipped
+    if (args.skip_wave or args.skip_b2) and hkh_sum_path.exists():
+        prev = json.loads(
+            hkh_sum_path.read_text(encoding="utf-8").replace("NaN", "null")
+        )
         for k, v in prev.get("methods", {}).items():
-            if k.startswith("draft_w") or k.startswith("draft_mw") or k.startswith("b3_"):
-                hkh_wave.setdefault(k, {
+            keep = False
+            if args.skip_wave and (
+                k.startswith("draft_w") or k.startswith("draft_mw") or k.startswith("b3_")
+            ):
+                keep = True
+            if args.skip_b2 and k.startswith("b2_"):
+                keep = True
+            if not keep:
+                continue
+            hkh_wave.setdefault(
+                k,
+                {
                     "label": v.get("label", k),
                     "bpm_mean": v.get("cross_mean"),
                     "bpm_std": v.get("cross_std"),
                     "rmse_mean": v.get("rmse_mean"),
                     "rmse_std": v.get("rmse_std"),
                     "n_segments": v.get("n_segments", 0),
-                })
+                },
+            )
 
     for k, v in hkh_wave.items():
         hkh_agg.setdefault("methods", {})[k] = {
@@ -974,7 +1085,17 @@ def main():
         with delta_path.open("w", newline="", encoding="utf-8") as f:
             w = csv.DictWriter(
                 f,
-                fieldnames=["domain", "base", "eta", "label", "base_mean", "eta_mean", "delta_eta_minus_base"],
+                fieldnames=[
+                    "domain",
+                    "base",
+                    "eta",
+                    "label",
+                    "base_mean",
+                    "base_std",
+                    "eta_mean",
+                    "eta_std",
+                    "delta_eta_minus_base",
+                ],
             )
             w.writeheader()
             for row in build_delta_table(hkh_agg, SPECTRAL_PAIRS):
