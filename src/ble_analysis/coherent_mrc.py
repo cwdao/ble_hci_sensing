@@ -42,7 +42,8 @@ from ble_analysis.wifi_mrc import (
 )
 
 PhaseMethod = Literal["pca_sign", "corr_sign", "hilbert", "fft_cross"]
-WeightMode = Literal["eta_rho", "coherence_gated", "coherence_gated_sq"]
+WeightMode = Literal["eta_rho", "eta_only", "coherence_gated", "coherence_gated_sq"]
+QualityMode = Literal["eta_rho", "eta"]
 ModalWeightMode = Literal["equal", "eta", "eta_coherence", "shrink_to_equal"]
 
 B2_PHASE1_SPECS: Tuple[Tuple[str, str, str], ...] = (
@@ -90,13 +91,29 @@ def _quality_weights(
     eta: np.ndarray,
     rho: np.ndarray,
     eps: float = 1e-12,
+    quality_mode: QualityMode = "eta_rho",
 ) -> np.ndarray:
-    q = np.asarray(eta, dtype=float) * np.clip(np.asarray(rho, dtype=float), 0.0, None)
+    eta_arr = np.asarray(eta, dtype=float)
+    if quality_mode == "eta":
+        q = eta_arr
+    else:
+        q = eta_arr * np.clip(np.asarray(rho, dtype=float), 0.0, None)
     total = float(np.sum(q))
     if total <= eps:
         n = len(q)
         return np.full(n, 1.0 / n) if n else q
     return q / total
+
+
+def _raw_quality(
+    eta: np.ndarray,
+    rho: np.ndarray,
+    quality_mode: QualityMode = "eta_rho",
+) -> np.ndarray:
+    eta_arr = np.asarray(eta, dtype=float)
+    if quality_mode == "eta":
+        return eta_arr.copy()
+    return eta_arr * np.clip(np.asarray(rho, dtype=float), 0.0, None)
 
 
 def _select_ref_idx(quality: np.ndarray, ref_idx: Optional[int] = None) -> int:
@@ -281,6 +298,7 @@ def coherent_mrc_fuse_tones(
     *,
     phase_method: PhaseMethod = "hilbert",
     weight_mode: WeightMode = "eta_rho",
+    quality_mode: QualityMode = "eta_rho",
     ref_idx: int | None = None,
     f0: float | None = None,
     fs: float = 2.0,
@@ -292,17 +310,23 @@ def coherent_mrc_fuse_tones(
     X_arr = np.asarray(X, dtype=float)
     eta_arr = np.asarray(eta, dtype=float)
     rho_arr = np.asarray(rho, dtype=float)
-    quality = eta_arr * np.clip(rho_arr, 0.0, None)
-    info: dict = {"phase_method": phase_method, "weight_mode": weight_mode}
+    # weight_mode="eta_only" forces η base; else honor quality_mode.
+    q_mode: QualityMode = "eta" if weight_mode == "eta_only" else quality_mode
+    quality = _raw_quality(eta_arr, rho_arr, q_mode)
+    info: dict = {
+        "phase_method": phase_method,
+        "weight_mode": weight_mode,
+        "quality_mode": q_mode,
+    }
 
     if phase_method == "pca_sign":
         y, pca_info = mrc_pca_fusion(
             X_arr,
             eta_arr,
-            weight_mode="eta_rho",
+            weight_mode="linear" if q_mode == "eta" else "eta_rho",
             use_pca_sign=True,
             top_k=pca_top_k,
-            rho=rho_arr,
+            rho=rho_arr if q_mode == "eta_rho" else None,
             eps=eps,
         )
         info.update(pca_info)
@@ -559,6 +583,7 @@ def _window_b2_bpms(
     min_coherence: float,
     pca_top_k: int,
     return_waveform: bool = False,
+    quality_mode: QualityMode = "eta_rho",
 ):
     modal_waveforms: Dict[str, np.ndarray] = {}
     modal_etas: Dict[str, float] = {}
@@ -576,6 +601,7 @@ def _window_b2_bpms(
             rho,
             phase_method=phase_method,
             weight_mode=weight_mode,
+            quality_mode=quality_mode,
             f0=f0,
             fs=fs,
             min_coherence=min_coherence,
@@ -677,6 +703,17 @@ def estimate_b2_segment(
             "modal_weight_mode": "eta_coherence",
             "f0_from_b1": False,
             "min_coherence": min_coherence,
+            "quality_mode": "eta_rho",
+        },
+        "b2_d_two_level_eta": {
+            "phase_method": "hilbert",
+            "weight_mode": "coherence_gated",
+            "use_two_level": True,
+            "use_modal_phase_align": True,
+            "modal_weight_mode": "eta_coherence",
+            "f0_from_b1": False,
+            "min_coherence": min_coherence,
+            "quality_mode": "eta",
         },
         "b2_d_eq": {
             "phase_method": "hilbert",
@@ -762,6 +799,7 @@ def estimate_b2_segment(
                 f0=f0 if mc.get("f0_from_b1") else None,
                 min_coherence=mc.get("min_coherence", 0.0),
                 pca_top_k=pca_top_k,
+                quality_mode=mc.get("quality_mode", "eta_rho"),
             )
             per_method_bpms[m].append(bpm)
 

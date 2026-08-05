@@ -54,9 +54,9 @@
 
 | 模块 | 受影响方法 | 变更方式 |
 |------|-----------|----------|
-| `systematic_fusion.py` | BreatheCS 谱分支（B1 Vote→Equal） | `VotingConfig(voting_strategy="eta_weighted")` |
-| `b3_pipeline.py` | BreatheCS 统一管线（B3 Simplified） | `B3VariantConfig(use_eta_rho_weights=False)` |
-| `coherent_mrc.py` | BreatheCS-Wave（B2-D，分支对照） | `WeightMode` 新增 `"eta_only"` 或传 `rho=None` |
+| `systematic_fusion.py` / `voting_fusion.py` | BreatheCS 谱分支（B1 Vote→Equal） | `VotingConfig(voting_strategy="eta_weighted")` |
+| `b3_pipeline.py` | BreatheCS 统一管线 + draft 消融 | `B3VariantConfig(tone_weight_mode="eta")` → **η-weighted**（非 simple；`False`/`auto` 仍保留 A5 等权兼容） |
+| `coherent_mrc.py` | BreatheCS-Wave（B2-D） | `quality_mode="eta"` 或 `WeightMode="eta_only"` |
 
 ### 3.2 论文方法清单（仅论文涉及的方案）
 
@@ -73,36 +73,35 @@
 
 ### 3.3 方法变体清单
 
-#### 需要 η-only 变体的方法（论文核心，当前使用 η·ρ）
+#### 需要 η-only 变体的方法（论文核心 + 消融，当前默认使用 η·ρ）
 
-| 论文名称 | 内部 key | 当前权重 | η-only key | 域 |
-|----------|----------|----------|-------------|-----|
-| **BreatheCS**（谱 BPM） | `b1_vote_modal_equal` | η·ρ | `b1_vote_modal_equal_eta` | CS + HKH |
-| **BreatheCS**（统一管线 BPM+波形） | `b3_simplified` | η·ρ | `b3_simplified_eta` | HKH |
-| **BreatheCS-Wave**（分支对照） | `b2_d` | η·ρ | `b2_d_eta` | CS + HKH |
-| Channel-only 消融 | `b1_channel_only`（Voting η·ρ, modal=best） | η·ρ | `b1_channel_only_eta` | HKH |
-| Remote-only 消融 | `b1_remote_only`（B1 限于 Remote） | η·ρ | `b1_remote_only_eta` | HKH |
-| Local-only 消融 | `b1_local_only` | η·ρ | `b1_local_only_eta` | HKH |
-| Phase-only 消融 | `b1_phase_only` | η·ρ | `b1_phase_only_eta` | HKH |
+| 论文名称 | 内部 key（代码实际） | 当前权重 | η-only key | 域 |
+|----------|----------------------|----------|-------------|-----|
+| **BreatheCS**（谱 BPM） | `b1_vote_modal_equal` / `draft_s_full` | η·ρ | `*_eta` | CS + HKH |
+| **BreatheCS**（统一管线） | `b3_b1_equal` | η·ρ | `b3_b1_equal_eta` | HKH（CS 参考） |
+| **BreatheCS-Wave** | `b2_d_two_level` | η·ρ | `b2_d_two_level_eta` | CS + HKH |
+| Channel-only | `draft_s_channel` | η·ρ | `draft_s_channel_eta` | HKH + CS 参考 |
+| Remote-only | `draft_ms_remote` | η·ρ | `draft_ms_remote_eta` | HKH + CS 参考 |
+| Local-only | `draft_ms_local` | η·ρ | `draft_ms_local_eta` | HKH + CS 参考 |
+| Phase-only | `draft_ms_phase` | η·ρ | `draft_ms_phase_eta` | HKH + CS 参考 |
+| No-fusion | `draft_s_none` | η·ρ（单 tone 选取） | `draft_s_none_eta` | HKH + CS 参考 |
+| Modal-only | `draft_s_modal` | η·ρ（单 tone 选取） | `draft_s_modal_eta` | HKH + CS 参考 |
 
-> **CS 域消融变体**：Channel-only、Remote-only、Local-only、Phase-only 在 CS 域也跑，以观察 ρ 的跨域行为差异。
+> **CS 域**：上述消融变体在金属板三场景也跑，结果写入参考附录（论文主表以 HKH 为准）。
 
-#### 不受影响的方法（已是 η-only 或无质量权重，作为稳定参照）
+#### 不受影响的方法（外部 baseline，质量指标未改；同次 benchmark 重跑）
 
 | 论文名称 | 内部 key | 权重 | 域 | 说明 |
 |----------|----------|------|-----|------|
 | **Pos-Free (PCA)** | `z1_no_vmd` | 无（PCA 降维） | CS + HKH | 外部 baseline |
-| **WiFi-Sleep (MRC-PCA)** | `mrc_pca_eta_equal` | √η | CS + HKH | 外部 baseline |
+| **WiFi-Sleep (MRC-PCA)** | `mrc_pca_eta_equal` / `mrc_pca_eta_equal_pca` | √η | CS + HKH | 外部 baseline |
 | **WiFi-Sleep (√η)** | `mrc_pca_eta_sqrt` | √η | HKH | 外部 baseline |
-| **PCA sign only** | `pca_sign_only` | 无 | HKH | 外部 baseline |
+| **PCA sign only** | `b2_a0_pca_sign` / `pca_sign_only` | 无 | HKH | 外部 baseline |
 | **ClessBreath (η-linear)** | `fan_linear` | η | CS + HKH | 外部 baseline |
 | **ClessBreath (η-equal)** | `fan_equal` | η | CS + HKH | 外部 baseline |
-| No-fusion 消融 | `no_fusion`（max-η per modal → best modal） | η（max-η 选择） | HKH | 消融基线 |
-| Modal-only 消融 | `modal_only`（max-η channel → 3-modal equal） | η（max-η 信道） | HKH | 消融基线 |
 
-> **注意**：不受影响的方法虽然质量指标不变，但应在**同一次 benchmark 中重跑**，确保 η-only vs η·ρ 的 Δ 不因跨脚本/跨时期的微小实现差异而被污染。
-
-### 3.4 实验流程图
+> **注意（执行确认）**：No-fusion / Modal-only **不是**已有 η-only，已移入上一表做配对消融。
+> 外部 baseline 质量指标不变，但仍在**同一次 benchmark 中重跑**，确保 Δ 不被跨脚本实现差异污染。### 3.4 实验流程图
 
 ```
 CS 三场景 (cs_091339/095806/102621)    HKH 12 场景 (3 Room × 4 Subject)
@@ -362,30 +361,57 @@ def phase_gate_decision(
 |------|------|
 | 实验脚本 | `notebooks/scripts/chFusion_eta_only_ablation.py` |
 | 复用模块 | `src/ble_analysis/systematic_fusion.py`（`VotingConfig(voting_strategy="eta_weighted")`） |
-| 复用模块 | `src/ble_analysis/b3_pipeline.py`（`B3VariantConfig(use_eta_rho_weights=False)`） |
-| 复用模块 | `src/ble_analysis/coherent_mrc.py`（需支持 η-only 权重） |
+| 复用模块 | `src/ble_analysis/b3_pipeline.py`（扩展：`use_eta_rho_weights=False` → **η-weighted**，非 simple；可选等权仅作参考） |
+| 复用模块 | `src/ble_analysis/coherent_mrc.py`（扩展 `WeightMode`：新增 `"eta_only"`） |
 | 复用模块 | `src/ble_analysis/wifi_mrc.py`（不变，但重跑以保持 benchmark 自洽） |
 | 复用模块 | `src/ble_analysis/pca_vmd.py`（不变，重跑 Z1-no-VMD） |
 | 场景配置 | 沿用现有 `config/scenarios/cs_*.json` |
 
-### 7.2 实现策略
+### 7.2 实现策略（执行确认决议，2026-08-05）
 
-不复制代码，仅切换配置参数：
+**关键语义修正**：`use_eta_rho_weights=False` 在本实验中必须映射为 **`eta_weighted`（能量比权重）**，不得映射为既有 A5 的 `simple` 等权投票。实现时扩展 `_voting_strategy`（或新增显式枚举），使：
+
+```text
+True  → eta_rho_weighted   （论文现状 baseline）
+False → eta_weighted       （本实验 η-only）
+```
+
+等权（`simple`）仅可作为诊断参考，**不进入主结论**——本轮核心是验证 Phase 条件性参与；Phase 与幅值等权硬融已知不可取。
 
 ```python
 # Part 1 — BreatheCS 谱分支 η-only:
 vcfg_eta = VotingConfig(voting_strategy="eta_weighted")
-# BreatheCS 统一管线 η-only:
-variant_eta = B3VariantConfig(use_eta_rho_weights=False)
-# B2-D η-only: 将传入 coherent_mrc 的 rho 替换为 None 或 ones
+# BreatheCS 统一管线 / draft 消融 η-only（需先修 B3 映射）:
+variant_eta = B3VariantConfig(use_eta_rho_weights=False)  # → eta_weighted
+# B2-D η-only:
+# coherent_mrc.WeightMode 新增 "eta_only"；quality = η
 
-# Part 2 — Phase η-Gate（在模态融合前插入门控判断）:
-def phase_eta_gate_decision(eta_r, eta_l, eta_p, threshold_mode="relative"):
-    theta = np.median([eta_r, eta_l]) if threshold_mode == "relative" else 0.70
-    if eta_p > theta:
+# Part 2 — Phase η-BPM Gate（严格对齐 §5.2–5.4）:
+def phase_gate_decision(
+    eta_r, eta_l, eta_p, bpm_amp, bpm_phase, gate_level="G3",
+) -> list:
+    if gate_level == "G0":
+        return ["remote_amplitudes", "local_amplitudes"]
+    if gate_level == "G4":  # 上界：三模态始终参与（报告中称 G4-upper，避免与旧 G4 门控混淆）
+        return ["remote_amplitudes", "local_amplitudes", "phases"]
+    if gate_level == "G1":
+        if eta_p > np.median([eta_r, eta_l]):
+            return ["remote_amplitudes", "local_amplitudes", "phases"]
+        return ["remote_amplitudes", "local_amplitudes"]
+    eta_ok = (eta_p > eta_r) and (eta_p > eta_l)
+    if gate_level == "G2":
+        return (["remote_amplitudes", "local_amplitudes", "phases"]
+                if eta_ok else ["remote_amplitudes", "local_amplitudes"])
+    # G3: η 优越 + BPM 互验证（δ = 1.5 BPM）
+    bpm_ok = abs(bpm_phase - bpm_amp) < 1.5
+    if eta_ok and bpm_ok:
         return ["remote_amplitudes", "local_amplitudes", "phases"]
     return ["remote_amplitudes", "local_amplitudes"]
 ```
+
+**消融配对范围**：No-fusion / Modal-only **不是**已有 η-only——默认 `use_eta_rho_weights=True` 时单 tone 选取为 η·ρ。这两项也必须做 η·ρ vs η-only 配对。
+
+**CS 域**：金属板三场景完整跑 Part 1 消融变体 + Part 2 gate；结果作为**参考附录**（论文不一定采用），主结论仍以 HKH 为准。
 
 ### 7.3 脚本结构建议
 
@@ -393,48 +419,53 @@ def phase_eta_gate_decision(eta_r, eta_l, eta_p, threshold_mode="relative"):
 notebooks/scripts/chFusion_eta_only_ablation.py
 
 ├── Part 1: η-only 消融
-│   ├── Section 1: CS 三场景 benchmark
+│   ├── Section 1: CS 三场景 benchmark（参考附录）
 │   │   ├── 1a. 外部 baseline 重跑: Pos-Free, WiFi-Sleep, ClessBreath ×2
 │   │   ├── 1b. BreatheCS 谱分支: B1 η·ρ vs η-only
-│   │   └── 1c. BreatheCS-Wave: B2-D η·ρ vs η-only
+│   │   ├── 1c. BreatheCS-Wave: B2-D η·ρ vs η-only
+│   │   └── 1d. 消融变体（参考）: Channel/Remote/Local/Phase-only、
+│   │           No-fusion、Modal-only — 均 η·ρ vs η-only
 │   │
-│   ├── Section 2: HKH 12 场景 benchmark
+│   ├── Section 2: HKH 12 场景 benchmark（主评估）
 │   │   ├── 2a. 外部 baseline 重跑: 同 CS + WiFi-Sleep(√η) + PCA sign only
 │   │   ├── 2b. BreatheCS 谱分支 + 统一管线: B1/B3 η·ρ vs η-only
 │   │   ├── 2c. BreatheCS-Wave: B2-D η·ρ vs η-only
-│   │   └── 2d. 消融变体: Channel-only, Remote/Local/Phase-only η·ρ vs η-only
-│   │       （No-fusion 和 Modal-only 已是 η-only，仅重跑验证）
+│   │   └── 2d. 消融变体: Channel/Remote/Local/Phase-only、
+│   │           No-fusion、Modal-only — 均 η·ρ vs η-only
 │   │
 │   └── Section 3: Part 1 汇总
 │       ├── 3a. HKH leaderboard（η·ρ vs η-only 双列）
 │       ├── 3b. HKH 消融表（η·ρ vs η-only 双列）
-│       ├── 3c. CS 跨域对比
+│       ├── 3c. CS 跨域对比（参考）
 │       └── 3d. 配对 Δ 汇总
 │
-├── Part 2: Phase η-Gate（在 η-only 基础上）
-│   ├── Section 4: Gate 变体运行
-│   │   ├── 4a. R+L only（下界）
-│   │   ├── 4b. η-gate relative（Phase η > Remote median η）
-│   │   └── 4c. η-gate absolute（Phase η > 0.70）
+├── Part 2: Phase η-BPM Gate（在 η-only 信道权重基础上；对齐 §5.2–5.4）
+│   ├── Section 4: Gate 变体运行（CS + HKH）
+│   │   ├── 4a. G0  `b1_eta_only_rl`     — R+L only（下界）
+│   │   ├── 4b. G1  `b1_eta_gate_g1`     — η_p > median(η_r, η_l)
+│   │   ├── 4c. G2  `b1_eta_gate_g2`     — η_p > η_r AND η_p > η_l
+│   │   ├── 4d. G3  `b1_eta_gate_g3`     — η 优越 + |BPM_p−BPM_amp|<1.5
+│   │   └── 4e. G4-upper `b1_eta_3modal` — 三模态 equal（上界；报告勿与旧 G4 混淆）
 │   │
 │   └── Section 5: Part 2 汇总
-│       ├── 5a. Gate vs R+L vs 3-modal（HKH + CS）
-│       ├── 5b. Per-window gate open/close ratio（CS vs HKH）
-│       └── 5c. Threshold sensitivity（如需要）
+│       ├── 5a. G0–G4 vs R+L vs 3-modal（HKH 主表 + CS 参考）
+│       ├── 5b. Per-window gate open/close ratio + 拒绝原因（CS vs HKH）
+│       └── 5c. Gate-open 窗 Phase BPM error（验证 gate 是否挑对窗）
 │
 └── Section 6: 综合诊断图
-    ├── 6a. HKH BPM leaderboard（η·ρ / η-only / η-gate 三色，论文 Fig 6a 格式）
-    ├── 6b. HKH 消融对比（论文 Fig 8 格式，三色）
-    └── 6c. ρ 分布对比（CS vs HKH）
+    ├── 6a. HKH BPM leaderboard（η·ρ / η-only / η-gate 三色）
+    ├── 6b. HKH 消融对比（论文 Fig 8 格式）
+    ├── 6c. ρ 分布对比（CS vs HKH）
+    └── 6d. Gate behavior（open ratio / 拒绝原因）
 ```
 
 ### 7.4 不做的事
 
-- 不跑论文方法集之外的任何方案（G4, Modal top2, B0, Uniform, T0 standalone, Fan-ηρ, Z1-with-VMD 等）
+- 不跑论文方法集之外的旧门控系列（旧 G4 / G4-B1-v2、Modal top2、B0、Uniform、T0 standalone、Fan-ηρ、Z1-with-VMD 等）
 - 不引入 η·soft(ρ) / η·rank(ρ) 等中间变体
 - 不引入需要多候选 consensus 的复杂门控
+- 不把 Phase 与幅值等权硬融作为主方法推荐（G4-upper 仅作上界对照）
 - 不修改滤波链、滑窗参数、寻峰逻辑
-
 ---
 
 ## 8. 预期产出
@@ -493,7 +524,35 @@ notebooks/scripts/chFusion_eta_only_ablation.py
 
 ## 10. 验证状态
 
-状态：**待实现**
+状态：**已完成**
+
+实际产出路径：
+- 脚本：`notebooks/scripts/chFusion_eta_only_ablation.py`
+- 模块：`src/ble_analysis/b3_pipeline.py`（`tone_weight_mode`）、`src/ble_analysis/coherent_mrc.py`（`quality_mode` / `eta_only`）
+- 数值结果：
+  - `outputs/reports/eta_only_ablation_hkh_leaderboard.json`
+  - `outputs/reports/eta_only_ablation_hkh_ablation.json`
+  - `outputs/reports/eta_only_ablation_phase_gate.json`
+  - `outputs/reports/eta_only_ablation_cs_leaderboard.json`
+  - `outputs/reports/eta_only_ablation_delta.csv`
+- 图表：`outputs/figures/eta_only_ablation_figG1_*.png` … `figG5_*.png`
+- 报告：`docs/reports/eta_only_ablation_report.md`
+
+结论摘要：
+- Part 1：HKH BreatheCS η-only **0.403** vs η·ρ **0.405**（Δ=−0.002）→ 可按简洁性切换 η-only；CS 参考退化 +0.58 pp。
+- Part 1：No-fusion/Modal-only 在 η-only 下显著变差 → ρ 对单 tone 选取仍关键。
+- Part 2：G3≈G0（HKH 0.371，open 1.3%）→ Gate **中性**；CS 上未实现常开自适应，G4 仍最优。
+- 综合：落在 plan「次佳」——η-only weights + R+L（Phase 不默认参与）。
+
+遗留问题：
+- Q1–Q3 见 §9.3；建议 Review 决定论文是否改 `eq:eta_rho_weight` 与是否写 §5.6。
+- 外部 baseline 为同管线缓存复用，如需强制同次重跑可补。
+
+执行确认决议（2026-08-05）：
+1. §7.2/7.3 已按 §5.2–5.4（G0–G4）对齐。
+2. η-only = **η-weighted**（非 simple）；等权仅兼容保留。
+3. No-fusion/Modal-only 做了 η·ρ vs η 配对。
+4. CS 消融与 gate 已跑，作参考附录。
 
 ---
 

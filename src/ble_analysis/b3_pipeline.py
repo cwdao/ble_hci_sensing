@@ -6,7 +6,7 @@ Implements ``docs/plans/b3_unified_pipeline_voting_bpm_plan.md``.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any, Dict, List, Optional, Sequence, Tuple
+from typing import Any, Dict, List, Literal, Optional, Sequence, Tuple
 
 import numpy as np
 
@@ -52,6 +52,9 @@ MODAL_SHORT: Dict[str, str] = {
 }
 
 
+ToneWeightMode = Literal["auto", "eta_rho", "eta", "equal"]
+
+
 @dataclass(frozen=True)
 class B3VariantConfig:
     """B3 Simplified pipeline configuration with optional ablation toggles."""
@@ -70,6 +73,9 @@ class B3VariantConfig:
     # Phase soft/hard gate: if q_phase < threshold, multiply w_phase by alpha
     phase_gate_threshold: Optional[float] = None
     phase_gate_alpha: float = 1.0  # 0=hard exclude, <1 soft attenuate
+    # Tone-level quality: auto preserves legacy (True→η·ρ, False→equal/simple).
+    # Explicit "eta" = η-only weighted voting (eta_only_ablation_plan).
+    tone_weight_mode: ToneWeightMode = "auto"
 
 
 B3_SIMPLIFIED_CONFIG = B3VariantConfig()
@@ -351,8 +357,41 @@ def _active_modal_variables(variant: B3VariantConfig) -> Tuple[str, ...]:
     return ("remote_amplitudes",)
 
 
+def _resolve_tone_weight_mode(variant: B3VariantConfig) -> Literal["eta_rho", "eta", "equal"]:
+    """Map variant config to tone-level quality mode.
+
+    Legacy: ``use_eta_rho_weights=True`` → η·ρ; ``False`` → equal/simple (A5).
+    Explicit ``tone_weight_mode="eta"`` → η-only weighted voting (ablation).
+    """
+    mode = getattr(variant, "tone_weight_mode", "auto")
+    if mode != "auto":
+        return mode  # type: ignore[return-value]
+    return "eta_rho" if variant.use_eta_rho_weights else "equal"
+
+
 def _voting_strategy(use_eta_rho_weights: bool) -> str:
+    """Legacy helper kept for callers; prefer ``_voting_strategy_from_mode``."""
     return "eta_rho_weighted" if use_eta_rho_weights else "simple"
+
+
+def _voting_strategy_from_mode(mode: Literal["eta_rho", "eta", "equal"]) -> str:
+    return {
+        "eta_rho": "eta_rho_weighted",
+        "eta": "eta_weighted",
+        "equal": "simple",
+    }[mode]
+
+
+def _tone_quality(
+    eta: np.ndarray,
+    rho: np.ndarray,
+    mode: Literal["eta_rho", "eta", "equal"],
+) -> np.ndarray:
+    """Quality vector for single-tone pick / MRC base weights."""
+    eta_arr = np.asarray(eta, dtype=float)
+    if mode == "eta_rho":
+        return eta_arr * np.clip(np.asarray(rho, dtype=float), 0.0, None)
+    return eta_arr
 
 
 def _bpm_per_tone_from_spectra(
@@ -462,10 +501,16 @@ def _single_best_eta_bpm(
     bpm_per_tone: np.ndarray,
     spectra: np.ndarray,
     *,
-    use_eta_rho_weights: bool,
+    use_eta_rho_weights: bool = True,
+    tone_weight_mode: Optional[Literal["eta_rho", "eta", "equal"]] = None,
 ) -> Tuple[float, float, np.ndarray, np.ndarray, float, float]:
     """Pick best-η (or η·ρ) tone; also return one-hot weighted spectrum + weights."""
-    quality = eta * np.clip(rho, 0.0, None) if use_eta_rho_weights else eta
+    mode: Literal["eta_rho", "eta", "equal"]
+    if tone_weight_mode is not None:
+        mode = tone_weight_mode
+    else:
+        mode = "eta_rho" if use_eta_rho_weights else "eta"
+    quality = _tone_quality(eta, rho, mode)
     mask = np.isfinite(quality) & np.isfinite(bpm_per_tone)
     band_len = spectra.shape[1] if spectra.ndim == 2 and spectra.size else 1
     if not np.any(mask):
@@ -589,7 +634,9 @@ def estimate_b3_window(
     band_freqs = band_freqs if band_freqs is not None else freqs[band_mask]
     hann = hann if hann is not None else np.hanning(win_len)
 
-    strategy = _voting_strategy(variant.use_eta_rho_weights)
+    tone_mode = _resolve_tone_weight_mode(variant)
+    strategy = _voting_strategy_from_mode(tone_mode)
+    mrc_quality_mode = "eta_rho" if tone_mode == "eta_rho" else "eta"
     active_vars = _active_modal_variables(variant)
     modal_results: Dict[str, dict] = {}
     modal_spectra: Dict[str, np.ndarray] = {}
@@ -635,6 +682,7 @@ def estimate_b3_window(
                 bpm_per_tone,
                 spectra,
                 use_eta_rho_weights=variant.use_eta_rho_weights,
+                tone_weight_mode=tone_mode,
             )
             modal_results[short] = {
                 "voted_bpm": bpm_single,
@@ -663,6 +711,7 @@ def estimate_b3_window(
                     rho_mrc,
                     phase_method="hilbert",
                     weight_mode="coherence_gated",
+                    quality_mode=mrc_quality_mode,
                     fs=fs,
                     min_coherence=0.0,
                 )
@@ -674,7 +723,7 @@ def estimate_b3_window(
                 X, eta_mrc, rho_mrc = _collect_modal_window_matrix(
                     ch_list, ch_map, variable, st, end, fs, cfg
                 )
-                quality = eta_mrc * np.clip(rho_mrc, 0.0, None) if variant.use_eta_rho_weights else eta_mrc
+                quality = _tone_quality(eta_mrc, rho_mrc, tone_mode)
                 mask = np.isfinite(quality)
                 if X.size and np.any(mask):
                     idx = int(np.argmax(np.where(mask, quality, -np.inf)))
@@ -859,7 +908,8 @@ def validate_b3_variant_against_hkh(
 
     cfg = config or ChFusionConfig()
     mp = metric_params or BreathMetricParams()
-    vcfg = VotingConfig(voting_strategy="eta_rho_weighted")
+    tone_mode = _resolve_tone_weight_mode(variant)
+    vcfg = VotingConfig(voting_strategy=_voting_strategy_from_mode(tone_mode))
 
     ref_seg = multichannel_by_var["phases"].get(seg_name)
     if ref_seg is None:
