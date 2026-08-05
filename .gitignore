@@ -25,8 +25,9 @@ outputs/
 *.npy
 docs/assets/
 
-# Raw BLE-HKH data (large JSONL files, not for version control)
+# Raw data (large JSONL files, not for version control)
 sampleData/ble-hkh/
+sampleData/metal_verify/
 
 # Build artifacts (legacy)
 build/

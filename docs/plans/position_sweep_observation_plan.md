@@ -3,7 +3,7 @@
 > **来源**：论文 draft v0.4 Chapter 4「利用 BLE CS 观测呼吸」；Advisor 5.6sol 建议（受控工作点扫描实验验证物理模型）  
 > **目标报告**：`docs/reports/position_sweep_observation_report.md`  
 > **日期**：2026-08-05  
-> **验证状态**：待实现
+> **验证状态**：已完成
 
 ---
 
@@ -502,7 +502,35 @@ notebooks/scripts/chFusion_position_sweep_observation.py
 
 ## 12. 验证状态
 
-状态：**待实现**
+状态：**已完成**
+
+实际产出路径：
+- 脚本：`notebooks/scripts/chFusion_position_sweep_observation.py`
+- 模块：`src/ble_analysis/jsonl_loader.py`
+- 数值结果：
+  - `outputs/reports/position_sweep_segment_quality.npy`
+  - `outputs/reports/position_sweep_dphi_per_segment.npy`
+  - `outputs/reports/position_sweep_human_vs_metal_quality.npy`
+  - `outputs/reports/position_sweep_observation_meta.json`
+- 图表：`outputs/figures/position_sweep_*.png`（约 68 张）
+- 报告：`docs/reports/position_sweep_observation_report.md`
+
+结论摘要：
+- 图 A–E 全套已生成；典型信道 = **ch66**（median-η≈0.878）。
+- **B1/B2 信道改为均匀间隔 ch20/40/60**（原 η 敏感选道含相邻 70/71，对比度不足）。
+- **D2 信道 = ch35+71（多样对）+ ch20/40/60（均匀间隔）**；D1 仍用典型 ch66。
+- 位置依赖的幅值/相位波形差异可定性展示（H1/H2/H4 支持）。
+- 人体 vs 金属板：合成相位 η 在 **90 cm 明显劣化**（0.939→0.471），100 cm 轻度，80≈85 cm 接近——**H5 仅部分支持**，不宜写成全局「系统性下降」。
+- 图 C γ 热力图在单房间内趋于高相干（Q3 风险兑现）；C1 波形列更适合作主图。
+
+遗留问题：
+- H2 仅 36 帧，90 cm 统计需谨慎。
+- 80 cm 人体只能对金属板 85 cm。
+- 建议 Research/Review 将 H5 假说措辞改为距离依赖/条件性。
+
+执行备注：
+- JSONL 部分 tone 存在孤立 NaN；脚本在重采样前做线性填补。
+- η/ρ 复用 `chfusion._energy_ratio` / `_peak_prominence`（plan 中的 `compute_eta`/`compute_rho` 公有 API 不存在，未改 chfusion 行为）。
 
 ---
 
