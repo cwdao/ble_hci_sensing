@@ -188,6 +188,16 @@ docs/plans/{topic}_plan.md
 
 ## 5. 执行流程
 
+### Step 0. 新 Plan 先确认（强制）
+
+收到新 plan 或被要求执行某 plan 时，**先审查、后执行**：
+
+1. 通读 plan，列出需用户确认的事项（`[待确认]`、路径/命名冲突、实验范围歧义、指标/baseline 边界不清等）。
+2. **有待确认项 → 停下来问用户，不得擅自选默认值继续。**
+3. **无待确认项 → 首条回复声明「审查通过，开始执行」，再进入 Step 1。**
+
+详见 alwaysApply 规则：`ble-cs-plan-confirm-before-execute.mdc`。
+
 ### Step 1. 读取 plan 并列 checklist
 
 先读取用户指定的：
@@ -202,6 +212,7 @@ docs/plans/{topic}_plan.md
 ## Execution Checklist
 
 - [ ] Plan read
+- [ ] User confirmations resolved (or N/A)
 - [ ] Baseline confirmed
 - [ ] Scenario config confirmed
 - [ ] Metrics confirmed

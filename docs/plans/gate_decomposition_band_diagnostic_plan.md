@@ -526,7 +526,35 @@ filter_params_wide = FilterParams(
 
 ## 10. 验证状态
 
-状态：**待实现**
+状态：**部分完成**（频带扫描在 HKH 上触发有效阈值，已按用户要求暂停全量 benchmark）
+
+实际产出路径：
+- 脚本：`notebooks/scripts/chFusion_gate_decomposition_band_diagnostic.py`
+- 数值结果：
+  - `outputs/reports/gate_decomposition_hkh.json`
+  - `outputs/reports/gate_decomposition_cs.json`
+  - `outputs/reports/eta_confusion_matrix.json`
+  - `outputs/reports/breathing_band_sweep.json`
+- 图表：`outputs/figures/gate_decomposition_figF1_*.png` … `figF5_*.png`
+- 报告：`docs/reports/gate_decomposition_band_diagnostic_report.md`
+
+执行确认偏差：
+- Part 4 方案 A（滤波 + η 同步扩；BPM 寻峰仍 0.1–0.35）
+- Gate-B 含 CS；δ∈{0.5,1.0,1.5,2.0,3.0}；Gate-A k∈{1.0,1.05,1.1}
+- 频带有效后未跑全量
+
+结论摘要：
+- HKH：G0 最优；Gate-A/B 均无法稳定超过 G0；k 扫描无效；δ 越小越接近关 Phase
+- CS：G4 最优；Gate-A 部分有效但仍劣于 G4；Gate-B ≈ G0（吃不到 Phase）
+- η 混淆：hit 63.6%；高成本误选 Phase 5.26% → systematic defect；R↔L 低成本互换为主
+- 频带：HKH 谱域 0.40/0.50 改善 Δ≈−0.02；**CS 同步退化**；波形 η·ρ RMSE **变差**（Δ≈+0.03），Wave BPM 变好
+- 受控交叉：≥0.40 时 Wave≈Spec3（gap≈0.02–0.04）；**η vs η·ρ 几乎等价**，无额外台阶
+
+遗留问题：
+- 频带跨域冲突 + 波形 RMSE 不支持 → 是否放弃默认扩频带
+- 是否结题统一窗级门控，改用域相关默认模态集
+
+日期：2026-08-06（含 waveform RMSE + quality×band controlled follow-up）
 
 ---
 
