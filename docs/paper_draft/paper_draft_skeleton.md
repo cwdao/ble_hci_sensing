@@ -224,33 +224,72 @@ $$
 $$
 \delta \Phi_i(t) \approx \operatorname{Im} \left\{ \frac{\delta Z_{l,i}(t)}{\overline{Z}_{l,i}} + \frac{\delta Z_{r,i}(t)}{\overline{Z}_{r,i}} \right\}.\tag{5}
 $$
-因此，幅度变量反映复数扰动在径向的投影，而积分相位反映两端切向投影之和。这一区别促使我们将本地幅度、远端幅度和积分相位视为三种具有不同物理意义的呼吸观测模态。
+因此，幅度变量反映复数扰动在径向的投影，而积分相位反映两端切向投影之和。这一区别促使我们将本地幅度、远端幅度和合成相位视为三种具有不同物理意义的呼吸观测模态。
 
-### 4.2 验证CS的可用观测变量
+### 4.2 观测量上的呼吸波形
+
+本章节用金属板模拟人体胸腔的位移，以观察本地幅值、远端幅值与合成相位是否具备感知呼吸位移的能力，并确认4.1节中对三种观测模态的关系的推论。
 
 #### 实验设置：
 
 我们在一个5m宽的空旷的长走廊上搭建了BLE CS 呼吸感知验证平台【图-金属板设置】，以讨论CS各个观测变量。BLE CS 的部署平台是 Nordic nrf54L15 ，这是一款已经上市并支持BLE 6.0 的物联网低功耗蓝牙芯片。我们使用原厂的 nrf54L15 DK （development kit）连接6dBi 的外置天线，然后将平台按间隔1m架设，并保证高度与金属板平齐。用于模拟人体胸腔的金属板尺寸为30*30cm。
 
-我们令一侧作为BLE CS发起方（initiator），另一侧作为接收方。双方数据由发起方汇总，随后通过串口上传到PC。我们还需要配置BLE CS 的一些参数，以确保测量频率和信道启用符合我们的预期。具体包括：启用所有信道（72个），测量间隔设置为250-500ms区间。其中，250ms是我们经过多次测试后，BLE CS 在当前6.0版本能够实现的最短间隔。同时，我们在实验中发现，250ms 间隔在长期测量时容易同步失败，导致CS测距中断，因此将最大间隔设置为500ms，以允许偶然超时情况。
+我们令一侧作为BLE CS发起方（initiator），另一侧作为接收方。双方数据由发起方汇总，随后通过串口上传到笔记本电脑。我们还需要配置BLE CS 的一些参数，以确保测量频率和信道启用符合我们的预期。具体包括：启用所有信道（72个），测量间隔设置为250-500ms区间。其中，250ms是我们经过多次测试后，BLE CS 在当前6.0版本能够实现的最短间隔。同时，我们在实验中发现，250ms 间隔在长期测量时容易同步失败，导致CS测距中断，因此将最大间隔设置为500ms，以允许偶然超时情况。
 
 在实验中，金属板会周期性前后移动，范围为1cm。金属板初始位置距离BLE CS设备的视距连接（LoS）为100cm，每执行完6次呼吸位移，金属板在滑台上前进1cm，然后再次执行6次呼吸位移。通过这种方式，我们将观察到随着金属板的位置不断移动，双端幅值和合成相位的呼吸波形出现相应的变化。
 
 #### 实验结果：
 
+- 呼吸在不同模态上的周期性显著
 
+我们任意选定一个信道来展示三个模态的波形差异，并将不同位置处的波形予以比较。从【图-amp_pha_complement】我们观察到，随着金属板在滑台上持续步进，各个模态上所观测到的呼吸呈周期性变化，且具备明显的交替互补特性。幅值和合成相位是PCT在径向和切向的投影，金属板建立的多径变化在两者上总有一处可以观测。两种模态的呼吸波形低显著区间是交替出现的，且本地、远端幅值之间几乎重合。
 
-接下来，我们分别讨论模态内部各信道呼吸波形间的相位关系和模态之间的波形相位关系。
+- 不同信道的表现存在差异
 
-### 4.2  Inter-Channel Phase Relationship / 信道间波形的相位关系
+我们在ch 20\40\60三个信道上比较呼吸波形的形态，且选择了86/87/88 三个位置处的幅值记录。由图【图-channel_position_matrix 】可见，随着位置改变，信道表现也不一致。在88cm 处，三个信道的表现都较好，前移 1cm 至87cm 后，ch 40 的呼吸不再明显；再前移1cm，ch 60 的呼吸波形出现失真/伪峰，而另外两个信道则波形清晰。这说明 CS PCT 的幅值变化与所处信道相关，信道不同，频率就不同，波形的表现也会有细微差异。
+
+进一步地，我们比较同一位置、同一模态下，所有信道上的波形差异。由图【全信道差异C1扩充】可见，一些信道的波形是同相的，一些则是反相的。
+
+- 同一信道的三种观测量偏差不是整数 pi 
+
+但不同的模态之间并不是只有同相/反相的差异，而是有处于0-pi 之间的相位偏移。我们追踪了不同信道在所有位置处的模态间相位差的变化，【图-position_sweep_figD2_dphi_vs_position_ch35及其子图】显示，大多数情况下，两端幅值基本同相，幅值和相位之间则基本是同相、反相的关系。但值得注意的是，在一些不同的位置，幅值间的相位差不再几乎为0，相位和幅值之间的偏移也不是整数 pi 。这些结果表明，BLE CS 的各个观测量之间存在随机的连续偏移。
+
+- 人体活动和金属板的表现存在差异
+
+我们请来四位 subject ，令其坐在远离 LOS 的固定位置处，距离以其胸腔为准。同时，我们要求他们跟随节拍器呼吸，频率与金属板的设定值一致。我们随后在相同的距离处再次测量金属板的呼吸，并比较波形的差异。为了评价两种波形，我们引入呼吸能量比$\eta$ 和波形的峰度$\rho$ 两个指标，$\eta$ 在高通滤波后的信号上计算（衡量呼吸频段能量在总频谱中的集中程度），$\rho$ 在呼吸带通滤波后的信号上计算（衡量呼吸频段内的峰值突出度）。记模态 $m$、信道$i$ 的波形高通后的功率谱为 $P_{m,i}^{\text{hp}}(f)$ ，带通后的功率谱 $P_{m,i}(f)$ ， $\mathcal{F}_b$ 为呼吸频段，$\mathcal{F}$ 为分析频段。 $\eta$ 和 $\rho$ 定义为：
+$$
+\eta_{m,i}
+=
+\frac{\sum_{f\in\mathcal{F}_b}P_{m,i}^{\text{hp}}(f)}{\sum_{f\in\mathcal{F}}P_{m,i}^{\text{hp}}(f)+\epsilon},
+$$
+
+（LaTeX: `eq:eta`）
+
+$$
+\begin{aligned}
+\rho_{m,i}
+&=
+\frac{P_{m,i}(\widehat{f}_{m,i})}{\frac{1}{|\mathcal{F}_b|}\sum_{f\in\mathcal{F}_b}P_{m,i}(f)+\epsilon},
+\\
+\widehat{f}_{m,i}
+&=
+\arg\max_{f\in\mathcal{F}_b}P_{m,i}(f)
+\end{aligned}
+$$
+
+（LaTeX: `eq:rho`）
+
+【图-position_sweep_figE3_eta_rho_comparison.png】展示了 $\eta$ 和 $\rho$ 在两类目标下的差异。两种呼吸目标在呼吸频段的能量比较为相似，各个模态上都没有明显的下降。但峰度的下降较为明显。这可能是由于人体自然呼吸含速率漂移、谐波与体动 ，尽管能量仍可落在 0.1–0.35 Hz，但峰不再尖锐。
+
+接下来，通过讨论上述实验结果，我们分别讨论模态内部各信道呼吸波形间的相位关系和模态之间的波形相位关系。
+
+### 4.3  Inter-Channel Phase Relationship / 信道间波形的相位关系
 
 > **EN**: [Fresnel zone theory review. Applicability to BLE CS. PCA sign correction works → confirms ±1 baseline. But Hilbert continuous phase further improves → confirms additional structure from sequential sampling. Cite Figure 2.]
 >
-> **CN**: [回顾菲涅尔区理论。在 BLE CS 中的适用性论证。PCA 符号校正有效 → 确认 ±1 基线成立。但 Hilbert 连续相位补偿进一步改善 → 确认顺序采样引入了超越 ±1 的额外相位结构。引用 Figure 2。]
+> **CN**: [回顾菲涅尔区理论。在 BLE CS 中的适用性论证。PCA 符号校正有效 → 确认 ±1 基线成立。但 Hilbert 连续相位补偿进一步改善 ]
 
-不同信道的频率不同，对于同样的呼吸活动，所引发的信道衰落也会有差异。为了更好的估计呼吸，拟合原始的波形，许多工作选择将各信道的波形融合到一起【相关WIFI的论文】。
-
-同一模态内部各信道的物理意义是相同的，因此，如果按照菲涅尔区理论，它们之间的菲涅尔区边界会因为频率不同而略微有区别。对于同样的呼吸扰动，它们的影响要么是同相的，要么恰好是反相的。因此在过去的WIFI 感知工作中，为了合并所有信道的波形以获得最大的信噪比，通常仅考虑计算同相/反相的情况，为各信道赋予符号，以将所有信道的波形进行正确的相干合并。
+不同信道的频率不同，对于同样的呼吸活动，所引发的信道衰落也会有差异。同一模态内部各信道的物理意义是相同的，因此，如果按照菲涅尔区理论【相关WIFI的论文】，它们之间的菲涅尔区边界会因为频率不同而略微有区别。对于同样的呼吸扰动，它们的影响要么是同相的，要么恰好是反相的。因此在过去的一些感知工作中，为了合并所有信道的波形以获得最大的信噪比，通常仅考虑计算同相/反相的情况，为各信道赋予符号，以将所有信道的波形进行正确的相干合并【相关WIFI的论文】。
 
 仍考虑在静态工作点附近，由呼吸活动产生的一个微小扰动（等式 3），将其在工作点$\overline{Z}_{d,i}$附近做一阶泰勒展开
 $$
@@ -260,20 +299,16 @@ $$
 
 
 
-> 
->
-> 测试的结果如【图2-信道间关系(a)】，经预处理后，我们只保留动态呼吸成分，并展示72信道中的四个原始带通波形的叠加。不同信道间的幅值呼吸波形大致呈同相、反相分布。我们使用PCA为各信道赋予正负号，反相的波形被成功翻转，但可以观察到各信道之间仍然存在细微的相位偏差【图2-b】。通过希尔伯特变换并求出各信道的平均相位，然后旋转对齐，波形重合度得到了明显提升【图2-c】。
->
 
-进一步的，我们在两个位置连续采集数分钟数据后，做出整个数据的信道间相干性热力图【图2-d】。在位置1（095806），各信道整体相干性更高，而位置2的相干性较低，且颜色分布更多样。这说明在真实的呼吸状态下，BLE CS的信道间相位存在同相、反相之外的细小偏差。尽管基于菲涅尔区的符号赋予已经非常有效，但通过hilbert变换对齐仍可进一步补偿。
+我们选取了一处非整数pi 偏移的三个模态波形【图Figure 2: Inter-tone phase relationship】。在一开始，三个模态的波形相对任何两个都存在偏差【2-（a）】。我们使用PCA为各信道赋予正负号，反相的波形被成功翻转，但可以观察到各信道之间仍然存在细微的相位偏差【图2-b】。随后，我们通过希尔伯特变换求出各信道的平均相位，然后旋转对齐，波形重合度得到了显著提升【图2-c】。
 
-我们认为，BLE CS 的实际测量中存在若干因素会引入同相/反相之外的残余相位偏差：
+在呼吸感知中常常使用MRC方法融合波形，而将各信道的波形相位对齐是时域融合的必备前提。我们认为，BLE CS 的实际测量中存在若干因素会引入同相/反相之外的残余相位偏差：
 
 -  BLE CS 的有效事件采样率较低，且 event 间隔可能存在不均匀性。有限长度窗口内的带通滤波、插值更容易受到时序误差、噪声和边界效应的影响，从而产生或放大表观的波形相位失配。
 -  PCT 测量非理想性。包括接收机增益/延迟变化、有限信噪比下的相位估计误差、校准残差以及后处理畸变。
 -  频率选择性多径。不同 tone 因频率不同经历不同的多径组合，导致各 tone 的工作点散布于复平面不同位置，残余相位偏差因此随 tone pair 和场景变化。
 
-顺序扫描的影响可忽略不计。在 BLE 规范 6.0 中，每个 CS 信道约耗时 $300$--$400\,\mu\mathrm{s}$。即便使用保守值 $400\,\mu\mathrm{s}$，72 个信道的完整扫描时间也低于 $30\,\mathrm{ms}$。在呼吸频带上限 $f_b=0.35\,\mathrm{Hz}$ 处，由扫描导致的最大相位差近似为：
+BLE CS 的顺序扫描的影响反而可忽略不计。在 BLE 规范 6.0 中，每个 CS 信道约耗时 $300$--$400\,\mu\mathrm{s}$。即便使用保守值 $400\,\mu\mathrm{s}$，72 个信道的完整扫描时间也低于 $30\,\mathrm{ms}$。在呼吸频带上限 $f_b=0.35\,\mathrm{Hz}$ 处，由扫描导致的最大相位差近似为：
 
 $$
 \Delta\varphi_{\max} \le 2\pi f_b \cdot 72 \cdot 400\,\mu\mathrm{s} \approx 0.063\,\mathrm{rad} \approx 3.6^\circ.
@@ -281,24 +316,21 @@ $$
 
 这一数值不足以解释观测到的连续相位偏差。因此，对于呼吸感知而言，72 个 CS 信道观测可以视为准同时测量；残余偏差的主要来源应是多径和测量非理想性，而非顺序扫描。
 
-因此，本文将信道间关系建模为二值主符号关系与逐窗口连续残余相位的组合，并通过复平面旋转进行补偿。
+因此，本文将信道间关系建模为二值主符号关系与逐窗口连续残余相位的组合，并通过复平面旋转进行补偿。尽管基于菲涅尔区的符号赋予已经非常有效，但通过hilbert变换对齐仍可进一步补偿。这种补偿有助于后续多个波形的融合，提升感知的呼吸能量比，并有益于后续的呼吸指标计算【随便呼吸论文】。
 
-![Figure 2: Inter-tone phase relationship. (a) Raw bandpass; (b) after ±1 sign; (c) after Hilbert; (d–e) 72×72 γ heatmaps (good/hard). Fresnel ±1 is the first-order structure; residual offsets are from multipath and estimation non-idealities.](../../outputs/figures/paper_fig2_inter_tone_phase.png)
+![Figure 2: Inter-tone phase relationship. (a) Raw bandpass; (b) after ±1 sign; (c) after Hilbert; ](../../outputs/figures/paper_fig2_inter_tone_phase.png)
 
-> **Fig. 2 解读**: (a) 4 个代表 tone（#58 ref, #48 同相 γ≈0.83, #45 反相 Δφ≈π, #69 中间相位 Δφ≈−0.83）的原始带通波形叠加。(b) PCA ±1 符号校正后：反相 tone 被翻转，但中间相位 tone 仍有明显残余错位。(c) Hilbert 连续相位对齐后：四条波形近乎完美重合。(d) 72×72 tone-pair 相干性热力图：cs_095806（左，good）左上角高 γ 结构密集；cs_091339（右，hard）整体 γ 更低且碎片化。**结论**：菲涅尔区 ±1 是有效的一阶近似；残余的连续相位偏差更可能来自频率选择性多径、有限窗估计和 PCT 测量非理想性，Hilbert 对齐可进一步补偿。另见 [Figure S1](#supplementary-figure-s1) 跨窗口 γ 稳定性对比。
+> **Fig. 2 解读**: (a) 4 个代表 tone（#58 ref, #48 同相 γ≈0.83, #45 反相 Δφ≈π, #69 中间相位 Δφ≈−0.83）的原始带通波形叠加。(b) PCA ±1 符号校正后：反相 tone 被翻转，但中间相位 tone 仍有明显残余错位。(c) Hilbert 连续相位对齐后：四条波形近乎完美重合。
 
-<a id="supplementary-figure-s1"></a>
 
-![Figure S1: Tone-pair coherence γ stability across windows (good vs hard CS metal-plate scenario).](../../outputs/figures/paper_figS1_coherence_stability.png)
 
-> **Fig. S1 解读**: 同一 tone pair 跨窗口 γ；good 场景高且稳，hard 场景低且波动大。
-### 4.3 Inter-Modal Phase Relationship / 模态间（变量间）相位关系
+### 4.4 Inter-Modal Phase Relationship / 模态间（变量间）相位关系
 
 > **EN**: [Remote vs local vs phase: relative phase depends on multipath geometry. Different rooms → different relationships. Per-window variation observed. Cannot hardcode. Cite Figure 3.]
 >
 > **CN**: [Remote 与 local 与 phase 之间：相对相位取决于多径几何。不同房间 → 不同的相位关系。观察到逐窗变化。不可硬编码。引用 Figure 3。]
 
-本章第一节已经证明三种模态之间是独立的物理量。为了增大感知性能、拟合原始呼吸波形，有必要研究三者波形间的相位关系，以讨论融合各观测模态的方案。
+本章在第一节已经证明三种模态之间是独立的物理量，随后第二节验证了幅值-相位之间的互补关系。尽管幅值和相位不会同时具有最优的波形，但我们仍然希望利用更多的模态，并在适当的算法下合理使用这些数据。为此，我们有必要探讨模态之间的波形相位偏移成因，并指导算法设计。
 
 在【等式3】中，呼吸扰动$\delta Z_{d,i}(t)$ 可以进一步表示为：
 $$
@@ -342,11 +374,11 @@ $$
 $$
 含有多个有效成分的模型允许连续相位偏移。这是因为 $C_{d}$ 是复数，两个复数的夹角可以是任意的。因此，不同信道和不同模态可能产生指向复平面中不同方向的有效呼吸相量。
 
-我们将4.3 的实验结果中三个模态的信道波形的相位对齐，然后融合成一个，并把三个波形归一化后比较【图-3 （a）】。它们之间也存在非整周期的相位关系。这验证了我们的模型。通过将它们的相位旋转对齐，可以消除这种相位偏差 【图3-b】。同时，这种情况并非偶然现象，我们将该次金属板模拟的所有数据的做加窗处理，然后画出每个窗口内三模态的相位偏差【图3-c】，这些相位偏差几乎是完全随机的；对于另一个位置场景下的模拟，相位关系又完全不同于前一场景【图3-d】。这充分证明了本节论述的各模态间不稳定的相位关系。
+我们以4.2 的实验中一处存在非整数相偏的波形数据为例【图-3 （a）】。通过将它们的相位旋转对齐，可以消除这种相位偏差 【图3-b】。不过，由于4.2的实验条件较为理想，实际上非整数偏移的点并不多。为了更好的展示这种偏移的存在，我们在一个较小的会议室内同样采集了金属板的呼吸活动。在会议室内有多张桌子、椅子，他们都会一定程度上影响多径环境。在该房间两处位置各自采集了一段时间数据，然后画出全过程的相位偏移【图3-c,d】。在更复杂的多径环境中，这些相位偏差非整数pi 的情况更多了；对于另一个位置场景下的模拟，相位关系又完全不同于前一场景【图3-d】。这充分证明了本节论述的各模态间不稳定的相位关系。
 
 
 
-![Figure 3: Inter-modal phase relationship. (a) Before Level-2 align; (b) after Level-2 Hilbert + η fusion; (c–d) cross-window Δφ in two rooms. Modal phase is non-fixed and scene-dependent; alignment does not guarantee equal fusion value.](../../outputs/figures/paper_fig3_inter_modal_phase.png)
+![Figure 3: Inter-modal phase relationship. (a) Before Level-2 align; (b) after Level-2 Hilbert + η fusion; (c–d) cross-window Δφ in two rooms. Modal phas1e is non-fixed and scene-dependent; alignment does not guarantee equal fusion value.](../../outputs/figures/paper_fig3_inter_modal_phase.png)
 
 > **Fig. 3 解读**: (a) 三模态（remote/local/phase）经 Level-1 Hilbert tone 融合后的波形，Level-2 对齐前可见明显相位差异。(b) Level-2 Hilbert 对齐 + $\eta$ 加权融合后：三波形对齐，融合波形（粗黑线）跟踪一致性。(c) cs_095806 全 segment 跨窗模态间相位差 Δφ 序列：Δφ 非固定，逐窗浮动。(d) cs_102621（不同房间）同款图：Δφ 基线不同，确认模态间相位关系场景依赖。**结论**：模态间相位不可预设，必须每窗估计。但成功对齐并不保证所有模态具有同等的融合价值——哪些模态应参与融合取决于其实际信号质量，而非仅由物理可获得性决定。
 
@@ -358,13 +390,13 @@ $$
 
 ### 5.1 Design Rationale / 设计动机
 
-对人体呼吸活动的观测包含两部分：BPM 估计与呼吸波形恢复。BPM 只需稳定的呼吸频率，一旦形成频谱，对时域残余错位不敏感；波形恢复则需保留形态学特征，因此依赖时域相干融合以提高呼吸能量比（BNR）。
+在第四章中我们已经发现，本地和远端的幅值在物理意义上几乎一致，但会存在偶然的细微偏差；合成相位的信息与幅值是互补的，且波形与幅值的偏移更随机。同时，我们还注意到相位是双端PCT的合成结果，这相比幅值引入了更多测量误差。为此，我们提出 BreathCS 以充分利用这些特性。BreathCS通过对原始的测量分别处理以获得人体呼吸的观测， 这包含两部分：BPM 估计与呼吸波形恢复。BPM 只需稳定的呼吸频率，一旦形成频谱，对时域残余错位不敏感；波形恢复则需保留形态学特征，因此依赖时域相干融合以提高呼吸能量比（BNR）。
 
 BreatheCS 用共享前端 + 两条专用分支应对这两个目标：
 
-1. **共享前端**：逐信道质量估计，采用互补的指标 $\eta$（呼吸频段能量比）与 $\rho$（谱峰峰度）构成权重，同时服务于谱加权与波形 MRC 权重。
-2. **BPM 分支**：逐信道加权谱融合，再对三模态做加权谱融合。
-3. **波形分支**：两级 Hilbert 相干 MRC：先在模态内做channel级对齐，再跨 remote/local/phase 做模态级对齐。
+1. **共享前端**：逐信道质量估计，采用呼吸频段能量比 $\eta$构成权重，同时服务于谱加权与波形 MRC 权重。
+2. **BPM 分支**：逐信道加权谱融合构成每个模态的唯一谱，然后对两端幅值做加权谱融合构成最终的幅值模态。随后，幅值谱与合成相位谱作比较，选择具有最大呼吸能量比 $\eta$  的模态作为最终的呼吸估计。
+3. **波形分支**：引入谱峰峰度 $\rho$指标作为时与融合的参考，随后是两级 Hilbert 相干 MRC：先在模态内做channel级对齐，再跨 remote/local/phase 做模态级对齐。在模态级融合阶段，首先将两端幅值融合为一个幅值模态，随后与相位模态比较呼吸能量比。选择最大的模态作为最终的波形输出。
 
 ### 5.2 Preprocessing / 预处理
 
@@ -372,35 +404,13 @@ BreatheCS 用共享前端 + 两条专用分支应对这两个目标：
 
 ### 5.3 Stage 1: Per-Modal Channel Quality and Weighted Spectra / 逐模态信道质量与加权谱
 
-在进入任一分支前，为每个 tone 赋予反映呼吸频段主导性与峰值可靠性的质量分数。$\eta$ 在高通滤波后的信号上计算（衡量呼吸频段能量在总频谱中的集中程度），$\rho$ 和 BPM 在呼吸带通滤波后的信号上计算（衡量呼吸频段内的峰值突出度）。设 $\mathcal{F}_b$ 为呼吸频段，$\mathcal{F}$ 为分析频段。对高通信号求功率谱 $P_{m,i}^{\text{hp}}(f)$ 用于 $\eta$；对带通信号求功率谱 $P_{m,i}(f)$ 用于 $\rho$ 和 BPM：
-
-$$
-\eta_{m,i}
-=
-\frac{\sum_{f\in\mathcal{F}_b}P_{m,i}^{\text{hp}}(f)}{\sum_{f\in\mathcal{F}}P_{m,i}^{\text{hp}}(f)+\epsilon}
-$$
-
-（LaTeX: `eq:eta`）
-
-$$
-\begin{aligned}
-\rho_{m,i}
-&=
-\frac{P_{m,i}(\widehat{f}_{m,i})}{\frac{1}{|\mathcal{F}_b|}\sum_{f\in\mathcal{F}_b}P_{m,i}(f)+\epsilon},
-\\
-\widehat{f}_{m,i}
-&=
-\arg\max_{f\in\mathcal{F}_b}P_{m,i}(f)
-\end{aligned}
-$$
-
-（LaTeX: `eq:rho`）
+在进入任一分支前，为每个 tone计算并赋予反映呼吸频段主导性的质量分数$\eta$ （见 等式LaTeX: `eq:eta`）。设 $\mathcal{F}_b$ 为呼吸频段，$\mathcal{F}$ 为分析频段。对高通信号求功率谱 $P_{m,i}^{\text{hp}}(f)$ 用于 $\eta$；
 
 $$
 \begin{aligned}
 w_{m,i}
 &=
-\eta_{m,i}\cdot\max(\rho_{m,i},0),
+\eta_{m,i},
 \\
 \tilde{w}_{m,i}
 &=
@@ -408,13 +418,7 @@ w_{m,i}
 \end{aligned}
 $$
 
-（LaTeX: `eq:eta_rho_weight`）
-
-
-
-呼吸能量比 $\eta$ 反映呼吸频段能量在总频带内的集中程度。$\rho$ 衡量呼吸频带内主峰相对于均值的突出程度（峰值/带内均值，即 peak prominence / 峰值突出度），与 $\eta$ 互补——$\eta$ 检测"呼吸频段是否有足够能量"，$\rho$ 检测"呼吸频段内是否有显著主峰"。注意 $\rho$ 本身奖励任何尖锐峰（包括非呼吸假峰），因此必须与 $\eta$ 联用（$\eta$ 确保能量集中在呼吸频段，$\rho$ 确保该频段内有主导峰）。最终权重为两者的乘积 $w = \eta \cdot \max(\rho, 0)$。
-
-
+（LaTeX: `eq:eta_weight`）
 
 记 $S_{m,i}(f)$ 为模态 $m$、tone $i$ 的带通幅度谱。逐模态融合谱为质量加权平均：
 
@@ -428,58 +432,39 @@ $$
 
 ### 5.4 Stage 2a: BPM Branch — Modal Fusion and Rate Estimation / BPM 分支：模态融合与呼吸率估计
 
-BLE CS 的 PCT 测量提供三种模态。信道级融合后，每条模态产生一条融合谱 $\bar{S}_m(f)$。BPM 分支在模态级将这些谱合并为最终谱：
+BLE CS 的 PCT 测量提供三种模态。信道级融合后，每条模态产生一条融合谱 $\bar{S}_m(f)$。BPM 分支在模态级将这些谱合并为最终谱，然后按窗级质量自适应加权：
 
 $$
-S_{\mathrm{final}}(f)
+S_{\mathrm{amplitude}}(f)
 =
-\frac{\bar{S}_{r}(f)+\bar{S}_{l}(f)+\bar{S}_{\phi}(f)}{3}
-\quad\text{（等权融合，baseline）}
-$$
-
-或按窗级质量自适应加权：
-
-$$
-S_{\mathrm{final}}(f)
+\frac{w_r\bar{S}_{r}(f)+w_l\bar{S}_{l}(f)}{w_r+w_l+\epsilon}\\
+S_{\mathrm{composite\ phase}}(f)
 =
-\frac{w_r\bar{S}_{r}(f)+w_l\bar{S}_{l}(f)+w_{\phi}\bar{S}_{\phi}(f)}{w_r+w_l+w_{\phi}+\epsilon}
-\quad\text{（质量加权）}
+\frac{w_{\phi}\bar{S}_{\phi}(f)}{w_{\phi}+\epsilon}
 $$
 
 其中 $w_m$ 由模态级 $\eta$ 或窗级质量门控决定（见消融实验 §6.5）。
 
-模态融合策略的选择取决于场景。在可控机械运动（CS 金属板）中，等权三模态融合接近最优；但在真人自然呼吸（HKH）中，Phase 的跨 tone 一致性和波形保真度系统性低于两端幅值，无条件等权加入 Phase 反而使性能劣于仅使用 Remote+Local 双模态融合（见 §6.5 和 §6.6）。因此，BreatheCS 默认推荐 Remote+Local 双模态融合用于人体呼吸 BPM 估计；三模态等权融合作为对照基线保留；Phase 通过置信度门控有条件参与（见 §5.6）。[⚠️ D3, D4: Phase gate 结果决定最终推荐策略的措辞强弱]
-
-在 $\mathcal{F}_b$ 内寻峰，并对主峰邻域做抛物线插值：
+鉴于幅值模态和合成相位模态具有互补关系，我们会计算二者最终的呼吸能量比，以确定当前窗口的最佳模态作为$S_{\mathrm{opt}}$，然后用该模态做最终的BPM估计：
 
 $$
 \begin{aligned}
-\widehat{f}_b
-&=
-\operatorname{ParabolicInterp}\Bigl(
-S_{\mathrm{final}},\,
-\arg\max_{f\in\mathcal{F}_b}S_{\mathrm{final}}(f)
-\Bigr),
-\\
-\widehat{\mathrm{BPM}}
-&=
-60\,\widehat{f}_b
+\widehat{\mathrm{BPM}}=60\widehat{f}_b
+&=60 \cdot
+\Bigl(
+S_{\mathrm{opt}},\,
+\arg\max_{f\in\mathcal{F}_b}S_{\mathrm{opt}}(f)
+\Bigr)
 \end{aligned}
 $$
 
 （LaTeX: `eq:bpm_peak`）
 
-该谱域分支是 BreatheCS 的**主 BPM 输出**。它继承质量加权信道融合的稳健性，并避免低采样率下脆弱的时域对齐。
-
-我们在金属板数据上对$w$ 的信道选择效果予以验证【图5】。【图5-b】显示，通过权重$w$对信道的抑制和增强，在估计BPM时，所得到的频谱投票结果要更集中于groundtruth 附近。
-
-![Figure 5: η·ρ quality voting. (a) Per-tone η vs ρ; (b) BPM histogram uniform vs voting; (c) fused spectrum.](../../outputs/figures/paper_fig5_eta_rho_voting.png)
-
-> **Fig. 5 解读**: (a) 单窗 72 tone 的 $\eta$ vs $\rho$：高 $\eta$/高 $\rho$ tone 与共识 BPM 一致。(b) 直方图：$\eta\cdot\rho$ 加权峰更尖。(c) 加权谱噪声底更低、呼吸峰更突出。**结论**：$\eta$ 与 $\rho$ 互补，乘积作质量权重有效。注：直方图投票标量在 B3 Simplified 中主要用于机制示意/诊断；**最终 BPM 由加权谱等权模态融合寻峰得到**。
+该谱域分支是 BreatheCS 的**主 BPM 输出**。它继承质量加权信道融合的稳健性，并避免低采样率下脆弱的时域对齐。各个波形的融合参考MRC（最大比合并）的思想【参考预留】 赋予权重。MRC 为各个信道赋予等比于自身信噪比（SNR）的权重，以最大化提升整体的信噪比。在BreatheCS 中，我们用呼吸能量权重$w$ 模拟SNR在MRC的功能。
 
 ### 5.5 Stage 2b: Waveform Branch — Two-Level Hilbert-MRC / 波形分支：两级 Hilbert-MRC
 
-波形恢复使用 HiCo-MRC（两级复平面相干融合）。由 §4 相量模型，模态 $m$、tone $i$ 的带限呼吸分量可写为：
+波形恢复使用 Hilbert 变换配合的 MRC（两级复平面相干融合）。从第四章出发，我们将模态 $m$、tone $i$ 的带限呼吸分量写为：
 
 $$
 x_{m,i}(t)
@@ -510,8 +495,22 @@ $$
 
 #### Channel-level fusion / 信道级融合
 
-对每个模态 $m$，按质量选参考 信道：
+时域波形的融合需要精确对齐相位，才能避免在融合时起到负面效果。为此，我们引入$\rho$ 衡量呼吸频段内的峰值突出度，并据此指导融合的权重。由等式（LaTeX: `eq:rho`），（LaTeX: `eq:eta_weight`），我们设计一个针对波形对齐的新权重：
+$$
+\begin{aligned}
+w_{m,i}
+&=
+\eta_{m,i}\cdot\max(\rho_{m,i},0),
+\\
+\tilde{w}_{m,i}
+&=
+\frac{w_{m,i}}{\sum_j w_{m,j}+\epsilon}
+\end{aligned}
+$$
 
+（LaTeX: `eq:eta_rho_weight`）
+
+对每个模态 $m$，按质量选参考信道：
 $$
 i_m^\star=\arg\max_i w_{m,i}
 $$
@@ -528,7 +527,7 @@ $$
 
 （LaTeX: `eq:delta_phi_tone`）
 
-再在复平面旋转，并用 Stage~1 的质量权重 $w_{m,i}$ 叠加：
+再在复平面旋转，并用质量权重 $w_{m,i}$ 叠加：
 
 $$
 \begin{aligned}
@@ -544,20 +543,21 @@ $$
 
 （LaTeX: `eq:level1_mrc`）
 
-复平面旋转能补偿符号校正剩余的连续相位偏差。各个波形的融合则参考MRC（最大比合并）的思想【参考预留】，为各个波形按$w$ 赋予权重。MRC 为各个信道赋予等比于自身信噪比（SNR）的权重，以最大化提升整体的信噪比。在BreatheCS 中，我们用呼吸能量权重$w$ 模拟SNR在MRC的功能。
+复平面旋转能补偿符号校正剩余的连续相位偏差。各个波形的融合则同样参考MRC（最大比合并）的思想赋予权重。
 
 #### Modal-level fusion / 模态级融合
 
-三模态波形 $y_r(t)$、$y_l(t)$、$y_\phi(t)$ 仍可能存在连续相位差。各自转为解析信号 $u_m(t)=y_m(t)+j\mathcal{H}\{y_m(t)\}$，由 $y_m$ 重算模态能量比 $\eta_m$，取参考模态 $m^\star=\arg\max_m\eta_m$。模态相位差 $\Delta\theta_m$ 的定义与信道级 $\Delta\phi_{m,i}$ 类似：
-
+三模态波形 $y_r(t)$、$y_l(t)$、$y_\phi(t)$ 仍可能存在连续相位差，首先，则是对两端幅值使用希尔伯特变换内部对齐，随后，同样使用能量比确定当前窗口下幅值和合成相位谁更适合作为最终的呼吸波形。三模态先各自转为解析信号 $u_m(t)=y_m(t)+j\mathcal{H}\{y_m(t)\}$，由 $y_m$ 重算模态能量比 $\eta_m$，取参考模态 $m^\star=\arg\max_m\eta_m$。模态相位差 $\Delta\theta_m$ 的定义与信道级 $\Delta\phi_{m,i}$ 类似：
 $$
 \begin{aligned}
-z_{\mathrm{final}}(t)
+z_{\mathrm{amplitude}}(t)
 &=
-\frac{\sum_m \eta_m\,u_m(t)\,e^{-j\Delta\theta_m}}{\sum_m\eta_m+\epsilon},
+\frac{\sum_m \eta_m\,u_m(t)\,e^{-j\Delta\theta_m}}{\sum_m\eta_m+\epsilon},m\in(r,l)
 \\
-y_{\mathrm{final}}(t)
+\eta_{\mathrm{final}}
 &=
+\text{argmax}(\eta_{\text{amplitude}},\eta_{\text{phase}}),\\
+y_{\mathrm{final}}(t)&=
 \operatorname{Re}\{z_{\mathrm{final}}(t)\}
 \end{aligned}
 $$
@@ -565,8 +565,6 @@ $$
 （LaTeX: `eq:level2_mrc`）
 
 $y_{\mathrm{final}}(t)$ 是 BreatheCS 的主波形输出，用于呼吸波形的恢复。
-
-> 
 
 ---
 
@@ -576,7 +574,7 @@ $y_{\mathrm{final}}(t)$ 是 BreatheCS 的主波形输出，用于呼吸波形的
 
 > **EN**: [CS metal-plate: 3 rooms, mechanical BPM ground truth. HKH: 3 rooms × 4 subjects, respiratory belt ground truth. Metrics: BPM absolute error, RMSE. Baseline methods listed.]
 >
-> **CN**: [CS 金属板：3 个房间，机械振动 BPM ground truth（可控、精确，但无波形 GT）。用于 §2–§3 的机制验证。HKH 真人：3 房间 × 4 受试者 = 12 条数据，呼吸带 ground truth。用于 §4 的效果验证。指标：BPM 绝对误差（breaths/min）、RMSE（波形 vs 呼吸带）。Baseline：B0 Single Remote, B1 Uniform Remote, Modal top2, T0-V3 Per-Tone Voting, WiFi MRC (Fan 2024), Zhuo2023 PCA-VMD。]
+> **CN**:HKH 真人：3 房间 × 4 受试者 = 12 条数据，呼吸带 ground truth。用于 §4 的效果验证。指标：BPM 绝对误差（breaths/min）、RMSE（波形 vs 呼吸带）。Baseline：B0 Single Remote, B1 Uniform Remote, Modal top2, T0-V3 Per-Tone Voting, WiFi MRC (Fan 2024), Zhuo2023 PCA-VMD。]
 
 为验证 BreatheCS 的效果，我们采集了4位subjects 的真人呼吸数据。实验共分三个场景，均为常见的室内环境：客厅的静坐，卧室的平躺、卧室的侧躺【图-实验场景】。在每个场景中，我们要求受试者佩戴HKH-11C呼吸传感器采集真实的呼吸波形。两个BLE CS 设备被安置于受试者附近，且装载6dbi 的天线。BLE CS 的平台是支持 BLE 6.0 的 Nordic nrf54L15。
 
