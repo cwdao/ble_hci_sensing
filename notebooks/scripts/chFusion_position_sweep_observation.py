@@ -8,6 +8,7 @@ Run:
 
 from __future__ import annotations
 
+import argparse
 import json
 import sys
 from pathlib import Path
@@ -359,6 +360,18 @@ def _mid_window_slice(n: int, fs: float, duration_sec: float = 10.0) -> slice:
     return slice(start, start + win)
 
 
+def _save_png_pdf(fig: plt.Figure, stem: Path | str) -> Tuple[Path, Path]:
+    """Save PNG preview + PDF paper copy next to each other."""
+    stem_path = Path(stem)
+    if stem_path.suffix.lower() in {".png", ".pdf"}:
+        stem_path = stem_path.with_suffix("")
+    png = stem_path.with_suffix(".png")
+    pdf = stem_path.with_suffix(".pdf")
+    fig.savefig(png, bbox_inches="tight", facecolor="white")
+    fig.savefig(pdf, bbox_inches="tight", facecolor="white")
+    return png, pdf
+
+
 # ---------------------------------------------------------------------------
 # Segment preprocessing cache
 # ---------------------------------------------------------------------------
@@ -668,21 +681,17 @@ def plot_fig_b(
             y = _zscore(seg[var]["hp"]["highpass"][ch])
             ax.plot(t, y, color=CHANNEL_COLORS[r], lw=1.4)
             if r == 0:
-                ax.set_title(f"{sname} ({dist} cm)", fontsize=10)
+                ax.set_title(f"{dist} cm", fontsize=10)
             if c == 0:
                 ax.set_ylabel(f"ch{ch}", fontsize=10)
             _apply_style(ax)
             ax.tick_params(labelsize=7)
-    fig.suptitle(
-        "Fig B2 — Channel × position matrix (Remote amp, HP; spaced tones)",
-        fontsize=12,
-    )
     fig.tight_layout()
-    out = figures_dir / "position_sweep_figB2_channel_position_matrix.png"
-    fig.savefig(out, bbox_inches="tight", facecolor="white")
+    out_stem = figures_dir / "position_sweep_figB2_channel_position_matrix"
+    png, pdf = _save_png_pdf(fig, out_stem)
     plt.close(fig)
-    paths.append(out)
-    print(f"  wrote {out.name}")
+    paths.extend([png, pdf])
+    print(f"  wrote {png.name} + {pdf.name}")
     return paths
 
 
@@ -712,56 +721,82 @@ def plot_fig_c(
             # Use full segment as one "window"
             _, phases, coherences, info = estimate_phase_hilbert(X, q)
             ref = int(info["ref_idx"])
-            selected = _select_representative_tones(phases, coherences, eta, rho, ref, k=4)
-
-            X_sel = X[selected]
-            raw_z = np.vstack([_zscore(row) for row in X_sel])
-            # PCA ±1 approximated by corr-sign vs first selected (ref among selected)
-            # Map ref into selected list
-            if ref in selected:
-                local_ref = selected.index(ref)
-            else:
-                local_ref = 0
-            pca_sign = _apply_corr_sign(X_sel, local_ref)
-            pca_sign = np.vstack([_zscore(row) for row in pca_sign])
-            hilbert_aligned = _apply_hilbert_align(X, phases)[selected]
-
+            short = MODAL_SHORT[var]
             t = block["time_sec"]
-            fig, axes = plt.subplots(3, 1, figsize=(8, 7.5), dpi=150, sharex=True)
-            panels = [
-                ("(a) Bandpass waveforms", raw_z),
-                ("(b) Corr-sign corrected", pca_sign),
-                ("(c) Hilbert phase-aligned", hilbert_aligned),
-            ]
-            for ax, (title, mat) in zip(axes, panels):
+
+            # Paper C1 hard_remote: panel (a) only, 6–8 tones, vertical stack
+            if pos_key == "hard" and var == "remote_amplitudes":
+                selected = _select_representative_tones(
+                    phases, coherences, eta, rho, ref, k=8
+                )
+                fig, ax = plt.subplots(figsize=(8, 6.5), dpi=150)
                 for i, ch in enumerate(selected):
+                    y = _zscore(X[ch]) + i * 3.0
                     ax.plot(
                         t,
-                        mat[i],
+                        y,
                         color=CHANNEL_COLORS[i % len(CHANNEL_COLORS)],
                         lw=1.5,
                         label=f"ch{ch}",
                     )
-                ax.set_title(title, fontsize=10)
-                ax.set_ylabel("z-score", fontsize=9)
-                _apply_style(ax)
+                ax.set_xlabel("Time (s)", fontsize=STYLE["fontsize"])
+                ax.set_ylabel("Offset z-score", fontsize=STYLE["fontsize"])
                 ax.legend(loc="upper right", fontsize=7, frameon=False, ncol=2)
-            axes[-1].set_xlabel("Time (s)", fontsize=STYLE["fontsize"])
-            short = MODAL_SHORT[var]
-            fig.suptitle(
-                f"Fig C1 — {pos_key} ({sname}, {dist} cm) / {MODAL_LABELS[var]}",
-                fontsize=12,
-            )
-            fig.tight_layout()
-            out = figures_dir / f"position_sweep_figC1_{pos_key}_{short}.png"
-            fig.savefig(out, bbox_inches="tight", facecolor="white")
-            plt.close(fig)
-            paths.append(out)
-            print(f"  wrote {out.name}")
+                _apply_style(ax)
+                fig.tight_layout()
+                out_stem = figures_dir / f"position_sweep_figC1_{pos_key}_{short}"
+                png, pdf = _save_png_pdf(fig, out_stem)
+                plt.close(fig)
+                paths.extend([png, pdf])
+                print(f"  wrote {png.name} + {pdf.name}")
+            else:
+                selected = _select_representative_tones(
+                    phases, coherences, eta, rho, ref, k=4
+                )
+
+                X_sel = X[selected]
+                raw_z = np.vstack([_zscore(row) for row in X_sel])
+                if ref in selected:
+                    local_ref = selected.index(ref)
+                else:
+                    local_ref = 0
+                pca_sign = _apply_corr_sign(X_sel, local_ref)
+                pca_sign = np.vstack([_zscore(row) for row in pca_sign])
+                hilbert_aligned = _apply_hilbert_align(X, phases)[selected]
+
+                fig, axes = plt.subplots(3, 1, figsize=(8, 7.5), dpi=150, sharex=True)
+                panels = [
+                    ("(a) Bandpass waveforms", raw_z),
+                    ("(b) Corr-sign corrected", pca_sign),
+                    ("(c) Hilbert phase-aligned", hilbert_aligned),
+                ]
+                for ax, (title, mat) in zip(axes, panels):
+                    for i, ch in enumerate(selected):
+                        ax.plot(
+                            t,
+                            mat[i],
+                            color=CHANNEL_COLORS[i % len(CHANNEL_COLORS)],
+                            lw=1.5,
+                            label=f"ch{ch}",
+                        )
+                    ax.set_title(title, fontsize=10)
+                    ax.set_ylabel("z-score", fontsize=9)
+                    _apply_style(ax)
+                    ax.legend(loc="upper right", fontsize=7, frameon=False, ncol=2)
+                axes[-1].set_xlabel("Time (s)", fontsize=STYLE["fontsize"])
+                fig.suptitle(
+                    f"Fig C1 — {pos_key} ({sname}, {dist} cm) / {MODAL_LABELS[var]}",
+                    fontsize=12,
+                )
+                fig.tight_layout()
+                out = figures_dir / f"position_sweep_figC1_{pos_key}_{short}.png"
+                fig.savefig(out, bbox_inches="tight", facecolor="white")
+                plt.close(fig)
+                paths.append(out)
+                print(f"  wrote {out.name}")
 
             # C2 heatmap
             gamma = _pairwise_coherence(X)
-            # order by channel index
             fig, ax = plt.subplots(figsize=(5.5, 4.8), dpi=150)
             im = ax.imshow(gamma, cmap="viridis", vmin=0, vmax=1, aspect="auto")
             cbar = fig.colorbar(im, ax=ax, fraction=0.046, pad=0.04)
@@ -867,17 +902,58 @@ def plot_fig_d(
             )
         ax.set_xlabel("Distance (cm)", fontsize=STYLE["fontsize"])
         ax.set_ylabel("Δφ (rad)", fontsize=STYLE["fontsize"])
-        ax.set_title(f"Fig D2 — Modal Δφ vs position (ch{ch})", fontsize=STYLE["fontsize"])
+        ax.set_title(f"ch {ch}", fontsize=STYLE["fontsize"])
         # xs already ordered 100→85; keep 100 on left (near→far)
         ax.set_xlim(101, 84)
         ax.legend(loc="best", fontsize=9, frameon=False)
         _apply_style(ax)
         fig.tight_layout()
-        out = figures_dir / f"position_sweep_figD2_dphi_vs_position_ch{ch}.png"
-        fig.savefig(out, bbox_inches="tight", facecolor="white")
+        out_stem = figures_dir / f"position_sweep_figD2_dphi_vs_position_ch{ch}"
+        png, pdf = _save_png_pdf(fig, out_stem)
         plt.close(fig)
-        paths.append(out)
-        print(f"  wrote {out.name}")
+        paths.extend([png, pdf])
+        print(f"  wrote {png.name} + {pdf.name}")
+
+    # Stitched vertical panel for spaced tones (paper Ch.4)
+    stitch_chs = [c for c in (20, 40, 60) if c in set(d2_channels)]
+    if len(stitch_chs) == 3:
+        fig, axes = plt.subplots(3, 1, figsize=(8, 8.5), dpi=150, sharex=True)
+        for ax, ch in zip(axes, stitch_chs):
+            xs, series = [], {lab: [] for _, _, lab in pairs}
+            for seg_i in range(1, 17):
+                name = f"seg{seg_i}"
+                seg = metal_segs[name]
+                if not seg.get("ok"):
+                    continue
+                fs = float(seg["fs"])
+                sl = _mid_window_slice(len(seg["time_sec"]), fs, 10.0)
+                xs.append(metal_distance_cm(seg_i))
+                for va, vb, lab in pairs:
+                    a = seg[va]["bp"]["bandpass"][ch][sl]
+                    b = seg[vb]["bp"]["bandpass"][ch][sl]
+                    series[lab].append(_instantaneous_dphi(a, b))
+            for (va, vb, lab), color in zip(pairs, pair_colors):
+                ax.plot(
+                    xs,
+                    series[lab],
+                    "o-",
+                    color=color,
+                    lw=STYLE["linewidth"],
+                    ms=5,
+                    label=lab,
+                )
+            ax.set_ylabel("Δφ (rad)", fontsize=STYLE["fontsize"])
+            ax.set_title(f"ch {ch}", fontsize=STYLE["fontsize"])
+            ax.set_xlim(101, 84)
+            ax.legend(loc="best", fontsize=8, frameon=False)
+            _apply_style(ax)
+        axes[-1].set_xlabel("Distance (cm)", fontsize=STYLE["fontsize"])
+        fig.tight_layout()
+        out_stem = figures_dir / "position_sweep_figD2_dphi_vs_position_ch20_40_60"
+        png, pdf = _save_png_pdf(fig, out_stem)
+        plt.close(fig)
+        paths.extend([png, pdf])
+        print(f"  wrote {png.name} + {pdf.name}")
 
     return paths, dphi_store
 
@@ -1093,19 +1169,18 @@ def plot_fig_e(
             label="Human ρ", capsize=2, edgecolor="black", linewidth=0.5, alpha=0.85)
     ax.set_xticks(idx)
     ax.set_xticklabels(x_labels, fontsize=8)
-    ax.set_ylabel("η", fontsize=STYLE["fontsize"])
-    ax2.set_ylabel("ρ", fontsize=STYLE["fontsize"])
-    ax.set_title("Fig E3 — η + ρ comparison: metal vs human", fontsize=STYLE["fontsize"])
+    ax.set_ylabel("η (energy ratio)", fontsize=STYLE["fontsize"])
+    ax2.set_ylabel("ρ (peak prominence)", fontsize=STYLE["fontsize"])
     h1, l1 = ax.get_legend_handles_labels()
     h2, l2 = ax2.get_legend_handles_labels()
     ax.legend(h1 + h2, l1 + l2, frameon=False, fontsize=8, loc="upper right")
     _apply_style(ax)
     fig.tight_layout()
-    out = figures_dir / "position_sweep_figE3_eta_rho_comparison.png"
-    fig.savefig(out, bbox_inches="tight", facecolor="white")
+    out_stem = figures_dir / "position_sweep_figE3_eta_rho_comparison"
+    png, pdf = _save_png_pdf(fig, out_stem)
     plt.close(fig)
-    paths.append(out)
-    print(f"  wrote {out.name}")
+    paths.extend([png, pdf])
+    print(f"  wrote {png.name} + {pdf.name}")
 
     quality["rows"] = meta_rows
     return paths, quality
@@ -1136,6 +1211,16 @@ def dump_segment_quality(
 # ---------------------------------------------------------------------------
 
 def main() -> None:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument(
+        "--only",
+        type=str,
+        default="",
+        help="Comma-separated figure groups: A,B,C,D,E (default: all)",
+    )
+    args = parser.parse_args()
+    only = {x.strip().upper() for x in args.only.split(",") if x.strip()} or None
+
     print("=== Position sweep observation (plan) ===")
     fp = FilterParams()
     cfg = ChFusionConfig()
@@ -1154,94 +1239,106 @@ def main() -> None:
     print("Preparing human segments…")
     human_segs = prepare_all_human(human_frames, fp, channel_keys)
 
-    # Channel selection for Fig A / D1
     ch_typ, med_eta = select_median_eta_channel(metal_segs, cfg)
     print(f"Typical channel (median η): ch{ch_typ}  (median-η={med_eta[ch_typ]:.4f})")
 
-    # B1/B2: evenly spaced tones (avoid adjacent tones that look identical)
     spaced_chs = [20, 40, 60]
     print(f"Spaced channels (B1/B2): {spaced_chs}")
 
-    # D2: review suggestion — diverse pair 35+71, plus spaced 20/40/60 for comparison
     sens_chs = select_sensitive_channels(
         metal_segs, ["seg13", "seg14", "seg15"], cfg, n_pick=4
     )
     diverse_pair = [35, 71]
     d2_channels = list(dict.fromkeys(diverse_pair + spaced_chs))
-    print(f"Sensitive channels (seg13–15, diagnostic only): {sens_chs}")
+    print(f"Sensitive channels (seg13-15, diagnostic only): {sens_chs}")
     print(f"D2 channels (35+71 + spaced): {d2_channels}")
 
     all_paths: List[Path] = []
 
-    print("\n--- Figure A ---")
-    all_paths.extend(plot_fig_a(metal_segs, ch_typ, FIGURES_DIR))
+    if only is None or "A" in only:
+        print("\n--- Figure A ---")
+        all_paths.extend(plot_fig_a(metal_segs, ch_typ, FIGURES_DIR))
 
-    print("\n--- Figure B ---")
-    all_paths.extend(plot_fig_b(metal_segs, spaced_chs, spaced_chs, FIGURES_DIR))
+    if only is None or "B" in only:
+        print("\n--- Figure B ---")
+        all_paths.extend(plot_fig_b(metal_segs, spaced_chs, spaced_chs, FIGURES_DIR))
 
-    print("\n--- Figure C ---")
-    all_paths.extend(plot_fig_c(metal_segs, cfg, FIGURES_DIR))
+    if only is None or "C" in only:
+        print("\n--- Figure C ---")
+        all_paths.extend(plot_fig_c(metal_segs, cfg, FIGURES_DIR))
 
-    print("\n--- Figure D ---")
-    d_paths, dphi_store = plot_fig_d(metal_segs, ch_typ, d2_channels, FIGURES_DIR)
-    all_paths.extend(d_paths)
+    if only is None or "D" in only:
+        print("\n--- Figure D ---")
+        d_paths, dphi_store = plot_fig_d(metal_segs, ch_typ, d2_channels, FIGURES_DIR)
+        all_paths.extend(d_paths)
+    else:
+        dphi_store = {"skipped": True}
 
-    print("\n--- Figure E ---")
-    e_paths, human_vs_metal = plot_fig_e(
-        metal_segs,
-        human_segs,
-        metal_frames,
-        fp,
-        channel_keys,
-        cfg,
-        FIGURES_DIR,
-    )
-    all_paths.extend(e_paths)
+    if only is None or "E" in only:
+        print("\n--- Figure E ---")
+        e_paths, human_vs_metal = plot_fig_e(
+            metal_segs,
+            human_segs,
+            metal_frames,
+            fp,
+            channel_keys,
+            cfg,
+            FIGURES_DIR,
+        )
+        all_paths.extend(e_paths)
+    else:
+        human_vs_metal = {"skipped": True}
 
-    # Numerical dumps
-    seg_quality = dump_segment_quality(metal_segs, cfg)
-    seg_quality_path = REPORTS_DIR / "position_sweep_segment_quality.npy"
-    np.save(seg_quality_path, seg_quality, allow_pickle=True)
+    if only is None:
+        seg_quality = dump_segment_quality(metal_segs, cfg)
+        seg_quality_path = REPORTS_DIR / "position_sweep_segment_quality.npy"
+        np.save(seg_quality_path, seg_quality, allow_pickle=True)
 
-    dphi_path = REPORTS_DIR / "position_sweep_dphi_per_segment.npy"
-    np.save(dphi_path, dphi_store, allow_pickle=True)
+        dphi_path = REPORTS_DIR / "position_sweep_dphi_per_segment.npy"
+        np.save(dphi_path, dphi_store, allow_pickle=True)
 
-    hv_path = REPORTS_DIR / "position_sweep_human_vs_metal_quality.npy"
-    np.save(hv_path, human_vs_metal, allow_pickle=True)
+        hv_path = REPORTS_DIR / "position_sweep_human_vs_metal_quality.npy"
+        np.save(hv_path, human_vs_metal, allow_pickle=True)
 
-    meta = {
-        "typical_channel": int(ch_typ),
-        "spaced_channels_b1_b2": [int(c) for c in spaced_chs],
-        "sensitive_channels_seg13_15": [int(c) for c in sens_chs],
-        "d2_channels": [int(c) for c in d2_channels],
-        "d2_diverse_pair": [int(c) for c in diverse_pair],
-        "metal_path": str(METAL_PATH),
-        "human_path": str(HUMAN_PATH),
-        "n_figures": len(all_paths),
-        "figure_files": [p.name for p in all_paths],
-        "human_vs_metal_summary": human_vs_metal.get("rows", []),
-        "notes": {
-            "human_frame_counts": {
-                k: int(human_segs[k]["n_frames_raw"]) if human_segs[k].get("ok") else 0
-                for k in HUMAN_SEGMENTS
+        meta = {
+            "typical_channel": int(ch_typ),
+            "spaced_channels_b1_b2": [int(c) for c in spaced_chs],
+            "sensitive_channels_seg13_15": [int(c) for c in sens_chs],
+            "d2_channels": [int(c) for c in d2_channels],
+            "d2_diverse_pair": [int(c) for c in diverse_pair],
+            "metal_path": str(METAL_PATH),
+            "human_path": str(HUMAN_PATH),
+            "n_figures": len(all_paths),
+            "figure_files": [p.name for p in all_paths],
+            "human_vs_metal_summary": human_vs_metal.get("rows", []),
+            "notes": {
+                "human_frame_counts": {
+                    k: int(human_segs[k]["n_frames_raw"]) if human_segs[k].get("ok") else 0
+                    for k in HUMAN_SEGMENTS
+                },
+                "metal_80cm_fallback": "human 80 cm compared to metal 85 cm (seg16)",
+                "seg1_walk_trim_seq": f"{METAL_SEG1_WALK_END_SEQ} dropped for E@100cm",
+                "channel_selection": (
+                    "B1/B2 use evenly spaced tones [20,40,60]; "
+                    "D1 uses typical median-η channel; "
+                    "D2 uses diverse η-spread pair + spaced set"
+                ),
             },
-            "metal_80cm_fallback": "human 80 cm compared to metal 85 cm (seg16)",
-            "seg1_walk_trim_seq": f">{METAL_SEG1_WALK_END_SEQ} dropped for E@100cm",
-            "channel_selection": (
-                "B1/B2 use evenly spaced tones [20,40,60]; "
-                "D1 uses typical median-η channel; "
-                "D2 uses diverse η-spread pair + spaced set"
-            ),
-        },
-    }
-    meta_path = REPORTS_DIR / "position_sweep_observation_meta.json"
-    with meta_path.open("w", encoding="utf-8") as f:
-        json.dump(meta, f, indent=2, ensure_ascii=False)
+        }
+        meta_path = REPORTS_DIR / "position_sweep_observation_meta.json"
+        with meta_path.open("w", encoding="utf-8") as f:
+            json.dump(meta, f, indent=2, ensure_ascii=False)
 
-    print("\n=== Done ===")
-    print(f"Figures: {len(all_paths)}")
-    print(f"Typical channel: ch{ch_typ}")
-    print(f"Saved: {seg_quality_path.name}, {dphi_path.name}, {hv_path.name}, {meta_path.name}")
+        print("\n=== Done ===")
+        print(f"Figures: {len(all_paths)}")
+        print(f"Typical channel: ch{ch_typ}")
+        print(f"Saved: {seg_quality_path.name}, {dphi_path.name}, {hv_path.name}, {meta_path.name}")
+    else:
+        print("\n=== Done (partial) ===")
+        print(f"Figures: {len(all_paths)}")
+        for p in all_paths:
+            print(f"  {p.name}")
+
 
 
 if __name__ == "__main__":

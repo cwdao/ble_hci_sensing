@@ -192,6 +192,32 @@ DRAFT_ABLATION_SPECS: Tuple[Tuple[str, str, B3VariantConfig], ...] = (
             bpm_source="waveform",
         ),
     ),
+    # --- Amplitude-only R+L (G0 / Candidate A; paper default BreatheCS) ---
+    (
+        "Spec · R+L equal (G0)",
+        "draft_s_rl",
+        B3VariantConfig(
+            use_voting=True,
+            use_two_level_hilbert=False,
+            modal_variables=("remote_amplitudes", "local_amplitudes"),
+            modal_combine="fuse",
+            bpm_source="spectral",
+            modal_weight_mode="equal",
+            tone_weight_mode="eta",
+        ),
+    ),
+    (
+        "Wave · R+L Hilbert-MRC",
+        "draft_w_rl",
+        B3VariantConfig(
+            use_voting=True,
+            use_two_level_hilbert=True,
+            modal_variables=("remote_amplitudes", "local_amplitudes"),
+            modal_combine="fuse",
+            bpm_source="waveform",
+            modal_weight_mode="eta",
+        ),
+    ),
     # --- Single modal: spectral (BPM only) vs waveform (BPM+RMSE) ---
     (
         "Spec · Remote only",

@@ -96,6 +96,12 @@ def parse_args() -> argparse.Namespace:
         default=0,
         help="Cap windows for Fig3/S1 (0 = all)",
     )
+    p.add_argument(
+        "--only",
+        type=str,
+        default="",
+        help="Comma-separated figures to generate: 2,3,5,S1 (default: all)",
+    )
     return p.parse_args()
 
 
@@ -369,48 +375,38 @@ def generate_fig2(
     t = np.arange(raw.shape[1]) / fs_good
     colors = ["#1f77b4", "#ff7f0e", "#2ca02c", "#d62728"]
 
-    fig = plt.figure(figsize=(12, 9))
-    gs = fig.add_gridspec(3, 2, height_ratios=[1, 1, 1.1], hspace=0.35, wspace=0.25)
+    panels = [
+        ("(a)", raw, "paper_fig2_a"),
+        ("(b)", pca_sign, "paper_fig2_b"),
+        ("(c)", hilbert_aligned, "paper_fig2_c"),
+    ]
 
-    for col, (title, data) in enumerate(
-        [
-            ("(a)", raw),
-            ("(b)", pca_sign),
-        ]
-    ):
-        ax = fig.add_subplot(gs[0, col])
+    # Combined: a/b/c each on its own row, ~70% prior width
+    fig, axes = plt.subplots(3, 1, figsize=(8.4, 8.5), sharex=True)
+    for ax, (title, data, _stem) in zip(axes, panels):
+        for i, lab in enumerate(labels):
+            ax.plot(t, data[i], color=colors[i], label=lab, alpha=0.85)
+        ax.set_title(title)
+        ax.set_ylabel("Amplitude")
+        if title == "(a)":
+            ax.legend(loc="upper right", fontsize=7)
+    axes[-1].set_xlabel("Time (s)")
+    fig.tight_layout()
+    _save_figure(fig, "paper_fig2_inter_tone_phase")
+    plt.close(fig)
+
+    # Standalone a/b/c panels (no overall title)
+    for title, data, stem in panels:
+        fig, ax = plt.subplots(figsize=(8.4, 2.8))
         for i, lab in enumerate(labels):
             ax.plot(t, data[i], color=colors[i], label=lab, alpha=0.85)
         ax.set_title(title)
         ax.set_xlabel("Time (s)")
         ax.set_ylabel("Amplitude")
-        if col == 0:
-            ax.legend(loc="upper right", fontsize=7)
-
-    ax = fig.add_subplot(gs[1, :])
-    for i, lab in enumerate(labels):
-        ax.plot(t, hilbert_aligned[i], color=colors[i], label=lab, alpha=0.85)
-    ax.set_title("(c)")
-    ax.set_xlabel("Time (s)")
-    ax.set_ylabel("Amplitude")
-    ax.legend(loc="upper right", fontsize=7)
-
-    ax_g = fig.add_subplot(gs[2, 0])
-    im0 = ax_g.imshow(gamma_good, cmap="viridis", vmin=0, vmax=1, aspect="auto")
-    ax_g.set_title(f"(d) {good_id}")
-    ax_g.set_xlabel("Tone rank (η·ρ ↓)")
-    ax_g.set_ylabel("Tone rank (η·ρ ↓)")
-    fig.colorbar(im0, ax=ax_g, fraction=0.046, pad=0.04)
-
-    ax_h = fig.add_subplot(gs[2, 1])
-    im1 = ax_h.imshow(gamma_hard, cmap="viridis", vmin=0, vmax=1, aspect="auto")
-    ax_h.set_title(f"(e) {hard_id}")
-    ax_h.set_xlabel("Tone rank (η·ρ ↓)")
-    ax_h.set_ylabel("Tone rank (η·ρ ↓)")
-    fig.colorbar(im1, ax=ax_h, fraction=0.046, pad=0.04)
-
-    _save_figure(fig, "paper_fig2_inter_tone_phase")
-    plt.close(fig)
+        ax.legend(loc="upper right", fontsize=7)
+        fig.tight_layout()
+        _save_figure(fig, stem)
+        plt.close(fig)
 
     return {
         "scenario_good": good_id,
@@ -599,10 +595,14 @@ def generate_fig3(
     colors = {"remote": "#1f77b4", "local": "#ff7f0e", "phase": "#2ca02c"}
     pair_labels = ["remote−local", "remote−phase", "local−phase"]
     pair_colors = ["#1f77b4", "#d62728", "#9467bd"]
+    studio_titles = {
+        s1: "Studio position 1",
+        s2: "Studio position 2",
+    }
 
-    fig, axes = plt.subplots(2, 2, figsize=(12, 8))
-
-    ax = axes[0, 0]
+    # --- Combined (a)(b) ---
+    fig, axes = plt.subplots(1, 2, figsize=(12, 4.2))
+    ax = axes[0]
     for k in ("remote", "local", "phase"):
         if k in before:
             ax.plot(t, before[k], color=colors[k], label=k, alpha=0.9)
@@ -612,6 +612,92 @@ def generate_fig3(
     ax.legend()
     ylim = ax.get_ylim()
 
+    ax = axes[1]
+    for k in ("remote", "local", "phase"):
+        if k in after:
+            ax.plot(t, after[k], color=colors[k], label=k, alpha=0.85)
+    if y_fused.size:
+        ax.plot(t, y_fused, color="k", linewidth=2.2, label="fused", zorder=5)
+    ax.set_title("(b)")
+    ax.set_xlabel("Time (s)")
+    ax.set_ylabel("Amplitude")
+    ax.set_ylim(ylim)
+    ax.legend()
+    fig.tight_layout()
+    _save_figure(fig, "paper_fig3_ab")
+    plt.close(fig)
+
+    # Standalone (a) / (b)
+    fig, ax = plt.subplots(figsize=(6.2, 4.0))
+    for k in ("remote", "local", "phase"):
+        if k in before:
+            ax.plot(t, before[k], color=colors[k], label=k, alpha=0.9)
+    ax.set_title("(a)")
+    ax.set_xlabel("Time (s)")
+    ax.set_ylabel("Amplitude")
+    ax.legend()
+    fig.tight_layout()
+    _save_figure(fig, "paper_fig3_a")
+    plt.close(fig)
+
+    fig, ax = plt.subplots(figsize=(6.2, 4.0))
+    for k in ("remote", "local", "phase"):
+        if k in after:
+            ax.plot(t, after[k], color=colors[k], label=k, alpha=0.85)
+    if y_fused.size:
+        ax.plot(t, y_fused, color="k", linewidth=2.2, label="fused", zorder=5)
+    ax.set_title("(b)")
+    ax.set_xlabel("Time (s)")
+    ax.set_ylabel("Amplitude")
+    ax.set_ylim(ylim)
+    ax.legend()
+    fig.tight_layout()
+    _save_figure(fig, "paper_fig3_b")
+    plt.close(fig)
+
+    # --- Combined studio Δφ panels (former c/d) ---
+    fig, axes = plt.subplots(1, 2, figsize=(12, 4.2))
+    for ax, dphi, sid in ((axes[0], dphi1, s1), (axes[1], dphi2, s2)):
+        x = np.arange(len(dphi))
+        for i, lab in enumerate(pair_labels):
+            ax.plot(x, dphi[:, i], color=pair_colors[i], label=lab, alpha=0.9)
+        ax.axhline(0, color="gray", lw=0.8, ls="--")
+        ax.set_title(studio_titles[sid])
+        ax.set_xlabel("Window index")
+        ax.set_ylabel("Δφ (rad)")
+        ax.legend(fontsize=7)
+    fig.tight_layout()
+    _save_figure(fig, "paper_fig3_cd")
+    plt.close(fig)
+
+    # Standalone studio position panels
+    for dphi, sid, stem in (
+        (dphi1, s1, "paper_fig3_studio_pos1"),
+        (dphi2, s2, "paper_fig3_studio_pos2"),
+    ):
+        fig, ax = plt.subplots(figsize=(6.2, 4.0))
+        x = np.arange(len(dphi))
+        for i, lab in enumerate(pair_labels):
+            ax.plot(x, dphi[:, i], color=pair_colors[i], label=lab, alpha=0.9)
+        ax.axhline(0, color="gray", lw=0.8, ls="--")
+        ax.set_title(studio_titles[sid])
+        ax.set_xlabel("Window index")
+        ax.set_ylabel("Δφ (rad)")
+        ax.legend(fontsize=7)
+        fig.tight_layout()
+        _save_figure(fig, stem)
+        plt.close(fig)
+
+    # Keep legacy combined 2x2 name for draft links (ab + cd)
+    fig, axes = plt.subplots(2, 2, figsize=(12, 8))
+    ax = axes[0, 0]
+    for k in ("remote", "local", "phase"):
+        if k in before:
+            ax.plot(t, before[k], color=colors[k], label=k, alpha=0.9)
+    ax.set_title("(a)")
+    ax.set_xlabel("Time (s)")
+    ax.set_ylabel("Amplitude")
+    ax.legend()
     ax = axes[0, 1]
     for k in ("remote", "local", "phase"):
         if k in after:
@@ -623,27 +709,24 @@ def generate_fig3(
     ax.set_ylabel("Amplitude")
     ax.set_ylim(ylim)
     ax.legend()
-
     ax = axes[1, 0]
     x = np.arange(len(dphi1))
     for i, lab in enumerate(pair_labels):
         ax.plot(x, dphi1[:, i], color=pair_colors[i], label=lab, alpha=0.9)
     ax.axhline(0, color="gray", lw=0.8, ls="--")
-    ax.set_title(f"(c) {s1}")
+    ax.set_title(studio_titles[s1])
     ax.set_xlabel("Window index")
     ax.set_ylabel("Δφ (rad)")
     ax.legend(fontsize=7)
-
     ax = axes[1, 1]
     x2 = np.arange(len(dphi2))
     for i, lab in enumerate(pair_labels):
         ax.plot(x2, dphi2[:, i], color=pair_colors[i], label=lab, alpha=0.9)
     ax.axhline(0, color="gray", lw=0.8, ls="--")
-    ax.set_title(f"(d) {s2}")
+    ax.set_title(studio_titles[s2])
     ax.set_xlabel("Window index")
     ax.set_ylabel("Δφ (rad)")
     ax.legend(fontsize=7)
-
     fig.tight_layout()
     _save_figure(fig, "paper_fig3_inter_modal_phase")
     plt.close(fig)
@@ -657,6 +740,11 @@ def generate_fig3(
         "modal_waveforms_before": before,
         "modal_waveforms_after": after,
         "y_fused": y_fused,
+        "dphi_scenario1": dphi1,
+        "dphi_scenario2": dphi2,
+        "coherence_scenario1": coh1,
+        "coherence_scenario2": coh2,
+        "mid_phases": mid_phases,
         "modal_phases": mid_phases,
         "cross_window_phases_scenario1": dphi1,
         "cross_window_phases_scenario2": dphi2,
@@ -978,18 +1066,33 @@ def main() -> None:
     FIGURES_DIR.mkdir(parents=True, exist_ok=True)
     REPORTS_DIR.mkdir(parents=True, exist_ok=True)
 
-    fig2 = generate_fig2(data_by_scenario, cfg, metric_params)
-    fig3 = generate_fig3(
-        data_by_scenario, cfg, metric_params, max_windows=args.max_windows
-    )
-    fig5 = generate_fig5(data_by_scenario, cfg, metric_params, fig2_meta=fig2)
-    figS1 = generate_figS1(
-        data_by_scenario,
-        cfg,
-        metric_params,
-        max_windows=args.max_windows,
-        fig2_meta=fig2,
-    )
+    only = {x.strip().upper() for x in args.only.split(",") if x.strip()} or None
+    want = lambda key: only is None or key in only
+
+    fig2 = fig3 = fig5 = figS1 = None
+    if want("2"):
+        fig2 = generate_fig2(data_by_scenario, cfg, metric_params)
+    if want("3"):
+        fig3 = generate_fig3(
+            data_by_scenario, cfg, metric_params, max_windows=args.max_windows
+        )
+    if want("5"):
+        if fig2 is None:
+            # Fig5 needs fig2 meta; load prior diagnostics if available
+            prev = FIGURES_DIR / "paper_fig2_diagnostics.npy"
+            fig2 = np.load(prev, allow_pickle=True).item() if prev.exists() else None
+        fig5 = generate_fig5(data_by_scenario, cfg, metric_params, fig2_meta=fig2)
+    if want("S1"):
+        if fig2 is None:
+            prev = FIGURES_DIR / "paper_fig2_diagnostics.npy"
+            fig2 = np.load(prev, allow_pickle=True).item() if prev.exists() else None
+        figS1 = generate_figS1(
+            data_by_scenario,
+            cfg,
+            metric_params,
+            max_windows=args.max_windows,
+            fig2_meta=fig2,
+        )
 
     diagnostics = {
         "fig2": fig2,
@@ -998,9 +1101,12 @@ def main() -> None:
         "figS1": figS1,
     }
     # also save per-figure npy as plan mentions optional per-fig dumps
-    np.save(FIGURES_DIR / "paper_fig2_diagnostics.npy", fig2, allow_pickle=True)
-    np.save(FIGURES_DIR / "paper_fig3_diagnostics.npy", fig3, allow_pickle=True)
-    np.save(FIGURES_DIR / "paper_fig5_diagnostics.npy", fig5, allow_pickle=True)
+    if fig2 is not None:
+        np.save(FIGURES_DIR / "paper_fig2_diagnostics.npy", fig2, allow_pickle=True)
+    if fig3 is not None:
+        np.save(FIGURES_DIR / "paper_fig3_diagnostics.npy", fig3, allow_pickle=True)
+    if fig5 is not None:
+        np.save(FIGURES_DIR / "paper_fig5_diagnostics.npy", fig5, allow_pickle=True)
     out_npy = REPORTS_DIR / "paper_figures_diagnostics.npy"
     np.save(out_npy, diagnostics, allow_pickle=True)
     print(f"\nSaved diagnostics: {out_npy}")
