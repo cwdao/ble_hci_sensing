@@ -1,22 +1,18 @@
-# BreatheCS: Spectral Fusion and Coherent Waveform Reconstruction for Contactless Respiration Sensing with Bidirectional Bluetooth Channel Sounding
+# BreatheCS: Spectral Fusion and Coherent Waveform Reconstruction for Respiration Sensing with Bluetooth Channel Sounding
 
 # BreatheCS：融合双向 BLE 信道探测测量的非接触式呼吸感知——频谱融合与相干波形重建
 
-> **DRAFT v0.4** — 根据 5.6sol 建议重定位：论文主线从"Phase 零陷填充"转向"BLE CS 不是低采样率 WiFi CSI——双向 PCT 观测结构需要不同的融合原则"。Abstract/Introduction/Related Work/Conclusion 全面重写。  
-> **日期**：2026-07-26  
-> **上版**：v0.3 (2026-07-18)  
-> **配图状态**：Fig 2 ✅ | Fig 3 ✅ | Fig 4 ❌ | Fig 5 ✅ | Fig 6 ✅ | Fig 7 ✅ | Fig 8 ✅ | Fig S1 ✅ | Fig 1 ❌  
-> **⚠️ 条件性内容**：本文档多个段落的最终措辞取决于尚未完成的实验。详见 [`docs/plans/paper_experiment_dependencies_plan.md`](paper_experiment_dependencies_plan.md)。标有 `[⚠️ D1]`–`[⚠️ D7]` 的段落表示内容取决于对应实验的结果。
+> **DRAFT v0.5** — 收紧 selective-fusion 叙事：摘要/方法概述与 §5.5（R+L 融合 + Phase 候选选择）对齐；修正术语与公式笔误。跳过伦理/GT/统计补段（待后续）。  
+> **日期**：2026-08-11  
+> **上版**：v0.4 (2026-07-26)  
 
 ---
 
 ## Abstract / 摘要
 
-**EN**: Bluetooth Channel Sounding (CS), introduced in Bluetooth Core 6.0, exposes multi-frequency bidirectional measurements that create a new opportunity for contactless respiration sensing on energy-efficient BLE devices. However, CS differs fundamentally from WiFi CSI: it provides two endpoint amplitude observations and a composite-phase observation from reciprocal PCT exchange, operates at a sparse practical event rate of 2–4 Hz, and exhibits frequency- and scene-dependent phase relationships that make direct migration of conventional CSI fusion unreliable. We present BreatheCS, a measurement-aware framework that models these properties and separates respiratory-rate estimation from waveform recovery into distinct processing branches. A shared front-end evaluates per-tone quality via complementary spectral metrics (energy concentration $\eta$ and peak prominence $\rho$). The BPM branch fuses quality-weighted magnitude spectra for timing-robust frequency estimation, while the waveform branch performs two-level complex-domain alignment to reconstruct a coherent respiratory waveform. We evaluate BreatheCS on three controlled mechanical-motion settings and 12 human-subject recordings across three indoor environments using a respiratory belt reference. BreatheCS achieves a mean absolute BPM error of 0.371 breaths/min and a normalized waveform RMSE of 0.937. Ablation experiments reveal that tone diversity is the dominant and most consistent source of improvement (1.640 → 0.381 BPM). In contrast, composite phase—despite representing a mathematically complementary tangential projection of the same channel perturbation—degraded human-respiration estimation more often than it improved it: unconditional three-modal fusion was less reliable than amplitude-only (Remote+Local) fusion. These results demonstrate that physical observability does not imply statistical reliability, motivating selective rather than unconditional modal fusion in BLE CS sensing.
+**EN**: Bluetooth Channel Sounding (CS) exposes multi-frequency bidirectional measurements that enable contactless respiration sensing on low-power BLE devices. Unlike WiFi CSI, however, BLE CS provides two endpoint amplitude observations and a composite-phase observation derived from reciprocal PCT exchanges, while operating at a sparse and potentially irregular event rate. We show that these observables should not be treated as interchangeable channels: tone diversity provides consistent sensing gain, whereas composite phase is physically complementary to amplitude but conditionally reliable for natural respiration. We present BreatheCS, a measurement-aware framework that separates respiratory-rate estimation from waveform reconstruction. For BPM estimation, BreatheCS aggregates quality-weighted tone spectra, which is robust to residual inter-tone timing and phase mismatch. For waveform recovery, it coherently aligns tones within each endpoint-amplitude modality in the complex domain, fuses the aligned endpoint candidates, and selectively chooses between the amplitude and composite-phase candidates according to window-level quality. Across three controlled mechanical-motion settings and 12 human recordings from four participants in three indoor sensing scenarios, BreatheCS achieves a mean absolute BPM error of 0.371 breaths/min and a normalized waveform RMSE of 0.937. Ablations show that tone aggregation is the dominant source of improvement (1.640 to 0.381 breaths/min), while unconditional inclusion of composite phase is less reliable than endpoint-amplitude sensing. These findings indicate that BLE CS sensing requires task-specific and reliability-aware fusion rather than direct migration of WiFi CSI fusion assumptions.
 
-**CN**: 蓝牙信道探测（Channel Sounding, CS）是 Bluetooth Core 6.0 引入的标准功能，其多频点双向测量为低功耗 BLE 设备上的非接触呼吸感知创造了新机遇。然而，BLE CS 与 WiFi CSI 存在根本性区别：CS 通过互易 PCT 交换提供两个端侧幅值观测和一个组合相位观测，实际事件率仅为 2–4 Hz，且 tone 间和模态间的相位关系随频率和场景连续变化，使传统 CSI 融合方法难以直接迁移。本文提出 BreatheCS，一个测量感知的呼吸感知框架：首先建模双向 PCT 观测的呼吸扰动，刻画 tone 间及模态间的连续相位关系；随后设计共享的质量驱动信道融合前端，将呼吸率估计与波形恢复分解为谱域分支和复平面相干分支。谱域分支融合质量加权幅度谱实现稳健 BPM 估计；波形分支通过两级复平面对齐重建连贯的呼吸波形。在三个可控金属板场景和十二个真人场景（3 房间 × 4 受试者，呼吸带 ground truth）上的实验表明，BreatheCS 的 BPM 平均绝对误差为 0.371 breaths/min，归一化波形 RMSE 为 0.937，在联合 BPM-波形性能上优于迁移自 WiFi 的 PCA、MRC 和 PCA-VMD baseline。消融实验揭示了一个关键的增益层级：tone diversity 是最稳定、最大的增益来源（1.640 → 0.381 BPM）；而组合相位虽然在数学上对应复信道扰动的切向投影、与幅值的径向投影形成互补，却在真人呼吸中对正确估计的破坏频率高于其救援频率——无条件三模态融合比仅用 Remote+Local 双模态融合更不可靠。该发现说明，物理可观测性不等同于统计可靠性，BLE CS 感知应采用选择性而非全变量融合策略。
-
----
+**CN**: 蓝牙信道探测（Channel Sounding, CS）通过互易 PCT 交换提供两个端侧幅值观测与一个组合相位观测，为低功耗 BLE 上的非接触呼吸感知提供了新的测量原语；但其稀疏、可能不均匀的事件率，以及 tone/模态间连续相位关系，使 WiFi CSI 的融合假设难以直接迁移。本文提出 BreatheCS：将呼吸率估计与波形恢复分开处理。BPM 分支做质量加权谱聚合；波形分支在各端侧幅值模态内做复平面相干对齐，融合端侧幅值候选后，再按窗级质量在幅值候选与组合相位候选之间选择，而非默认三模态相干合并。在三个可控金属板设置与四名受试者、三种室内感知场景下的 12 条真人记录上，BreatheCS 的平均绝对 BPM 误差为 0.371 breaths/min，归一化波形 RMSE 为 0.937。消融表明 tone 聚合是主导且稳定的增益来源（1.640 → 0.381 BPM），而无条件纳入组合相位不如端侧幅值感知可靠。结论是：物理互补性不等于统计可靠性，BLE CS 感知需要任务专用、可靠性感知的融合，而非直接照搬 WiFi CSI 融合假设。
 
 ## 1. Introduction / 引言
 
@@ -58,7 +54,7 @@ Our measurements lead to three design insights:
 
 2. **Respiratory rate and waveform require different fusion domains.** Magnitude spectra discard timing information and are therefore robust to residual temporal offsets between tones—making them ideal for BPM estimation. Waveform recovery, in contrast, requires coherent phase alignment to preserve morphological features. Forcing a single fusion mechanism to serve both objectives degrades at least one of them.
 
-3. **Modal diversity is reliability-limited, not universally beneficial.** Although endpoint amplitudes and composite phase represent different projections of the channel perturbation, their mathematical complementarity does not guarantee practical fusion gain. Composite phase was competitive under controlled periodic motion but substantially less reliable for natural human respiration: it degraded correct BPM estimates more often than it rescued erroneous ones. Modal inclusion must therefore be selective, depending on measurement reliability rather than physical availability alone. [⚠️ D2, D3: 互补投影证据和 Phase gate 结果决定此 insight 的措辞强弱]
+3. **Modal diversity is reliability-limited, not universally beneficial.** Although endpoint amplitudes and composite phase represent different projections of the channel perturbation, their mathematical complementarity does not guarantee practical fusion gain. Composite phase was competitive under controlled periodic motion but substantially less reliable for natural human respiration: it more often degraded than improved correct BPM estimates, and oracle analysis shows it is best in only a small fraction of human windows. Modal inclusion must therefore be selective, depending on measurement reliability rather than physical availability alone.
 
 我们的测量产生了三条设计洞察：
 
@@ -66,13 +62,13 @@ Our measurements lead to three design insights:
 
 2. **呼吸率和波形需要不同的融合域。** 幅度谱丢弃了时间信息，因此对 tone 间的残余时间偏移稳健——适合 BPM 估计。波形恢复则需要相干相位对齐以保留形态学特征。强迫同一融合机制同时服务两个目标会至少损害其中一个。
 
-3. **模态分集的价值受观测可靠性限制。** Remote 和 Local 幅值物理对等，但并非在每个窗口中都同等可靠。特别是组合相位——虽然在数学上对应复信道扰动的切向投影、与幅值的径向投影形成互补——在真人自然呼吸中可靠性显著下降。Phase 对正确 BPM 估计的破坏频率（49%）超过其救援频率（18%）。因此，模态是否参与融合应由实际测量可靠性决定，而不能仅由其物理可获得性决定。
+3. **模态分集的价值受观测可靠性限制。** Remote 和 Local 幅值物理对等，但并非在每个窗口中都同等可靠。组合相位虽与幅值形成径向/切向互补，但在真人自然呼吸中可靠性显著下降：无条件纳入更常破坏正确估计，且窗级 oracle 中仅少数窗口以 Phase 为最优（详见 §6 消融与 oracle 图）。因此，模态是否参与融合应由实际测量可靠性决定，而不能仅由其物理可获得性决定。
 
 ### 1.5 方法概述
 
-Guided by these insights, we design BreatheCS, a measurement-aware dual-branch pipeline. A shared front-end evaluates the respiratory relevance of each tone using complementary spectral metrics ($\eta$ for energy concentration, $\rho$ for peak prominence). The BPM branch fuses quality-weighted magnitude spectra across tones and observables for timing-robust respiratory-rate estimation. In parallel, the waveform branch represents each band-limited signal as an analytic signal and performs hierarchical complex-domain alignment—first across tones within each observable, then across observables—to reconstruct a coherent respiratory waveform.
+Guided by these insights, we design BreatheCS, a measurement-aware dual-branch pipeline. A shared front-end scores tones using respiratory-band concentration $\eta$ and spectral peak prominence $\rho$. For BPM estimation, BreatheCS aggregates quality-weighted magnitude spectra across tones. For waveform recovery, it coherently aligns tones within each endpoint-amplitude modality in the complex domain, fuses the aligned Remote/Local candidates into an endpoint-amplitude candidate, and selectively chooses between that candidate and the composite-phase candidate according to window-level quality—rather than forcing all observables into a single coherent fusion output.
 
-基于这些洞察，我们设计了 BreatheCS，一个测量感知的双分支管线。共享前端使用互补的频谱指标（$\eta$ 衡量能量集中度，$\rho$ 衡量峰值主导度）评估每个 tone 的呼吸相关性。BPM 分支融合质量加权的幅度谱，实现时序稳健的呼吸率估计。波形分支将每个带限信号表示为解析信号，并执行分层复平面对齐——先在每个观测量内部跨 tone 对齐，再跨观测量对齐——从而重建连贯的呼吸波形。
+基于这些洞察，我们设计了 BreatheCS。共享前端用 $\eta$（呼吸频段能量集中度）与 $\rho$（谱峰突出度）为各 tone 打分。BPM 分支跨 tone 做质量加权幅度谱聚合。波形分支先在各端侧幅值模态内做复平面相干对齐，再融合 Remote/Local 得到端侧幅值候选，并按窗级质量在幅值候选与组合相位候选之间选择，而不是默认把三种观测量强制并入同一相干输出。
 
 ### 1.6 贡献
 
@@ -80,17 +76,17 @@ This paper makes the following contributions:
 
 1. **BLE CS respiration observation model and empirical characterization.** We formulate the bidirectional PCT measurements as two endpoint amplitude observables and one composite-phase observable, and characterize their complex-plane sensitivities, inter-tone relationships, and scene-dependent inter-modal phase offsets. Our analysis reveals why BLE CS respiration sensing cannot be treated as a direct low-rate migration of WiFi CSI sensing.
 
-2. **A task-oriented dual-branch sensing pipeline.** We develop BreatheCS, which shares a quality-aware tone fusion front-end but separates respiratory-rate estimation from waveform recovery. The spectral branch aggregates reliable tone spectra for timing-robust BPM estimation, whereas the waveform branch performs hierarchical complex-domain alignment for coherent waveform reconstruction.
+2. **Task-specific reliability-aware fusion.** We develop BreatheCS with a shared quality-aware tone front-end, a spectral branch for timing-robust BPM estimation, and a waveform branch that performs coherent endpoint-amplitude alignment followed by selective amplitude-vs-phase candidate choice.
 
-3. **Empirical characterization of composite-phase reliability and diversity hierarchy.** Through single-modal evaluation, oracle analysis, rescue–destruction analysis, waveform-fidelity comparison, and adaptive gating experiments, we characterize composite phase as a conditionally useful but statistically unreliable modality for natural respiration under the evaluated BLE CS implementation. Together with ablation results, we establish a diversity hierarchy: tone diversity provides the dominant and consistent gain, whereas modal diversity—particularly composite phase—is reliability-limited and scene-dependent.
+3. **Diversity hierarchy and selective modal use.** Through fusion-level ablation, single-modal evaluation, and oracle analysis, we show that tone diversity is the dominant and consistent gain source, whereas composite phase—though physically complementary—is only conditionally useful for natural respiration and should be used selectively rather than unconditionally fused.
 
 本文做出以下贡献：
 
 1. **BLE CS 呼吸观测建模与实证刻画。** 建立双向 PCT 呼吸观测模型，将可用测量表示为两个端侧幅值观测与一个组合相位观测，并分析其复平面灵敏度、tone 间关系以及场景相关的模态间相位关系，说明 BLE CS 呼吸感知不能被简单视为低采样率 WiFi CSI 感知。
 
-2. **面向不同感知目标的双分支管线。** 提出 BreatheCS，共享质量驱动的 tone 融合前端，但分别针对呼吸率和呼吸波形设计谱域分支与复平面相干分支，从而避免用同一种融合机制同时承担两个不同目标。
+2. **任务专用、可靠性感知的融合。** 提出 BreatheCS：共享质量驱动的 tone 前端；谱域分支做稳健 BPM 估计；波形分支先做端侧幅值相干对齐，再在幅值与组合相位候选间按窗选择。
 
-3. **组合相位可靠性的系统刻画与分集增益层级。** 通过单模态评估、oracle 上限分析、救援-破坏分析、波形保真度对比和自适应门控实验，系统刻画了组合相位在所评估 BLE CS 平台和真人呼吸场景中的条件性可靠性。结合消融实验，建立了分集增益层级：tone diversity 是稳定且主导的增益来源，而 modal diversity——特别是组合相位——受限于观测可靠性，具有明显场景依赖性。
+3. **分集增益层级与选择性模态使用。** 通过融合层级消融、单模态对照与 oracle 分析，表明 tone diversity 是主导且稳定的增益；组合相位虽物理互补，但对自然呼吸仅条件可用，应选择性使用而非无条件融合。
 
 ### 中心论点
 
@@ -125,29 +121,26 @@ Prior respiration sensing systems have been dominated by WiFi CSI and radar. The
 
 **Amplitude–phase complementarity.** FullBreathe (Zhang et al.) exploits the orthogonal complementarity between CSI amplitude and phase to mitigate blind spots; FarSense uses dual-antenna CSI ratios to relieve phase bias and jointly exploit amplitude and phase information to extend sensing range. These works demonstrate that amplitude and phase can have complementary rather than redundant information. However, in these methods, amplitude and phase typically come from the same WiFi CSI or antenna ratio. In BLE CS, Remote/Local amplitudes and composite Phase arise from bidirectional PCT exchange and represent different complex-plane projections—not directly comparable to WiFi's amplitude/phase decomposition. Moreover, FullBreathe itself notes that standalone amplitude or phase can both have blind spots; their value lies in complementarity, not in phase being universally blind-spot-free.
 
-**Subcarrier/link fusion and signal decomposition.** PCA/SVD-based methods extract the dominant respiratory component across subcarriers. MRC assigns weights proportional to channel quality. VMD/EMD decompose signals into modes for respiratory component selection. Position-Free Breath Detection (Zhuo et al.) combines CSI ratio with PCA–VMD fusion to mitigate position and noise issues, serving as a suitable migration baseline. However, prior approaches generally fuse channels to produce a single signal and then derive respiration rate from that signal. BreatheCS instead separates spectral rate estimation from coherent waveform reconstruction because the two outputs have different sensitivity to temporal phase errors.
+**Subcarrier/link fusion and signal decomposition.** PCA/SVD-based methods extract the dominant respiratory component across subcarriers. MRC assigns weights proportional to channel quality. VMD/EMD decompose signals into modes for respiratory component selection. Position-Free Breath Detection (Zhuo et al.) combines CSI ratio with PCA–VMD fusion to mitigate position and noise issues, serving as a suitable migration baseline. However, prior approaches generally fuse channels to produce a single signal and then derive respiration rate from that signal. BreatheCS instead separates spectral rate estimation from coherent waveform reconstruction because the two outputs have different sensitivity to temporal phase errors. WiFi-derived methods remain meaningful migration baselines, but their original fusion assumptions are not guaranteed to hold for BLE CS.
 
-> **Gap**: Prior fusion work assumes either binary phase relationships (±1 sign correction) or decomposes a single fused signal. BLE CS exhibits continuous, scene-dependent inter-tone and inter-modal phase offsets that require continuous complex-plane alignment and task-specific fusion domains.
+> **Gap**: Prior fusion work often assumes binary phase relationships (±1 sign correction) or decomposes a single fused signal. BLE CS exhibits continuous, scene-dependent inter-tone and inter-modal phase offsets that motivate continuous complex-plane alignment, task-specific fusion domains, and selective modal use.
 
 ### 2.3 Bluetooth Sensing and Channel Sounding
 
-Traditional BLE sensing has primarily used RSSI, AoA/AoD, or proprietary channel measurements. Bluetooth Core Specification 6.0 formally introduced Channel Sounding, which includes Phase-Based Ranging (PBR) and Round-Trip Timing (RTT) for secure fine ranging. Early work has begun exploring BLE 6.0 CS for device-free sensing, but remains at the feasibility-demonstration stage. Our prior work demonstrated the feasibility of device-free sensing using BLE CS. This paper goes beyond feasibility by establishing a respiration-specific observation model, characterizing tone and modal relationships, designing separate rate and waveform processing branches, and evaluating the resulting system against physiological ground truth.
+Traditional BLE sensing has primarily used RSSI, AoA/AoD, or proprietary channel measurements. Bluetooth Core Specification 6.0 formally introduced Channel Sounding, which includes Phase-Based Ranging (PBR) and Round-Trip Timing (RTT) for secure fine ranging. Early work has begun exploring BLE 6.0 CS for device-free sensing, but remains at the feasibility-demonstration stage. Our prior work demonstrated the feasibility of device-free sensing using BLE CS. This paper goes beyond feasibility by systematically characterizing reciprocal PCT observables for respiration, relating tone diversity to modal diversity, and deriving selective fusion principles for rate estimation versus waveform recovery.
 
-> **Gap**: No prior work has systematically modeled BLE CS PCT measurements for respiration, characterized the relationship between tone diversity and modal diversity, or addressed the task-specific fusion requirements of BPM estimation and waveform recovery.
+> **Gap**: Existing BLE CS sensing studies have not yet provided a respiration-focused characterization of reciprocal PCT endpoint amplitudes and composite phase, nor a clear account of when tone aggregation versus modal inclusion helps or hurts.
 
 ### Summary
 
-In summary, prior wireless respiration research has established Fresnel-based sensing models, amplitude–phase complementarity, and multi-channel fusion for WiFi CSI. Bluetooth CS introduces a different measurement primitive: bidirectional endpoint observations, a composite phase, sparse event sampling, and frequency-dependent tone relationships. Existing works have not systematically studied how these properties affect respiratory-rate estimation and waveform recovery, nor whether the two objectives should share the same fusion strategy. BreatheCS addresses this gap.
+In summary, prior wireless respiration research has established Fresnel-based sensing models, amplitude–phase complementarity, and multi-channel fusion for WiFi CSI. Bluetooth CS introduces a different measurement primitive: bidirectional endpoint observations, a composite phase, sparse event sampling, and frequency-dependent tone relationships. How these properties should shape respiratory-rate estimation and waveform recovery—and whether the two objectives should share the same fusion strategy—remains under-specified. BreatheCS addresses this gap.
 
----
+
 
 ## 2. 相关工作（中文摘要）
 
 现有无线呼吸感知研究主要围绕 WiFi CSI 和雷达展开，其信号模型和融合假设无法直接描述 BLE CS 的双向 PCT 观测。BLE CS 提供了不同的测量原语——双向端侧观测、组合相位、稀疏事件采样和频率相关的 tone 间关系——这些特征的呼吸感知建模尚属空白。BreatheCS 填补了这一空白。
 
-
-
----
 
 ## 3. BLE CS Primer / BLE CS 基础
 
@@ -163,9 +156,9 @@ BLE 6.0 推出了信道探测功能，其中最重要的更新就是引入了基
 
 为了抵消两个设备间的本振漂移，将两端 PCT 做复数乘法，使其相位相加、LO 漂移项抵消，就能获得有物理意义的合成相位。我们设两个设备本振的固定相位差为  
 $$
-\Delta \theta_{LO} = 2\pi F_(\varphi_i- \varphi_r),
+\Delta \theta_{LO} = 2\pi F(\varphi_i- \varphi_r),
 $$
-其中，$F_1$ 是当前信道频率， $\varphi_i,\varphi_r$分别是发起方、反射方设备对真实时间的延迟。
+其中，$F$ 是当前信道频率， $\varphi_i,\varphi_r$分别是发起方、反射方设备对真实时间的延迟。
 
 从发起方出发的CStone ，经过时间 $\tau$后抵达反射方。当我们以发起方作为最终PCT整合方时，反射方就被视为 remote 端。因此，这一过程中的相位变化由反射方记录为 Remote PCT:
 $$
@@ -192,7 +185,7 @@ $$
 
 单个Step的耗时约300us，启用全部的信道后，单个事件的时长约为21ms。但根据BLE6.0规范【引用预留】，远端的PCT需要经由 ranging service 返回，这需要占用更多的时间。我们在nordic nrf54L15 上进行了多次测试，发现最短的事件间隔约为250ms。但如果需要长期执行测量，需要适当放宽最大间隔的上限。因此，实际的事件间隔在 250-500ms之间，频率为2-4Hz。根据奈奎斯特采样定理，这恰好高于呼吸频率的2倍范围，因此可以实现呼吸感知。
 
-##   4.利用 BLE CS 感知呼吸/【need EN name】
+## 4. Sensing Respiration with BLE CS / 利用 BLE CS 感知呼吸
 
 本节建立用于解释基于 BLE CS 呼吸感知的观测模型。我们首先分析BLE CS的有效物理观测量；接着，我们尝试构建信道、观测量模态之间的呼吸波形关系，以指导如何融合这些呼吸波形，达到提升信噪比、更好地拟合原始呼吸波形的目标。为此，我们讨论同一模态内 CS 信道之间的关系，并分析顺序 CS 信道扫描是否会引入不可忽略的呼吸相位偏移。最后，我们将模型扩展为多有效成分相量表示，从而解释不同观测模态间的连续性相位偏差，以为所提出的两级相干融合方法提供动机。
 
@@ -230,9 +223,46 @@ $$
 
 本章节用金属板模拟人体胸腔的位移，以观察本地幅值、远端幅值与合成相位是否具备感知呼吸位移的能力，并确认4.1节中对三种观测模态的关系的推论。
 
+首先，考虑一种单一路径的边界情形：呼吸诱导扰动由单一有效位移成分主导：
+$$
+\xi(t)=X\cos(\omega_b t+\psi),
+$$
+其中 $X$、$\omega_b$ 和 $\psi$ 分别表示位移幅度、呼吸角频率和初始相位。
+
+假设在工作点附近，本地和远端 PCT 扰动由该位移线性驱动：
+$$
+\delta Z_{d,i}(t)=V_{d,i}\xi(t), \quad d\in\{l,r\}.
+$$
+
+
+定义归一化复数灵敏度：
+$$
+\frac{V_{d,i}}{\overline{Z}_{d,i}} = u_{d,i}+jv_{d,i},
+$$
+其中 $u_{d,i}$ 和 $v_{d,i}$ 分别为实值径向和切向灵敏度系数。
+
+则三个呼吸观测可写为：
+$$
+y_{l,i}(t)=u_{l,i}\xi(t),y_{r,i}(t)=u_{r,i}\xi(t),\\
+y_{\phi,i}(t)=\left(v_{l,i}+v_{r,i}\right)\xi(t).
+$$
+为简洁起见，定义：$k_{l,i}=u_{l,i},\quad k_{r,i}=u_{r,i},\quad k_{\phi,i}=v_{l,i}+v_{r,i}.$
+
+则每个观测可写为：
+$$
+y_{m,i}(t)=k_{m,i}X\cos(\omega_b t+\psi).
+$$
+等价地，其中幅值$A_{m,i}=|k_{m,i}|X,$ 则相位$\varphi_{m,i}$的偏差只和幅值 $A_{m,i}$ 的系数相关：
+$$
+\varphi_{m,i}= \begin{cases} \psi, & k_{m,i}>0,\\ \psi+\pi, & k_{m,i}<0. \end{cases}
+$$
+
+
+如果 $|k_{m,i}|\approx 0$，相应观测中包含的呼吸能量很少，其估计相位也会变得不可靠。因此，在单一有效成分和一阶扰动模型下，不同模态或信道之间的呼吸波形只能表现为同相、反相或弱响应。在这一边界情形中，二值符号校正在理论上已经足够。
+
 #### 实验设置：
 
-我们在一个5m宽的空旷的长走廊上搭建了BLE CS 呼吸感知验证平台【图-金属板设置】，以讨论CS各个观测变量。BLE CS 的部署平台是 Nordic nrf54L15 ，这是一款已经上市并支持BLE 6.0 的物联网低功耗蓝牙芯片。我们使用原厂的 nrf54L15 DK （development kit）连接6dBi 的外置天线，然后将平台按间隔1m架设，并保证高度与金属板平齐。用于模拟人体胸腔的金属板尺寸为30*30cm。
+我们用实验验证BLE CS 的观测量中是否符合上述现象。我们在一个5m宽的空旷的长走廊上搭建了BLE CS 呼吸感知验证平台【图-金属板设置】，以讨论CS各个观测变量。BLE CS 的部署平台是 Nordic nrf54L15 ，这是一款已经上市并支持BLE 6.0 的物联网低功耗蓝牙芯片。我们使用原厂的 nrf54L15 DK （development kit）连接6dBi 的外置天线，然后将平台按间隔1m架设，并保证高度与金属板平齐。用于模拟人体胸腔的金属板尺寸为30*30cm。
 
 我们令一侧作为BLE CS发起方（initiator），另一侧作为接收方。双方数据由发起方汇总，随后通过串口上传到笔记本电脑。我们还需要配置BLE CS 的一些参数，以确保测量频率和信道启用符合我们的预期。具体包括：启用所有信道（72个），测量间隔设置为250-500ms区间。其中，250ms是我们经过多次测试后，BLE CS 在当前6.0版本能够实现的最短间隔。同时，我们在实验中发现，250ms 间隔在长期测量时容易同步失败，导致CS测距中断，因此将最大间隔设置为500ms，以允许偶然超时情况。
 
@@ -240,23 +270,30 @@ $$
 
 #### 实验结果：
 
-- 呼吸在不同模态上的周期性显著
+- 呼吸在同信道不同模态上的差异
+- <img src="./assets/image-20260811170120543.png" alt="image-20260811170120543" style="zoom:50%;" />
 
 我们任意选定一个信道来展示三个模态的波形差异，并将不同位置处的波形予以比较。从【图-amp_pha_complement】我们观察到，随着金属板在滑台上持续步进，各个模态上所观测到的呼吸呈周期性变化，且具备明显的交替互补特性。幅值和合成相位是PCT在径向和切向的投影，金属板建立的多径变化在两者上总有一处可以观测。两种模态的呼吸波形低显著区间是交替出现的，且本地、远端幅值之间几乎重合。
 
 - 不同信道的表现存在差异
 
+<img src="./../../outputs/figures/position_sweep_figB2_channel_position_matrix.png" alt="position_sweep_figB2_channel_position_matrix" style="zoom:50%;" />
+
 我们在ch 20\40\60三个信道上比较呼吸波形的形态，且选择了86/87/88 三个位置处的幅值记录。由图【图-channel_position_matrix 】可见，随着位置改变，信道表现也不一致。在88cm 处，三个信道的表现都较好，前移 1cm 至87cm 后，ch 40 的呼吸不再明显；再前移1cm，ch 60 的呼吸波形出现失真/伪峰，而另外两个信道则波形清晰。这说明 CS PCT 的幅值变化与所处信道相关，信道不同，频率就不同，波形的表现也会有细微差异。
 
 进一步地，我们比较同一位置、同一模态下，所有信道上的波形差异。由图【全信道差异C1扩充】可见，一些信道的波形是同相的，一些则是反相的。
 
+<img src="./../../outputs/figures/position_sweep_figC1_hard_remote.png" alt="position_sweep_figC1_hard_remote" style="zoom:33%;" />
+
 - 同一信道的三种观测量偏差不是整数 pi 
 
-但不同的模态之间并不是只有同相/反相的差异，而是有处于0-pi 之间的相位偏移。我们追踪了不同信道在所有位置处的模态间相位差的变化，【图-position_sweep_figD2_dphi_vs_position_ch35及其子图】显示，大多数情况下，两端幅值基本同相，幅值和相位之间则基本是同相、反相的关系。但值得注意的是，在一些不同的位置，幅值间的相位差不再几乎为0，相位和幅值之间的偏移也不是整数 pi 。这些结果表明，BLE CS 的各个观测量之间存在随机的连续偏移。
+<img src="./../../outputs/figures/position_sweep_figD2_dphi_vs_position_ch20_40_60.png" alt="position_sweep_figD2_dphi_vs_position_ch20_40_60" style="zoom: 33%;" />
+
+但不同的模态之间并不是只有同相/反相的差异，而是有处于0-pi 之间的相位偏移。我们追踪了不同信道在所有位置处的模态间相位差的变化，【图-position_sweep_figD2_dphi_vs_position_ch20_40_60】显示，大多数情况下，两端幅值基本同相，幅值和相位之间则基本是同相、反相的关系。但值得注意的是，在一些不同的位置，幅值间的相位差不再几乎为0，相位和幅值之间的偏移也不是整数 pi 。这些结果表明，BLE CS 的各个观测量之间存在随机的连续偏移。
 
 - 人体活动和金属板的表现存在差异
 
-我们请来四位 subject ，令其坐在远离 LOS 的固定位置处，距离以其胸腔为准。同时，我们要求他们跟随节拍器呼吸，频率与金属板的设定值一致。我们随后在相同的距离处再次测量金属板的呼吸，并比较波形的差异。为了评价两种波形，我们引入呼吸能量比$\eta$ 和波形的峰度$\rho$ 两个指标，$\eta$ 在高通滤波后的信号上计算（衡量呼吸频段能量在总频谱中的集中程度），$\rho$ 在呼吸带通滤波后的信号上计算（衡量呼吸频段内的峰值突出度）。记模态 $m$、信道$i$ 的波形高通后的功率谱为 $P_{m,i}^{\text{hp}}(f)$ ，带通后的功率谱 $P_{m,i}(f)$ ， $\mathcal{F}_b$ 为呼吸频段，$\mathcal{F}$ 为分析频段。 $\eta$ 和 $\rho$ 定义为：
+我们请来四位 subject ，令其坐在远离 LOS 的固定位置处，距离以其胸腔为准。同时，我们要求他们跟随节拍器呼吸，频率与金属板的设定值一致。我们随后在相同的距离处再次测量金属板的呼吸，并比较波形的差异。为了评价两种波形，我们引入呼吸能量比$\eta$ 和波形的谱峰突出度$\rho$ （spectral peak prominence）两个指标，$\eta$ 在高通滤波后的信号上计算（衡量呼吸频段能量在总频谱中的集中程度），$\rho$ 在呼吸带通滤波后的信号上计算。记模态 $m$、信道$i$ 的波形高通后的功率谱为 $P_{m,i}^{\text{hp}}(f)$ ，带通后的功率谱 $P_{m,i}(f)$ ， $\mathcal{F}_b$ 为呼吸频段，$\mathcal{F}$ 为分析频段。 $\eta$ 和 $\rho$ 定义为：
 $$
 \eta_{m,i}
 =
@@ -279,7 +316,9 @@ $$
 
 （LaTeX: `eq:rho`）
 
-【图-position_sweep_figE3_eta_rho_comparison.png】展示了 $\eta$ 和 $\rho$ 在两类目标下的差异。两种呼吸目标在呼吸频段的能量比较为相似，各个模态上都没有明显的下降。但峰度的下降较为明显。这可能是由于人体自然呼吸含速率漂移、谐波与体动 ，尽管能量仍可落在 0.1–0.35 Hz，但峰不再尖锐。
+【图-position_sweep_figE3_eta_rho_comparison.png】展示了 $\eta$ 和 $\rho$ 在两类目标下的差异。两种呼吸目标在呼吸频段的能量比较为相似，各个模态上都没有明显的下降。但谱峰突出度的下降较为明显。这可能是由于人体自然呼吸含速率漂移、谐波与体动 ，尽管能量仍可落在 0.1–0.35 Hz，但峰不再尖锐。
+
+<img src="./../../outputs/figures/position_sweep_figE3_eta_rho_comparison.png" alt="position_sweep_figE3_eta_rho_comparison" style="zoom:50%;" />
 
 接下来，通过讨论上述实验结果，我们分别讨论模态内部各信道呼吸波形间的相位关系和模态之间的波形相位关系。
 
@@ -318,7 +357,7 @@ $$
 
 因此，本文将信道间关系建模为二值主符号关系与逐窗口连续残余相位的组合，并通过复平面旋转进行补偿。尽管基于菲涅尔区的符号赋予已经非常有效，但通过hilbert变换对齐仍可进一步补偿。这种补偿有助于后续多个波形的融合，提升感知的呼吸能量比，并有益于后续的呼吸指标计算【随便呼吸论文】。
 
-![Figure 2: Inter-tone phase relationship. (a) Raw bandpass; (b) after ±1 sign; (c) after Hilbert; ](../../outputs/figures/paper_fig2_inter_tone_phase.png)
+<img src="./assets/paper_fig2_inter_tone_phase.png" alt="paper_fig2_inter_tone_phase" style="zoom: 25%;" />
 
 > **Fig. 2 解读**: (a) 4 个代表 tone（#58 ref, #48 同相 γ≈0.83, #45 反相 Δφ≈π, #69 中间相位 Δφ≈−0.83）的原始带通波形叠加。(b) PCA ±1 符号校正后：反相 tone 被翻转，但中间相位 tone 仍有明显残余错位。(c) Hilbert 连续相位对齐后：四条波形近乎完美重合。
 
@@ -338,15 +377,20 @@ $$
 $$
 $V_d$是观测对于呼吸位移的敏感系数。比照 4.1，我们分别讨论各个模态的波形关系：
 $$
-\frac{\delta Z_l(t)}{Z_{l0}} = \operatorname{Re}\left\{\frac{V_l}{Z_{l0}}\right\}\xi(t)\tag
-{6}\\ 
-\frac{\delta Z_r(t)}{Z_{r0}} = \operatorname{Re}\left\{\frac{V_r}{Z_{r0}}\right\}\xi(t)\\
-\delta\Phi(t) = \left[ \operatorname{Im}\left\{\frac{V_l}{Z_{l0}}\right\} + \operatorname{Im}\left\{\frac{V_r}{Z_{r0}}\right\} \right]\xi(t)
+\begin{aligned}
+\frac{\delta Z_l(t)}{Z_{l0}} &= \operatorname{Re}\left\{\frac{V_l}{Z_{l0}}\right\}\xi(t),\\
+\frac{\delta Z_r(t)}{Z_{r0}} &= \operatorname{Re}\left\{\frac{V_r}{Z_{r0}}\right\}\xi(t),\\
+\delta\Phi(t) &= \left[ \operatorname{Im}\left\{\frac{V_l}{Z_{l0}}\right\} + \operatorname{Im}\left\{\frac{V_r}{Z_{r0}}\right\} \right]\xi(t).
+\end{aligned}
+\tag{6}
 $$
 我们将系数用复数形式表示，并予以简化的代号代替：
 $$
-\frac{V_L}{Z_{L0}}=u_L+jv_L \tag{7}\\
-\frac{V_R}{Z_{R0}}=u_R+jv_R
+\begin{aligned}
+\frac{V_L}{Z_{L0}}&=u_L+jv_L,\\
+\frac{V_R}{Z_{R0}}&=u_R+jv_R.
+\end{aligned}
+\tag{7}
 $$
 空间中由呼吸引起的路径可能有多个，第 $q$ 个有效呼吸成分写为：
 $$
@@ -358,9 +402,11 @@ $$
 $$
 于是，各模态的观测为：
 $$
-C_l=\sum_q u_{l,q}X_qe^{j\psi_q}\\
-C_r=\sum_q u_{r,q}X_qe^{j\psi_q}\\
-C_\Phi=\sum_q (v_{L,q}+v_{R,q})X_qe^{j\psi_q}
+\begin{aligned}
+C_l&=\sum_q u_{l,q}X_qe^{j\psi_q},\\
+C_r&=\sum_q u_{r,q}X_qe^{j\psi_q},\\
+C_\Phi&=\sum_q (v_{L,q}+v_{R,q})X_qe^{j\psi_q}.
+\end{aligned}
 $$
 因此，任意模态的等效呼吸幅度和相位可表示为：
 $$
@@ -378,11 +424,20 @@ $$
 
 
 
-![Figure 3: Inter-modal phase relationship. (a) Before Level-2 align; (b) after Level-2 Hilbert + η fusion; (c–d) cross-window Δφ in two rooms. Modal phas1e is non-fixed and scene-dependent; alignment does not guarantee equal fusion value.](../../outputs/figures/paper_fig3_inter_modal_phase.png)
+![Figure 3: Inter-modal phase relationship. (a) Before Level-2 align; (b) after Level-2 Hilbert + η fusion; (c–d) cross-window Δφ in two rooms. Modal phase is non-fixed and scene-dependent; alignment does not guarantee equal fusion value.](../../outputs/figures/paper_fig3_inter_modal_phase.png)
 
 > **Fig. 3 解读**: (a) 三模态（remote/local/phase）经 Level-1 Hilbert tone 融合后的波形，Level-2 对齐前可见明显相位差异。(b) Level-2 Hilbert 对齐 + $\eta$ 加权融合后：三波形对齐，融合波形（粗黑线）跟踪一致性。(c) cs_095806 全 segment 跨窗模态间相位差 Δφ 序列：Δφ 非固定，逐窗浮动。(d) cs_102621（不同房间）同款图：Δφ 基线不同，确认模态间相位关系场景依赖。**结论**：模态间相位不可预设，必须每窗估计。但成功对齐并不保证所有模态具有同等的融合价值——哪些模态应参与融合取决于其实际信号质量，而非仅由物理可获得性决定。
 
----
+
+
+### 4.5 Design insights
+
+BLE CS 的幅值、合成相位观测具备不同的现象，这对我们设计合适的算法给出了有效的启发：
+
+- 合成相位与幅值类观测是互补的：在某些位置，合成相位的波形优于幅值类观测，某些位置则相反。幅值类观测虽然有两端的分别测量，但他们在大多数情况下基本一致。这启示我们系统需要一种自适应的选择与加权算法。
+- 多径、多矢量相干引发的幅相非同步偏移：尽管大多数情况下，信道间和模态间的波形相位偏移符合整数pi ，但仍会有非整数的情况出现，让波形的相位偏移出现无法预计的偏差。这启示我们系统应设计专门的对齐校正算法。
+
+
 
 ## 5. Proposed Method: BreatheCS / 提出方法：BreatheCS
 
@@ -390,17 +445,17 @@ $$
 
 ### 5.1 Design Rationale / 设计动机
 
-在第四章中我们已经发现，本地和远端的幅值在物理意义上几乎一致，但会存在偶然的细微偏差；合成相位的信息与幅值是互补的，且波形与幅值的偏移更随机。同时，我们还注意到相位是双端PCT的合成结果，这相比幅值引入了更多测量误差。为此，我们提出 BreathCS 以充分利用这些特性。BreathCS通过对原始的测量分别处理以获得人体呼吸的观测， 这包含两部分：BPM 估计与呼吸波形恢复。BPM 只需稳定的呼吸频率，一旦形成频谱，对时域残余错位不敏感；波形恢复则需保留形态学特征，因此依赖时域相干融合以提高呼吸能量比（BNR）。
+在第四章中我们已经发现，本地和远端的幅值在物理意义上几乎一致，但会存在偶然的细微偏差；合成相位的信息与幅值是互补的，且波形与幅值的偏移更随机。同时，我们还注意到相位是双端PCT的合成结果，这相比幅值引入了更多测量误差。为此，我们提出 BreatheCS 以充分利用这些特性。BreatheCS 对原始测量分别处理以获得人体呼吸观测，包含两部分：BPM 估计与呼吸波形恢复。BPM 只需稳定的呼吸频率，一旦形成频谱，对时域残余错位不敏感；波形恢复则需保留形态学特征，因此依赖时域相干融合以提高呼吸能量比（BNR）。
 
 BreatheCS 用共享前端 + 两条专用分支应对这两个目标：
 
-1. **共享前端**：逐信道质量估计，采用呼吸频段能量比 $\eta$构成权重，同时服务于谱加权与波形 MRC 权重。
+1. **共享前端**：逐信道质量估计，采用呼吸频段能量比 $\eta$构成权重，同时服务于谱加权与波形质量加权相干合并。
 2. **BPM 分支**：逐信道加权谱融合构成每个模态的唯一谱，然后对两端幅值做加权谱融合构成最终的幅值模态。随后，幅值谱与合成相位谱作比较，选择具有最大呼吸能量比 $\eta$  的模态作为最终的呼吸估计。
-3. **波形分支**：引入谱峰峰度 $\rho$指标作为时与融合的参考，随后是两级 Hilbert 相干 MRC：先在模态内做channel级对齐，再跨 remote/local/phase 做模态级对齐。在模态级融合阶段，首先将两端幅值融合为一个幅值模态，随后与相位模态比较呼吸能量比。选择最大的模态作为最终的波形输出。
+3. **波形分支**：引入谱峰突出度 $\rho$ 作为时域融合参考；先在各模态内做信道级 Hilbert 相干对齐，再将 Remote/Local 融合为端侧幅值候选，并与组合相位候选按窗级 $\eta$ 选择，而非默认三模态相干合并。
 
 ### 5.2 Preprocessing / 预处理
 
-对每个 tone、三种变量：短窗中值滤波 → $0.05\,\mathrm{Hz}$ 高通去缓变漂移 → $0.1$--$0.35\,\mathrm{Hz}$ 呼吸带通。相位变量在滤波前先做 unwrap。随后以 $20\,\mathrm{s}$ 窗长、$1\,\mathrm{s}$ 步长滑窗处理。记模态 $m$、信道$i$ 的带通波形为 $x_{m,i}(t)$。
+对每个 tone、三种变量：首先将其插值到均匀的2Hz采样，然后采用短窗中值滤波 → $0.05\,\mathrm{Hz}$ 高通去缓变漂移 → $0.1$--$0.35\,\mathrm{Hz}$ 呼吸带通。相位变量在滤波前先做 unwrap。随后以 $20\,\mathrm{s}$ 窗长、$1\,\mathrm{s}$ 步长滑窗处理。记模态 $m$、信道$i$ 的带通波形为 $x_{m,i}(t)$。
 
 ### 5.3 Stage 1: Per-Modal Channel Quality and Weighted Spectra / 逐模态信道质量与加权谱
 
@@ -449,22 +504,23 @@ $$
 
 $$
 \begin{aligned}
-\widehat{\mathrm{BPM}}=60\widehat{f}_b
-&=60 \cdot
-\Bigl(
-S_{\mathrm{opt}},\,
-\arg\max_{f\in\mathcal{F}_b}S_{\mathrm{opt}}(f)
-\Bigr)
+\widehat{f}_b
+&=
+\arg\max_{f\in\mathcal{F}_b}S_{\mathrm{opt}}(f),
+\\
+\widehat{\mathrm{BPM}}
+&=
+60\,\widehat{f}_b.
 \end{aligned}
 $$
 
 （LaTeX: `eq:bpm_peak`）
 
-该谱域分支是 BreatheCS 的**主 BPM 输出**。它继承质量加权信道融合的稳健性，并避免低采样率下脆弱的时域对齐。各个波形的融合参考MRC（最大比合并）的思想【参考预留】 赋予权重。MRC 为各个信道赋予等比于自身信噪比（SNR）的权重，以最大化提升整体的信噪比。在BreatheCS 中，我们用呼吸能量权重$w$ 模拟SNR在MRC的功能。
+该谱域分支是 BreatheCS 的**主 BPM 输出**。它继承质量加权信道融合的稳健性，并避免低采样率下脆弱的时域对齐。各波形的融合参考 MRC（最大比合并）的思想【参考预留】赋予权重。经典 MRC 权重通常与复信道系数和噪声方差有关；在 BreatheCS 中，我们用呼吸能量权重 $w$ 近似这一角色，因此更准确地说是 **MRC-inspired quality-weighted coherent combining**。
 
-### 5.5 Stage 2b: Waveform Branch — Two-Level Hilbert-MRC / 波形分支：两级 Hilbert-MRC
+### 5.5 Stage 2b: Waveform Branch — Coherent Endpoint Fusion and Phase Selection / 波形分支：端侧相干融合与相位候选选择
 
-波形恢复使用 Hilbert 变换配合的 MRC（两级复平面相干融合）。从第四章出发，我们将模态 $m$、tone $i$ 的带限呼吸分量写为：
+波形恢复使用 Hilbert 变换配合的质量加权相干合并（信道级对齐 + 端侧幅值融合，再与 Phase 候选选择）。从第四章出发，我们将模态 $m$、tone $i$ 的带限呼吸分量写为：
 
 $$
 x_{m,i}(t)
@@ -547,34 +603,32 @@ $$
 
 #### Modal-level fusion / 模态级融合
 
-三模态波形 $y_r(t)$、$y_l(t)$、$y_\phi(t)$ 仍可能存在连续相位差，首先，则是对两端幅值使用希尔伯特变换内部对齐，随后，同样使用能量比确定当前窗口下幅值和合成相位谁更适合作为最终的呼吸波形。三模态先各自转为解析信号 $u_m(t)=y_m(t)+j\mathcal{H}\{y_m(t)\}$，由 $y_m$ 重算模态能量比 $\eta_m$，取参考模态 $m^\star=\arg\max_m\eta_m$。模态相位差 $\Delta\theta_m$ 的定义与信道级 $\Delta\phi_{m,i}$ 类似：
+信道级输出 $y_r(t)$、$y_l(t)$、$y_\phi(t)$ 仍可能存在连续相位差。我们先将三者转为解析信号 $u_m(t)=y_m(t)+j\mathcal{H}\{y_m(t)\}$，对两端幅值做内部对齐并融合为 endpoint-amplitude candidate，再按窗级能量比在幅值候选与合成相位候选之间选择。由 $y_m$ 重算模态质量 $Q_m=\eta_m\rho_m$，取参考模态 $m_A^\star = \arg\max_{m\in\{r,l\}} Q_m$。模态相位差 $\Delta\theta_m$ 的定义与信道级 $\Delta\phi_{m,i}$ 类似：
 $$
-\begin{aligned}
-z_{\mathrm{amplitude}}(t)
-&=
-\frac{\sum_m \eta_m\,u_m(t)\,e^{-j\Delta\theta_m}}{\sum_m\eta_m+\epsilon},m\in(r,l)
-\\
-\eta_{\mathrm{final}}
-&=
-\text{argmax}(\eta_{\text{amplitude}},\eta_{\text{phase}}),\\
-y_{\mathrm{final}}(t)&=
-\operatorname{Re}\{z_{\mathrm{final}}(t)\}
-\end{aligned}
+\Delta\theta_m = \arg\left( \sum_t u_m(t)\overline{u_{m_A^\star}(t)} \right), \qquad \Delta\theta_{m_A^\star}=0.
 $$
+然后，构造 endpoint-amplitude candidate：
+$$
+z_A(t) = \frac{ \sum_{m\in\{r,l\}} Q_m\,u_m(t)e^{-j\Delta\theta_m} }{ \sum_{m\in\{r,l\}}Q_m+\epsilon }, \qquad y_A(t)=\operatorname{Re}\{z_A(t)\}.
+$$
+重新计算两个候选的窗级质量：
+
+$Q_A=\eta(y_A),\qquad Q_\phi=\eta(y_\phi).$
+
+最后进行候选选择：
+
+$b^\star = \arg\max_{b\in\{A,\phi\}}Q_b, \qquad z_{\mathrm{final}}(t) = \begin{cases} z_A(t), & b^\star=A,\\ u_\phi(t), & b^\star=\phi, \end{cases}$
+
+$y_{\mathrm{final}}(t) = \operatorname{Re}\{z_{\mathrm{final}}(t)\}.$
 
 （LaTeX: `eq:level2_mrc`）
 
 $y_{\mathrm{final}}(t)$ 是 BreatheCS 的主波形输出，用于呼吸波形的恢复。
 
----
 
 ## 6. Experimental Validation / 实验验证
 
 ### 6.1 Setup / 实验设置
-
-> **EN**: [CS metal-plate: 3 rooms, mechanical BPM ground truth. HKH: 3 rooms × 4 subjects, respiratory belt ground truth. Metrics: BPM absolute error, RMSE. Baseline methods listed.]
->
-> **CN**:HKH 真人：3 房间 × 4 受试者 = 12 条数据，呼吸带 ground truth。用于 §4 的效果验证。指标：BPM 绝对误差（breaths/min）、RMSE（波形 vs 呼吸带）。Baseline：B0 Single Remote, B1 Uniform Remote, Modal top2, T0-V3 Per-Tone Voting, WiFi MRC (Fan 2024), Zhuo2023 PCA-VMD。]
 
 为验证 BreatheCS 的效果，我们采集了4位subjects 的真人呼吸数据。实验共分三个场景，均为常见的室内环境：客厅的静坐，卧室的平躺、卧室的侧躺【图-实验场景】。在每个场景中，我们要求受试者佩戴HKH-11C呼吸传感器采集真实的呼吸波形。两个BLE CS 设备被安置于受试者附近，且装载6dbi 的天线。BLE CS 的平台是支持 BLE 6.0 的 Nordic nrf54L15。
 
@@ -584,7 +638,7 @@ $y_{\mathrm{final}}(t)$ 是 BreatheCS 的主波形输出，用于呼吸波形的
 
 ### 6.2 Baseline /比较基线
 
-基于BLE CS 的无线感知研究较为早期，据我们所知，目前尚未有比较全面的呼吸感知算法研究。基于WIFI等其他传感器的无线呼吸感知则比较完善，许多专门的信号处理和信噪比增强的方案都已得到讨论【参考预留】。在现有的基于商用设备的呼吸感知中，对于信道的融合和模态的融合已有考虑，但它们通常无法直接迁移到BLE CS上作为比较基线。
+基于BLE CS 的无线感知研究在近两年刚刚起步，据我们所知，目前尚未有比较全面的呼吸感知算法研究。基于WIFI等其他传感器的无线呼吸感知则比较完善，许多专门的信号处理和信噪比增强的方案都已得到讨论【参考预留】。在现有的基于商用设备的呼吸感知中，对于信道的融合和模态的融合已有考虑，但它们通常无法直接迁移到BLE CS上作为比较基线。
 
 较低的采样率、独有的双向PCT合成是BLE的特殊之处。现有的无线呼吸感知技术中，缺乏专门针对此特征的处理方案。为此，我们专门针对近期的各类呼吸感知工作做出针对性调整，以和我们所提出的BreatheCS做公正合理的比较。
 
@@ -594,30 +648,25 @@ Fan 等人【Fan2024】 先计算各信道呼吸能量比（BNR），然后用MR
 
 为了进一步挖掘各方案的优势，对于在信号后处理部分具有独特做法的（例如zhuo 2023使用VMD获得频率成分），除了原样复现的对照外，还会有只包含融合部分的变体参与比较，以研究各部分的优势。
 
-由于BLE CS 的低采样率特性，我们为所有baseline 部署于 BreathCS 一致的预处理步骤（即章节5.2），然后，比较主要在在信道级融合与模态级融合的差异，并最终体现在BPM估计误差和恢复的波形与groundtruth的RMSE上。
+由于BLE CS 的低采样率特性，我们为所有baseline 部署与 BreatheCS 一致的预处理步骤（即章节5.2），然后，比较主要在在信道级融合与模态级融合的差异，并最终体现在BPM估计误差和恢复的波形与groundtruth的RMSE上。
 
-### 6.3 BPM Accuracy/ BPM 精度
+### 6.3 Main results
 
-> **EN**: [BreatheCS = G0 R+L = **0.371** BPM mean abs error; Pos-Free (PCA) = 0.435; WiFi-Sleep (MRC-PCA) = 0.505; BreatheCS-Wave = 0.682; ClessBreath η-linear = 1.386. Cite Figure 6.]
->
-> **CN**: [主结果（12-scenario aggregate）：BreatheCS = G0 R+L = **0.371** BPM mean abs error；Pos-Free (PCA) = 0.435；WiFi-Sleep (MRC-PCA) = 0.505；BreatheCS-Wave = 0.682；ClessBreath η-linear = 1.386。引用 Figure 6。]
+这一章节展示不同的baseline 及其变体在BLE CS 数据上的性能，并与 BreatheCS 作比较。
 
-这一章节展示不同的baseline 及其变体在BLE CS 数据上的性能，并于 breatheCS 作比较。这里我希望，如果几乎是原样迁移的，比如zhuo 2023 单级PCA然后VMD就是主baseline ，双级PCA就是变体，那主baseline 里第二级就是选一个最大模态就可以。我们可以在实验中制作很多变体，但最后论文中没必要都放出来。可能需要优化一下展示方式，比如各个方法的具体名称如何简洁的表达。
+#### BPM Accuracy/ BPM 精度
 
-尽管BreatheCS是两个分支的组合，但在最终绘图的时候，要只保留最终的名字，而不是分支的名（目前两个图里的ref 都是分支名字，而且不是论文里的名称，是跑算法时候的代号）。这块也应该考虑。
+实验结果如【表6.3A】，在与近期的相关工作的比较中，BreatheCS 在BPM 的估计误差是最低的，为 0.371+-0.128 次/分钟。baseline 中的一些方法也通常在0.4次/分钟的误差。尽管BreatheCS Wave 分支并未对低采样率做优化，它的BPM估计精度仍然优于baseline 方法，达到 0.385+-0.118 次/分钟。单独按场景的性能比较见【表6.3-B】，BreatheCS 在三种感知场景中均具备最低的BPM估计误差。
 
-同时，目前的图里BPM没有 BreatheCS 的BPM，用的是波形分支的结果，这显然是不合适的，因为波形分支在BPM估计中不占优势。不要使用波形分支，直接用BPM分支并标注为BreatheCS 即可。对于fig 6，不论是按房间还是全场景的总排名都是这样。
+尽管baseline 的方案并非为BLE CS的特性而设计，他们中也有数个误差小于0.5次。这说明这些方法所采用的算法同样是极具参考价值和普适化的。在呼吸波形的监测中，基本的信号处理策略常常是通用的，而根据BLE CS特性设计的 BreatheCS 则获得了最佳的BPM性能。
 
-（简化代号，让图更清晰。或者我们干脆在正文里对各个方案详细表述，然后表格中只放简化的代号，比如 zhuo 23 ,zhuo23-a 这种。或者干脆就考虑其他展示方式，表格会好一些还是更差一些呢）
-
-> **配图更新（执行侧）**：数值已切换为 G0 R+L（HKH）；Fig 6 图文件仍为旧 0.405 版，待重绘。  
 > **表格对照**：下面同时给出与 Fig 6a/6b 同口径的数值表，便于比较「图 vs 表」哪种更适合正文。
 
-#### Table 6.3-A · BPM overall（对应 Fig 6a）
+- Table 6.3-A · BPM overall（对应 Fig 6a）
 
 | Method | BPM abs err mean ↓ | std（跨场景） |
 |---|---:|---:|
-| BreatheCS ★（G0 R+L 谱分支） | **0.371** | 0.128 |
+| **BreatheCS** | **0.371** | 0.128 |
 | Pos-Free (PCA) | 0.435 | 0.123 |
 | WiFi-Sleep (MRC-PCA) | 0.505 | 0.149 |
 | BreatheCS-Wave（时域分支，对照） | 0.385 | 0.118 |
@@ -626,14 +675,14 @@ Fan 等人【Fan2024】 先计算各信道呼吸能量比（BNR），然后用MR
 | ClessBreath (η-linear) | 1.386 | 1.685 |
 | ClessBreath (η-equal) | 1.486 | 1.527 |
 
-> HKH 12-scenario mean。BreatheCS = Voting(η-only) → R+L 等权谱融合（G0）；BreatheCS-Wave 仅作双分支对照，非主方法行。来源：`gate_decomposition_hkh.json`。
+> HKH 12-scenario mean。BreatheCS-Wave 仅作双分支对照，非主方法行。来源：`gate_decomposition_hkh.json`。
 
-#### Table 6.3-B · BPM by room（对应 Fig 6b）
+- Table 6.3-B · BPM by scenario（对应 Fig 6b）
 
-| Method | Room A（客厅静坐） | Room B（卧室平躺） | Room C（卧室侧躺） |
+| Method | Living sitting | Bedroom flat | Bedroom side |
 |---|---:|---:|---:|
-| BreatheCS ★ | **0.356** | 0.412 | **0.344** |
-| Pos-Free (PCA) | 0.415 | **0.436** | 0.455 |
+| **BreatheCS** | **0.356** | **0.412** | **0.344** |
+| Pos-Free (PCA) | 0.415 | 0.436 | 0.455 |
 | WiFi-Sleep (MRC-PCA) | 0.609 | 0.451 | 0.455 |
 | BreatheCS-Wave | 0.358 | 0.424 | 0.374 |
 | WiFi-Sleep (√η) | 1.521 | 0.532 | 1.016 |
@@ -641,36 +690,29 @@ Fan 等人【Fan2024】 先计算各信道呼吸能量比（BNR），然后用MR
 | ClessBreath (η-linear) | 1.498 | 1.225 | 1.434 |
 | ClessBreath (η-equal) | 1.400 | 2.038 | 1.022 |
 
-> 每房间 4 subjects 均值。单位：BPM abs err。BreatheCS 分房间来自 G0 per-scenario 均值。
+> 每场景 4 subjects 均值（客厅静坐 / 卧室平躺 / 卧室侧躺；后两者同属卧室）。单位：BPM abs err。BreatheCS 分场景来自 G0 per-scenario 均值。
 
 ![Figure 6a: HKH BPM leaderboard across 12 scenarios. BreatheCS (spectral BPM, ★) = 0.371 breaths/min mean abs error; paper method names.](../../outputs/figures/paper_fig6a_bpm_leaderboard.png)
 
 ![Figure 6b: HKH BPM by room for the same methods as Fig 6a (incl. ClessBreath). Rooms: Living sitting / Bedroom flat / Bedroom side.](../../outputs/figures/paper_fig6b_bpm_by_room.png)
 
-> **Fig. 6 解读**: (上) 全 12 场景 BPM 排行榜。**BreatheCS**（G0 R+L 谱分支）= 0.371，优于 Pos-Free (PCA) 0.435、WiFi-Sleep (MRC-PCA) 0.505；ClessBreath 系列约 1.39–1.49。(下) 按房间拆分，方法集与 Fig 6a 一致。图文件待按新数值重绘。
+> **Fig. 6 解读**: (上) 全 12 场景 BPM 排行榜。**BreatheCS**= 0.371，优于 Pos-Free (PCA) 0.435、WiFi-Sleep (MRC-PCA) 0.505；ClessBreath 系列约 1.39–1.49。(下) 按房间拆分，方法集与 Fig 6a 一致。图文件待按新数值重绘。
 
-### 6.4 Waveform Recovery Accuracy / 波形恢复精度
+#### Waveform Recovery Accuracy / 波形恢复精度
 
-> **EN**: [BreatheCS (G0 R+L) RMSE = **0.937** vs belt; Spec BPM = 0.371. Pos-Free RMSE = 1.070. Cite Figure 7.]
->
-> **CN**: [BreatheCS（G0 R+L）波形 RMSE = **0.937**；谱 BPM = 0.371。Pos-Free RMSE = 1.070。引用 Figure 7。]
+在【表6.4】展示了各方法在波形恢复的RMSE。相对迁移自 WiFi 的外部 baseline，BreatheCS 取得最低 RMSE（0.937±0.209），相对次优外部方法约降低 10% 以上。内部单模态消融中，Remote-only 亦接近该水平（见表 8-B），说明端侧幅值融合带来的平均波形增益有限，主要收益仍在稳健性与任务分流，而非大幅拉开与最强单端模态的差距。
 
-这一章节同样是和上面的baseline 比较波形恢复的性能，也就是RMSE误差比较。我认为至少也应该像6.3一样，把各类方法画图比较，图7感觉好像暂时在这章用不上。
+- Table 6.4 · Waveform RMSE（对应 Fig 7）
 
-> **配图更新（执行侧）**：§6.4 主展示用表；Fig 7 为 BPM×RMSE 散点。RMSE/Wave BPM 已与 `draft_w_rl` 对齐。
-
-#### Table 6.4 · BPM × RMSE（对应 Fig 7）
-
-| Method | BPM abs err mean | RMSE mean | RMSE std |
-|---|---:|---:|---:|
-| BreatheCS ★ | **0.371** | **0.937** | 0.209 |
-| Pos-Free (PCA) | 0.435 | 1.070 | 0.250 |
-| WiFi-Sleep (MRC-PCA) | 0.505 | 1.063 | 0.245 |
-| BreatheCS-Wave（时域分支对照） | 0.385 | 0.937 | 0.209 |
-| WiFi-Sleep (√η) | 1.023 | 1.054 | — |
-| PCA sign only | 1.317 | 1.085 | 0.182 |
-| ClessBreath (η-linear) | 1.386 | 1.025 | 0.241 |
-| ClessBreath (η-equal) | 1.486 | 1.046 | 0.211 |
+| Method | RMSE mean | RMSE std |
+|---|---:|---:|
+| **BreatheCS** | **0.937** | 0.209 |
+| Pos-Free (PCA) | 1.070 | 0.250 |
+| WiFi-Sleep (MRC-PCA) | 1.063 | 0.245 |
+| WiFi-Sleep (√η) | 1.054 | — |
+| PCA sign only | 1.085 | 0.182 |
+| ClessBreath (η-linear) | 1.025 | 0.241 |
+| ClessBreath (η-equal) | 1.046 | 0.211 |
 
 > HKH 12 scenarios。BreatheCS = 谱 BPM（G0/`draft_s_rl`）+ R+L 波形 RMSE（`draft_w_rl`）；BreatheCS-Wave 行给出同管线时域分支 BPM（0.385）。旧三模态等权波形 RMSE 0.951 仅作消融对照。
 
@@ -678,67 +720,32 @@ Fan 等人【Fan2024】 先计算各信道呼吸能量比（BNR），然后用MR
 
 > **Fig. 7 解读**: 每个点为方法在 12 场景上的 (BPM abs err, RMSE)。BreatheCS（★）左下角最优联合表现（数值待图重绘对齐）。
 
-### 6.5 Ablation Experiments / 消融实验
+### 6.4 Ablation Experiments / 消融实验
 
-> **EN**: [Channel fusion ablation: Voting (η·ρ weighted) ≫ Single-best (max-η) ≫ Uniform. Modal inclusion ablation: Remote+Local is the most reliable configuration for human respiration; equal-weight three-modal fusion degrades due to Phase noise injection. Phase method ablation: Hilbert two-level > Hilbert single-level > Corr sign > PCA sign. Cite Figure 8.]
->
-> **CN**: [信道融合消融：Voting (η·ρ 加权) ≫ Single-best (max-η) ≫ Uniform。模态参与消融：Remote+Local 双模态是真人呼吸中最可靠的配置；等权三模态因 Phase 噪声注入而退化。相位方法消融：Hilbert 两级 > Hilbert 单级 > Corr sign > PCA sign。引用 Figure 8。]
+本章节通过比较不同融合权重分配方案（包括不使用融合，仅保留最大变量）验证 BreatheCS 的性能。BreatheCS 作为信道+模态的两级融合、挑选方案，每一级都会利用所有可用的信息。在模态融合的消融中，只涉及是否融合本地、远端的幅值。当消融需要某一级不再融合时，我们就选择该层级上能量比最大的一个作为最终的BPM和呼吸波形的候选。
 
-本章节通过比较不同融合权重分配方案（包括不使用融合，仅保留最大变量）验证 BreatheCS 的性能。BreatheCS 作为信道+模态的两级融合方案，每一级都会利用所有可用的信息做融合。当消融需要某一级不再融合时，我们就选择该层级上能量比最大的一个作为最终的BPM和呼吸波形的候选。
+我们首先测试了融合这一策略的有效性，【表8-A】显示，BreatheCS 优于所有消融变体，这证明两阶段的融合是有必要的。其中只在信道级做融合能够获得与BreatheCS BPM估计相近的性能，这说明信道级的融合承担了主要贡献。但在Wave 分支上，仅信道融合的变体在估计BPM的性能则有所下降。这说明通过两阶段融合，我们还能改善波形分支的BPM估计性能，令其接近BPM分支的水平。
 
-（这块做个表格好还是画图好呢）
+随后，我们比较了不同的模态的性能。【表8-B】显示，BreatheCS 的性能比较接近只使用双端幅值的变体，同时，单独使用 composite phase 的方法出现了性能的显著退化。这说明，在真人作为呼吸感知对象时，合成相位的能量比通常劣于幅值，导致基本不被选中，进而使BreatheCS 接近仅使用幅值模态的方案。
 
-每种方案都会计算BPM和RMSE 误差：
+窗级 oracle 进一步量化了这一条件性：在 HKH 的 1730 个窗口中，仅约 6.1%（105 窗）以 Phase 为 oracle-best；即便在这些窗口中，其 $\eta_{\mathrm{phase}}$ 也大多落在全窗分布的中高区，而非形成可稳定分离的高质量簇（图【paper_fig_modal_oracle_phase_eta_hkh】）。这与“物理互补 ≠ 统计可靠、应选择性使用 Phase”的结论一致。
 
-1.时域波形的融合（有波形的话，既能有BPM，也有RMSE）：
-
-- 不融合：两级均只选择最大能量比的信号
-- 仅信道融合，模态选最大；
-- 仅模态融合，信道选最大；
-- BreatheCS （本文方案）
-
-
-
-2.频域的谱融合（此类方案没有波形输出，只有BPM估计）：
-
-- 不融合：两级均只选择最大能量比的信号
-- 仅信道融合，模态选最大；
-- 仅模态融合，信道选最大；
-- BreatheCS  （本文方案）
-
-3.局限单一模态的方案
-这个是指在1，2中，全程只考虑同一个模态的情况，最后比较的结果图就是三个模态+breatheCS的比较。
-
-
-
-通过上述三点，应该能充分展示信道融合、模态融合的性能优势，同时展示BreatheCS 的优势。（是否存在解锁器效应，则需要在结果中尝试发掘）。
-
-目前的图问题在于有许多代号，导致分类不够清晰，不好比较。由于前面两章已经比较了一些代表性相关工作的方案，它们或多或少有某一级的融合，因此这里不再根据融合策略拆分不同的子项。
-
-> **配图更新（执行侧）**：Fig 8 两组三连图 —— (a)(b)(c) 融合层级；(d)(e)(f) 单模态。数值 3 位小数；BreatheCS 红柱+黑边。  
-> **表格对照**：Table 8-A/8-B 与图同口径，便于比较图/表可读性。
-
-#### Table 8-A · Fusion levels（对应 Fig 8a–c）
+- Table 8-A · Fusion levels（对应 Fig 8a–c）
 
 | Fusion level | Spec BPM ↓ | Wave BPM ↓ | Wave RMSE ↓ |
 |---|---:|---:|---:|
 | No fusion | 1.640 | 1.192 | 1.007 |
 | Channel only | 0.381 | 1.003 | 0.962 |
 | Modal only | 0.655 | 1.025 | 0.986 |
-| 3-modal equal（对照） | 0.405 | 0.744 | 0.951 |
-| BreatheCS ★（R+L / G0） | **0.371** | **0.385** | **0.937** |
+| BreatheCS | **0.371** | **0.385** | **0.937** |
 
-> 谱域无波形 RMSE。BreatheCS = Voting → R+L（Spec=G0；Wave=`draft_w_rl`）。3-modal equal 为旧等权三模态对照。来源：`ble_hkh_draft_ablation_summary.json`。
+- Table 8-B · Single-modal（对应 Fig 8d–f）
 
-#### Table 8-B · Single-modal（对应 Fig 8d–f）
-
-| Domain | Remote | Local | Phase | 3-modal equal | BreatheCS (R+L) |
-|---|---:|---:|---:|---:|---:|
-| Spectral BPM | 0.376 | 0.378 | 2.191 | 0.405 | **0.371** |
-| Waveform BPM | 0.399 | 0.439 | 2.395 | 0.744 | **0.385** |
-| Waveform RMSE | 0.931 | 0.947 | 1.109 | 0.951 | **0.937** |
-
-> HKH 12-scenario mean。BreatheCS = R+L；3-modal equal 保留为 Phase 注入对照。汇总：`outputs/reports/ble_hkh_draft_ablation_summary.json`。
+| Domain | Remote | Local | Phase | BreatheCS |
+|---|---:|---:|---:|---:|
+| Spectral BPM | 0.376 | 0.378 | 2.191 | **0.371** |
+| Waveform BPM | 0.399 | 0.439 | 2.395 | **0.385** |
+| Waveform RMSE | 0.941 | 0.947 | 1.109 | **0.937** |
 
 ![Figure 8a–c: Fusion-level ablation. (a) Spectral BPM; (b) Waveform BPM; (c) Waveform RMSE. Bars: no fusion / channel only / modal only / BreatheCS.](../../outputs/figures/paper_fig8_abc_fusion.png)
 
@@ -746,48 +753,25 @@ Fan 等人【Fan2024】 先计算各信道呼吸能量比（BNR），然后用MR
 
 > **Fig. 8 解读**: (a–c) 信道/模态融合层级；(d–f) 单模态对照。BreatheCS 默认 = Voting → **R+L**（Spec 0.371 / Wave BPM 0.385 / RMSE 0.937）；等权三模态（0.405 / 0.744 / 0.951）降为消融对照。图文件仍为旧版，待重绘。
 
----
+![HKH oracle Phase eta distribution.](../../outputs/figures/paper_fig_modal_oracle_phase_eta_hkh.png)
+
+> **Fig. oracle 题注**: Distribution of $\eta_{\mathrm{phase}}$ on HKH windows. Gray: all windows; green: windows where Phase is oracle-best ($105/1730\approx 6.1\%$). Phase is best only in a small subset, and its $\eta$ largely overlaps the full-window distribution—supporting selective inclusion rather than unconditional fusion. (PDF: `paper_fig_modal_oracle_phase_eta_hkh.pdf`)
+
+合成相位在人体实验中出现严重的退化，导致最终 BreatheCS 的性能与只使用幅值的方案基本一致。
+
+
 
 ## 7. Discussion / 讨论
 
-### 7.1 为什么谱域在低采样率下优于时域？
+在BreatheCS中，我们为BPM估计使用了专门的谱域融合管线，以更好应对低速和非均匀采样的挑战。一个典型的20 s 窗口在 0.1–0.35 Hz 内仅包含 2–7 个呼吸周期（典型的 0.2 Hz 呼吸约 4 个周期）。这是因为时域波形对齐对微小时间偏移敏感，而FFT操作丢弃时间信息后对这类残差偏移不敏感，因此谱域融合更适合 BPM 估计。这也得到了实验结果的证实。
 
-20 s 窗口在 0.1–0.35 Hz 内仅包含 2–7 个呼吸周期（典型的 0.2 Hz 呼吸约 4 个周期）。时域波形对齐对微小时间偏移敏感——两个信道间一个采样点的偏移可能在仅 4 个周期上造成显著相对相位误差。|FFT| 丢弃时间信息后对这类残差偏移不敏感，因此谱域融合更适合 BPM 估计。但这不意味着时域对齐”本质不可能”——只是在实际采样率、窗口长度和 SNR 下更敏感。波形分支通过复平面相干对齐补偿这些残差。
-
-### 7.2 Modal Diversity Is Reliability-Limited
-
-Remote 和 Local 是同一双向交换的两个端侧观测，物理上对等。组合 Phase 是二者的切向投影之和。在可控机械周期运动（CS 金属板）中，三模态等权融合接近最优——Phase 在此条件下具有与幅值相近的可靠性。但在真人自然呼吸（HKH）中，Phase 的跨 tone 一致性和波形保真度系统性低于两端幅值，等权三模态（0.405）因 Phase 噪声注入而劣于仅使用 Remote+Local 双模态（0.371）和 Remote-only（0.376）。因此，三模态等权融合应定位为消融对照；BreatheCS 的默认 BPM 配置采用 Remote+Local 双模态融合（G0）。
-
-### 7.3 解锁器效应的物理含义
-
-实验发现仅当第一级使用连续 Hilbert 相位校正时，第二级模态对齐才有效（CS 跨域：B2-D 有效、A1-D 无效）。这与 §4 模型一致：符号校正后残留的非二值相位误差污染模态波形，第二级无法从已退化输入中恢复。连续对齐保住保真度，从而”解锁”模态级相干融合收益。此效应也说明：将 BLE CS 的 tone 间/模态间相位关系建模为连续的（而非二值的）是必要的。
-
-### 7.4 Physical Complementarity Does Not Guarantee Fusion Gain
-
-从复信道微扰模型看，幅值与相位分别对应径向和切向投影，二者在数学上具有互补性。然而，物理投影的互补性并不等同于实际测量可靠性的互补性。
-
-我们的实验表明：（i）在受控机械周期运动中，组合相位能够形成与幅值相近的稳定呼吸峰；（ii）在真人自然呼吸中，其跨 tone 一致性和波形保真度均明显下降（Δr = −0.081）；（iii）Phase 对已有正确结果的破坏频率（49%）显著高于其救援频率（18%）；（iv）即使利用 ground truth 选择最有利于 Phase 的窗口，BPM 改善上限也仅为 0.028 breaths/min；（v）简单置信度门控相对 R+L 无统计显著增益。
-
-上述结果的含义是：物理互补性描述的是潜在信息方向——不同投影”可能”含有不同信息；但分集增益取决于测量噪声和估计误差之后仍可利用的信息。前者成立并不保证后者成立。因此，在当前 BLE CS 平台和实验条件下，组合相位更适合作为条件性辅助观测，而非默认参与融合的第三模态。
-
-Phase 的可靠性具有明显的场景依赖性——它在机械运动中正常、在真人呼吸中退化——这排除了”Phase 本身不可用”的简单解释。可能的原因包括双端误差累积、切向分量抵消、非正弦呼吸形态、身体微动和复杂动态散射等。这些因素的分离需要受控工作点扫描实验，超出本文范围。
-
-不足与未来方向：复杂多径（cs_091339）仍是全局瓶颈；受控工作点扫描实验是验证物理模型的最直接方式 [待确认可行性]；多人呼吸、呼吸暂停检测、per-window 动态分支选择是后续扩展方向。
-
----
+未来的工作中，我们将进一步发掘BLE CS 的功能特性，包括研究合成相位是否具备更多可利用的特性。除此之外，现有工作也可以在未来推广到多人呼吸，以更好地利用BLE CS 相对丰富的信道资源。
 
 ## 8. Conclusion / 结论
 
-**EN**: This work presented BreatheCS, a measurement-aware framework for contactless respiration sensing with Bluetooth Channel Sounding. By modeling the bidirectional PCT measurements, we showed that BLE CS provides two endpoint amplitude observations and one composite-phase observation with distinct complex-plane sensitivities and noise characteristics. Our measurements further revealed heterogeneous sensing quality across tones, continuous and scene-dependent phase relationships, and different processing requirements for respiratory-rate estimation and waveform recovery. Based on these findings, BreatheCS combines a shared quality-aware tone-fusion front-end with a spectral branch for robust BPM estimation and a hierarchical complex-domain branch for waveform reconstruction. Evaluation on controlled mechanical motion and 12 human-subject recordings achieved a mean BPM error of 0.371 breaths/min and a normalized waveform RMSE of 0.937. More importantly, the ablation results showed that tone diversity is the most reliable source of improvement (1.640 → 0.381 BPM), whereas modal diversity—particularly composite phase—provides conditional rather than universal benefit. These findings suggest that future BLE CS sensing systems should avoid directly migrating fixed WiFi CSI fusion assumptions and instead account for the bidirectional measurement structure and task-specific sensing objective. Future work will investigate observable conditions under which composite phase provides complementary information, improve robustness to body motion and complex multipath, and extend the framework to irregular breathing and apnea detection. [⚠️ D1, D3: Phase 相关 future work 的措辞取决于 oracle 上限和 gate 结果——若 D3 成功则改为 "scale the adaptive Phase gating to larger cohorts"，若失败则保持当前措辞]
+**EN**: This work presented BreatheCS, a measurement-aware framework for contactless respiration sensing with Bluetooth Channel Sounding. By modeling the bidirectional PCT measurements, we showed that BLE CS provides two endpoint amplitude observations and one composite-phase observation with distinct complex-plane sensitivities and noise characteristics. Our measurements further revealed heterogeneous sensing quality across tones, continuous and scene-dependent phase relationships, and different processing requirements for respiratory-rate estimation and waveform recovery. Based on these findings, BreatheCS combines a shared quality-aware tone-fusion front-end with a spectral branch for robust BPM estimation and a waveform branch that coherently fuses endpoint amplitudes and selectively chooses against the composite-phase candidate. Evaluation on controlled mechanical motion and 12 human-subject recordings achieved a mean BPM error of 0.371 breaths/min and a normalized waveform RMSE of 0.937. More importantly, the ablation and oracle results showed that tone diversity is the most reliable source of improvement (1.640 → 0.381 BPM), whereas modal diversity—particularly composite phase—provides conditional rather than universal benefit. These findings suggest that future BLE CS sensing systems should avoid directly migrating fixed WiFi CSI fusion assumptions and instead account for the bidirectional measurement structure and task-specific sensing objective. Future work will investigate observable conditions under which composite phase provides complementary information, improve robustness to body motion and complex multipath, and extend the framework to irregular breathing and apnea detection.
 
-**CN**: 本文提出了 BreatheCS，一个面向 BLE 信道探测的测量感知非接触呼吸感知框架。通过建模双向 PCT 测量，我们表明 BLE CS 提供了两个端侧幅值观测和一个组合相位观测——三者具有不同的复平面灵敏度和噪声特性。实验测量进一步揭示了 tone 间显著的感知质量异质性、连续且场景依赖的相位关系，以及呼吸率估计和波形恢复需要不同的处理域。基于这些发现，BreatheCS 组合了共享的质量驱动 tone 融合前端、稳健的谱域 BPM 分支，以及分层复平面相干波形分支。在可控机械运动和 12 条真人记录上的评估实现了 0.371 breaths/min 的平均 BPM 误差和 0.937 的归一化波形 RMSE。消融实验揭示了一个核心发现：**tone diversity 是最稳定、最大的增益来源（1.640 → 0.381 BPM），而 modal diversity——特别是组合相位的增益——是条件性的，取决于场景和信号质量。** 这些发现为未来 BLE CS 感知系统指明了方向：不应直接迁移 WiFi CSI 的固定融合假设，而应考虑双向测量结构和感知目标对融合域的不同需求。
+**CN**: 本文提出了 BreatheCS，一个面向 BLE 信道探测的测量感知非接触呼吸感知框架。通过建模双向 PCT 测量，我们表明 BLE CS 提供了两个端侧幅值观测和一个组合相位观测——三者具有不同的复平面灵敏度和噪声特性。实验测量进一步揭示了各个模态和信道的 tone 间显著的感知质量异质性、连续且场景依赖的相位关系，以及呼吸率估计和波形恢复需要不同的处理域。基于这些发现，BreatheCS 组合了共享的质量驱动信道融合前端、稳健的谱域 BPM 分支，以及端侧幅值相干融合后与组合相位候选选择的波形分支。在 12 条真人记录上的评估实现了 0.371 breaths/min 的平均 BPM 误差和 0.937 的归一化波形 RMSE。消融与 oracle 实验揭示：tone diversity 是最稳定、最大的增益来源，而 modal diversity——特别是组合相位——是条件性的。这些发现为未来 BLE CS 感知系统提供了有价值的参考。
 
----
 
 ## References / 参考文献
-
-**EN**: [TBD — WiFi Fresnel zone papers (Wang et al. MobiCom, Zhang et al. MobiSys), Fan 2024, Yu 2021 WiFi-Sleep, Zhuo 2023 PCA-VMD, FullBreathe (Zhang et al.), FarSense, BLE CS spec (Bluetooth Core Specification 6.0), etc.]
-
-**CN**: [待补充 — 菲涅尔区 WiFi 感知论文、Fan 2024、Yu 2021 WiFi-Sleep、Zhuo 2023 PCA-VMD、FullBreathe、FarSense、BLE Core 6.0 信道探测规范、BLE CS device-free sensing 早期演示工作等。]
-
-> ⚠️ **版本修正（v0.4）**：全文统一 Bluetooth 版本为 **Core Specification 6.0**（旧版 draft 中英文不一致——英文写 5.2、中文写 6.0）。Channel Sounding 是 Bluetooth Core 6.0 引入的新功能。
