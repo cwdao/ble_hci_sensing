@@ -12,7 +12,7 @@
 
 **EN**: Bluetooth Channel Sounding (CS) exposes multi-frequency bidirectional measurements that enable contactless respiration sensing on low-power BLE devices. Unlike WiFi CSI, however, BLE CS provides two endpoint amplitude observations and a composite-phase observation derived from reciprocal PCT exchanges, while operating at a sparse and potentially irregular event rate. We show that these observables should not be treated as interchangeable channels: tone diversity provides consistent sensing gain, whereas composite phase is physically complementary to amplitude but conditionally reliable for natural respiration. We present BreatheCS, a measurement-aware framework that separates respiratory-rate estimation from waveform reconstruction. For BPM estimation, BreatheCS aggregates quality-weighted tone spectra, which is robust to residual inter-tone timing and phase mismatch. For waveform recovery, it coherently aligns tones within each endpoint-amplitude modality in the complex domain, fuses the aligned endpoint candidates, and selectively chooses between the amplitude and composite-phase candidates according to window-level quality. Across three controlled mechanical-motion settings and 12 human recordings from four participants in three indoor sensing scenarios, BreatheCS achieves a mean absolute BPM error of 0.371 breaths/min and a normalized waveform RMSE of 0.937. Ablations show that tone aggregation is the dominant source of improvement (1.640 to 0.381 breaths/min), while unconditional inclusion of composite phase is less reliable than endpoint-amplitude sensing. These findings indicate that BLE CS sensing requires task-specific and reliability-aware fusion rather than direct migration of WiFi CSI fusion assumptions.
 
-**CN**: 蓝牙信道探测（Channel Sounding, CS）通过互易 PCT 交换提供两个端侧幅值观测与一个组合相位观测，为低功耗 BLE 上的非接触呼吸感知提供了新的测量原语；但其稀疏、可能不均匀的事件率，以及 tone/模态间连续相位关系，使 WiFi CSI 的融合假设难以直接迁移。本文提出 BreatheCS：将呼吸率估计与波形恢复分开处理。BPM 分支做质量加权谱聚合；波形分支在各端侧幅值模态内做复平面相干对齐，融合端侧幅值候选后，再按窗级质量在幅值候选与组合相位候选之间选择，而非默认三模态相干合并。在三个可控金属板设置与四名受试者、三种室内感知场景下的 12 条真人记录上，BreatheCS 的平均绝对 BPM 误差为 0.371 breaths/min，归一化波形 RMSE 为 0.937。消融表明 tone 聚合是主导且稳定的增益来源（1.640 → 0.381 BPM），而无条件纳入组合相位不如端侧幅值感知可靠。结论是：物理互补性不等于统计可靠性，BLE CS 感知需要任务专用、可靠性感知的融合，而非直接照搬 WiFi CSI 融合假设。
+**CN**: 蓝牙信道探测（Channel Sounding, CS）通过互易 PCT 交换提供两个端侧幅值观测与一个组合相位观测，为低功耗 BLE 上的非接触呼吸感知提供了新的测量原语；但其稀疏、可能不均匀的事件率，以及 信道channel/模态间连续相位关系，对合理利用观测量提出了新挑战。本文通过多个场景的受控金属板实验发掘并验证BLE CS的观测特性，随后提出BreatheCS：将呼吸率估计与波形恢复分开处理。BPM 分支做质量加权谱聚合；波形分支在各端侧幅值模态内做复平面相干对齐。两个分支在各自任务上融合端侧幅值候选后，再按窗级质量在幅值候选与组合相位候选之间选择，以确定最终估计。 通过在四名受试者、三种室内感知场景下的 12 条真人记录上验证性能，BreatheCS 的平均绝对 BPM 误差为 0.371 breaths/min，归一化波形 RMSE 为 0.937。消融表明信道聚合是主导且稳定的增益来源，组合相位在大多数情况下不如端侧幅值可靠。结论是：BLE CS 的呼吸感知需要对观测特性做针对性算法设计，才能获得最佳的呼吸监测性能。
 
 ## 1. Introduction / 引言
 
@@ -26,7 +26,7 @@ Respiration is a fundamental physiological indicator for sleep monitoring, chron
 
 BLE is widely deployed, and Channel Sounding (CS) is becoming available in a new generation of Bluetooth Core 6.0-capable chipsets. CS was designed for secure fine ranging via Phase-Based Ranging (PBR) and Round-Trip Timing (RTT), but it simultaneously exposes bidirectional phase-related measurements over up to 72 RF channels—creating a new opportunity for device-free sensing on energy-efficient BLE platforms. However, CS was designed for ranging rather than physiological sensing, and its measurement structure differs substantially from the WiFi CSI commonly used in prior respiration systems.
 
-BLE 已广泛部署，Channel Sounding（CS）正在新一代支持 Bluetooth Core 6.0 的芯片组中可用。CS 本为通过基于相位的测距（PBR）和往返时间（RTT）实现安全的精细测距而设计，但它同时暴露了跨多达 72 个 RF 信道的双向相位相关测量——这为低功耗 BLE 平台上的非接触式感知创造了新机遇。然而，CS 是为测距而非生理感知设计的，其测量结构与现有呼吸感知系统中常用的 WiFi CSI 存在根本差异。
+BLE 已广泛部署，Channel Sounding（CS）正在新一代支持 Bluetooth Core 6.0 的芯片组中可用。CS 本为通过基于相位的测距（PBR）和往返时间（RTT）实现安全的精细测距而设计，但它同时暴露了跨多达 72 个 RF 信道的双向相位相关测量，这为低功耗 BLE 平台上的非接触式感知创造了新机遇。但我们发现，CS 测量结构与呼吸感知系统并不直接适配，因为它的技术特性仅考虑了测距需求。
 
 ### 1.3 为什么 WiFi 方法不能直接迁移？
 
@@ -38,13 +38,13 @@ Directly migrating WiFi respiration pipelines to BLE CS is problematic for three
 
 **Difference 3: Inter-tone and inter-modal phase relationships.** Frequency-selective multipath and implementation non-idealities produce continuous, scene-dependent phase offsets across tones and across observation modalities (remote/local/phase). These offsets go beyond the binary in-phase/anti-phase (±1) relationship commonly assumed in WiFi Fresnel-zone models. Many existing fusion methods (PCA sign correction, MRC with fixed reference) assume only a binary relationship and are therefore insufficient.
 
-直接将 WiFi 呼吸感知管线迁移到 BLE CS 存在三个问题：
+通过受控的金属板实验，我们观察到在BLE CS 上应用呼吸感知管线存在三个挑战：
 
-**区别 1：观测结构。** WiFi 通常提供单向复 CSI 或天线/子载波比值。BLE CS 通过互易双向交换产生两个端侧 PCT 测量。将它们组合以抵消本振偏置后，我们获得两个端侧幅值观测量（remote_amplitudes、local_amplitudes）和一个组合相位观测量（phases）。这三个观测量代表同一信道扰动在复平面上的不同投影方向，而非独立的传播路径。
+**挑战 1：观测结构。** BLE CS 通过互易双向交换产生两个端侧 PCT 测量。将它们组合以抵消本振偏置后，我们获得两个端侧幅值观测量（remote_amplitudes、local_amplitudes）和一个组合相位观测量（phases）。现有的感知方案，例如WiFi，则通常提供单向复 CSI 或天线/子载波比值。
 
-**区别 2：采样条件。** BLE CS 事件通常在 250–500 ms 内完成，有效速率 2–4 Hz。在此速率下的 20 秒滑窗中，仅有 2–7 个呼吸周期（0.1–0.35 Hz），且事件间隔可能不均匀。短窗时域对齐因此对时序误差、噪声和非平稳运动更敏感——比典型 WiFi CSI 数据流更脆弱。
+**挑战 2：采样条件。** BLE CS 事件通常在 250–500 ms 内完成，有效速率 2–4 Hz。在此速率下的 20 秒滑窗中，仅有 2–7 个呼吸周期（0.1–0.35 Hz），且事件间隔可能不均匀。短窗时域对齐因此对时序误差、噪声和非平稳运动更敏感。
 
-**区别 3：Tone 间与模态间的相位关系。** 频率选择性多径和实现非理想性导致 tone 间和观测模态间（remote/local/phase）产生连续、场景依赖的相位偏移。这些偏移超越了 WiFi 菲涅尔区模型中通常假设的二值同相/反相（±1）关系。许多现有融合方法（PCA 符号校正、固定参考 MRC）仅假设二值关系，因而不充分。
+**挑战 3：信道间与模态间的相位关系。** 频率选择性多径和实现非理想性导致信道间和观测模态间（remote/local/phase）产生连续、场景依赖的相位偏移。这些偏移超越了典型的二值同相/反相关系。许多现有融合方法【PCA、MRC】仅假设二值关系，因而不充分。
 
 ### 1.4 关键实验洞察
 
@@ -58,17 +58,17 @@ Our measurements lead to three design insights:
 
 我们的测量产生了三条设计洞察：
 
-1. **Tone diversity 是主要增益。** 可靠的 tone 聚合提供了最大且最稳定的改进，因为各 CS tone 的呼吸灵敏度差异显著（单 tone BPM 误差 1.640 → 信道融合 0.381 BPM）。没有任何单一 tone 或少量 tone 子集在所有场景中持续可靠。
+1. **Channel diversity 是主要增益。** 可靠的 信道聚合提供了最大且最稳定的改进，因为各 CS 信道的呼吸灵敏度差异显著（单 tone BPM 误差 1.640 → 信道融合 0.381 BPM）。没有任何单一 tone 或少量 tone 子集在所有场景中持续可靠。
 
-2. **呼吸率和波形需要不同的融合域。** 幅度谱丢弃了时间信息，因此对 tone 间的残余时间偏移稳健——适合 BPM 估计。波形恢复则需要相干相位对齐以保留形态学特征。强迫同一融合机制同时服务两个目标会至少损害其中一个。
+2. **呼吸率和波形需要不同的融合域。** 幅度谱丢弃了时间信息，因此对信道间的残余时间偏移稳健。波形恢复则需要相干相位对齐以保留形态学特征。
 
-3. **模态分集的价值受观测可靠性限制。** Remote 和 Local 幅值物理对等，但并非在每个窗口中都同等可靠。组合相位虽与幅值形成径向/切向互补，但在真人自然呼吸中可靠性显著下降：无条件纳入更常破坏正确估计，且窗级 oracle 中仅少数窗口以 Phase 为最优（详见 §6 消融与 oracle 图）。因此，模态是否参与融合应由实际测量可靠性决定，而不能仅由其物理可获得性决定。
+3. **模态分集的价值受观测可靠性限制。** Remote 和 Local 幅值物理对等，但并非在每个窗口中都同等可靠。组合相位虽与幅值形成径向/切向互补，但在真人自然呼吸中可靠性显著下降。
 
 ### 1.5 方法概述
 
 Guided by these insights, we design BreatheCS, a measurement-aware dual-branch pipeline. A shared front-end scores tones using respiratory-band concentration $\eta$ and spectral peak prominence $\rho$. For BPM estimation, BreatheCS aggregates quality-weighted magnitude spectra across tones. For waveform recovery, it coherently aligns tones within each endpoint-amplitude modality in the complex domain, fuses the aligned Remote/Local candidates into an endpoint-amplitude candidate, and selectively chooses between that candidate and the composite-phase candidate according to window-level quality—rather than forcing all observables into a single coherent fusion output.
 
-基于这些洞察，我们设计了 BreatheCS。共享前端用 $\eta$（呼吸频段能量集中度）与 $\rho$（谱峰突出度）为各 tone 打分。BPM 分支跨 tone 做质量加权幅度谱聚合。波形分支先在各端侧幅值模态内做复平面相干对齐，再融合 Remote/Local 得到端侧幅值候选，并按窗级质量在幅值候选与组合相位候选之间选择，而不是默认把三种观测量强制并入同一相干输出。
+基于这些洞察，我们设计了 BreatheCS。共享前端用 $\eta$（呼吸频段能量集中度）为各 tone 打分。BPM 分支跨 信道做质量加权幅度谱聚合，随后在幅值与合成相位模态中选择能量更高的一项。波形分支先在各端侧幅值模态内做复平面相干对齐，再融合 Remote/Local 得到端侧幅值候选，并按窗级质量在幅值候选与组合相位候选之间选择。
 
 ### 1.6 贡献
 
@@ -82,11 +82,11 @@ This paper makes the following contributions:
 
 本文做出以下贡献：
 
-1. **BLE CS 呼吸观测建模与实证刻画。** 建立双向 PCT 呼吸观测模型，将可用测量表示为两个端侧幅值观测与一个组合相位观测，并分析其复平面灵敏度、tone 间关系以及场景相关的模态间相位关系，说明 BLE CS 呼吸感知不能被简单视为低采样率 WiFi CSI 感知。
+1. **BLE CS 呼吸观测建模与实证刻画。** 建立双向 PCT 呼吸观测模型，将可用测量表示为两个端侧幅值观测与一个组合相位观测，并分析其复平面灵敏度、tone 间关系以及场景相关的模态间相位关系。
 
 2. **任务专用、可靠性感知的融合。** 提出 BreatheCS：共享质量驱动的 tone 前端；谱域分支做稳健 BPM 估计；波形分支先做端侧幅值相干对齐，再在幅值与组合相位候选间按窗选择。
 
-3. **分集增益层级与选择性模态使用。** 通过融合层级消融、单模态对照与 oracle 分析，表明 tone diversity 是主导且稳定的增益；组合相位虽物理互补，但对自然呼吸仅条件可用，应选择性使用而非无条件融合。
+3. **分集增益层级与选择性模态使用。** 通过融合层级消融、单模态对照与 oracle 分析，表明 信道diversity 是主导且稳定的增益；组合相位虽物理互补，但对自然呼吸性能下降，大多数情况下仍不及幅值模态。
 
 ### 中心论点
 
