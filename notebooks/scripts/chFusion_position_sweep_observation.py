@@ -111,7 +111,7 @@ CHANNEL_COLORS = ["#1f77b4", "#ff7f0e", "#2ca02c", "#d62728", "#9467bd"]
 
 STYLE = {
     "linewidth": 1.6,
-    "fontsize": 11,
+    "fontsize": 16,
 }
 
 
@@ -551,7 +551,7 @@ def plot_fig_a(
             f"Fig A1 — ch{ch}, {dist} cm (seg{seg_i})",
             fontsize=STYLE["fontsize"],
         )
-        ax.legend(loc="upper right", fontsize=9, frameon=False)
+        ax.legend(loc="upper right", fontsize=16, frameon=False)
         _apply_style(ax)
         fig.tight_layout()
         out = figures_dir / f"position_sweep_figA1_seg{seg_i}_{dist}cm.png"
@@ -681,11 +681,11 @@ def plot_fig_b(
             y = _zscore(seg[var]["hp"]["highpass"][ch])
             ax.plot(t, y, color=CHANNEL_COLORS[r], lw=1.4)
             if r == 0:
-                ax.set_title(f"{dist} cm", fontsize=10)
+                ax.set_title(f"{dist} cm", fontsize=16)
             if c == 0:
-                ax.set_ylabel(f"ch{ch}", fontsize=10)
+                ax.set_ylabel(f"ch{ch}", fontsize=16)
             _apply_style(ax)
-            ax.tick_params(labelsize=7)
+            ax.tick_params(labelsize=10)
     fig.tight_layout()
     out_stem = figures_dir / "position_sweep_figB2_channel_position_matrix"
     png, pdf = _save_png_pdf(fig, out_stem)
@@ -741,7 +741,7 @@ def plot_fig_c(
                     )
                 ax.set_xlabel("Time (s)", fontsize=STYLE["fontsize"])
                 ax.set_ylabel("Offset z-score", fontsize=STYLE["fontsize"])
-                ax.legend(loc="upper right", fontsize=7, frameon=False, ncol=2)
+                ax.legend(loc="upper right", fontsize=14, frameon=True, ncol=2)
                 _apply_style(ax)
                 fig.tight_layout()
                 out_stem = figures_dir / f"position_sweep_figC1_{pos_key}_{short}"
@@ -905,7 +905,7 @@ def plot_fig_d(
         ax.set_title(f"ch {ch}", fontsize=STYLE["fontsize"])
         # xs already ordered 100→85; keep 100 on left (near→far)
         ax.set_xlim(101, 84)
-        ax.legend(loc="best", fontsize=9, frameon=False)
+        ax.legend(loc="best", fontsize=14, frameon=True)
         _apply_style(ax)
         fig.tight_layout()
         out_stem = figures_dir / f"position_sweep_figD2_dphi_vs_position_ch{ch}"
@@ -945,7 +945,8 @@ def plot_fig_d(
             ax.set_ylabel("Δφ (rad)", fontsize=STYLE["fontsize"])
             ax.set_title(f"ch {ch}", fontsize=STYLE["fontsize"])
             ax.set_xlim(101, 84)
-            ax.legend(loc="best", fontsize=8, frameon=False)
+            if ax is axes[0]:
+                ax.legend(loc="upper right", fontsize=14, frameon=True)
             _apply_style(ax)
         axes[-1].set_xlabel("Distance (cm)", fontsize=STYLE["fontsize"])
         fig.tight_layout()
@@ -1121,10 +1122,10 @@ def plot_fig_e(
         capsize=3,
     )
     ax.set_xticks(idx)
-    ax.set_xticklabels(x_labels, fontsize=8)
+    ax.set_xticklabels(x_labels, fontsize=14)
     ax.set_ylabel("η (mean ± std across tones)", fontsize=STYLE["fontsize"])
     ax.set_title("Fig E2 — η comparison: metal vs human", fontsize=STYLE["fontsize"])
-    ax.legend(frameon=False, fontsize=9)
+    ax.legend(frameon=False, fontsize=14)
     _apply_style(ax)
     fig.tight_layout()
     out = figures_dir / "position_sweep_figE2_eta_comparison.png"
@@ -1168,12 +1169,12 @@ def plot_fig_e(
     ax2.bar(idx + 1.5 * w, vals["h_rho"], w, yerr=errs["h_rho"], color="#c44e1a",
             label="Human ρ", capsize=2, edgecolor="black", linewidth=0.5, alpha=0.85)
     ax.set_xticks(idx)
-    ax.set_xticklabels(x_labels, fontsize=8)
+    ax.set_xticklabels(x_labels, fontsize=14)
     ax.set_ylabel("η (energy ratio)", fontsize=STYLE["fontsize"])
     ax2.set_ylabel("ρ (peak prominence)", fontsize=STYLE["fontsize"])
     h1, l1 = ax.get_legend_handles_labels()
     h2, l2 = ax2.get_legend_handles_labels()
-    ax.legend(h1 + h2, l1 + l2, frameon=False, fontsize=8, loc="upper right")
+    ax.legend(h1 + h2, l1 + l2, frameon=True, fontsize=14, loc="upper right")
     _apply_style(ax)
     fig.tight_layout()
     out_stem = figures_dir / "position_sweep_figE3_eta_rho_comparison"

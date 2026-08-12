@@ -376,9 +376,9 @@ def generate_fig2(
     colors = ["#1f77b4", "#ff7f0e", "#2ca02c", "#d62728"]
 
     panels = [
-        ("(a)", raw, "paper_fig2_a"),
-        ("(b)", pca_sign, "paper_fig2_b"),
-        ("(c)", hilbert_aligned, "paper_fig2_c"),
+        ("(a) Bandpass waveforms of representative tones", raw, "paper_fig2_a"),
+        ("(b) After PCA $\pm 1$ sign correction", pca_sign, "paper_fig2_b"),
+        ("(c) After Hilbert continuous phase alignment", hilbert_aligned, "paper_fig2_c"),
     ]
 
     # Combined: a/b/c each on its own row, ~70% prior width
@@ -386,11 +386,11 @@ def generate_fig2(
     for ax, (title, data, _stem) in zip(axes, panels):
         for i, lab in enumerate(labels):
             ax.plot(t, data[i], color=colors[i], label=lab, alpha=0.85)
-        ax.set_title(title)
-        ax.set_ylabel("Amplitude")
-        if title == "(a)":
-            ax.legend(loc="upper right", fontsize=7)
-    axes[-1].set_xlabel("Time (s)")
+        ax.set_title(title, fontsize=16)
+        ax.set_ylabel("Amplitude", fontsize=16)
+        if ax is axes[0]:
+            ax.legend(loc="upper right", fontsize=14)
+    axes[-1].set_xlabel("Time (s)", fontsize=16)
     fig.tight_layout()
     _save_figure(fig, "paper_fig2_inter_tone_phase")
     plt.close(fig)
@@ -401,9 +401,9 @@ def generate_fig2(
         for i, lab in enumerate(labels):
             ax.plot(t, data[i], color=colors[i], label=lab, alpha=0.85)
         ax.set_title(title)
-        ax.set_xlabel("Time (s)")
-        ax.set_ylabel("Amplitude")
-        ax.legend(loc="upper right", fontsize=7)
+        ax.set_xlabel("Time (s)", fontsize=16)
+        ax.set_ylabel("Amplitude", fontsize=16)
+        ax.legend(loc="upper right", fontsize=14)
         fig.tight_layout()
         _save_figure(fig, stem)
         plt.close(fig)
@@ -593,7 +593,7 @@ def generate_fig3(
 
     t = np.arange(win_len) / fs_plot
     colors = {"remote": "#1f77b4", "local": "#ff7f0e", "phase": "#2ca02c"}
-    pair_labels = ["remote−local", "remote−phase", "local−phase"]
+    pair_labels = ["R-L", "R-P", "L-P"]
     pair_colors = ["#1f77b4", "#d62728", "#9467bd"]
     studio_titles = {
         s1: "Studio position 1",
@@ -606,10 +606,10 @@ def generate_fig3(
     for k in ("remote", "local", "phase"):
         if k in before:
             ax.plot(t, before[k], color=colors[k], label=k, alpha=0.9)
-    ax.set_title("(a)")
-    ax.set_xlabel("Time (s)")
-    ax.set_ylabel("Amplitude")
-    ax.legend()
+    ax.set_title("Before alignment", fontsize=16)
+    ax.set_xlabel("Time (s)", fontsize=16)
+    ax.set_ylabel("Amplitude", fontsize=16)
+    ax.legend(fontsize=14,loc="upper left")
     ylim = ax.get_ylim()
 
     ax = axes[1]
@@ -618,11 +618,11 @@ def generate_fig3(
             ax.plot(t, after[k], color=colors[k], label=k, alpha=0.85)
     if y_fused.size:
         ax.plot(t, y_fused, color="k", linewidth=2.2, label="fused", zorder=5)
-    ax.set_title("(b)")
-    ax.set_xlabel("Time (s)")
-    ax.set_ylabel("Amplitude")
+    ax.set_title("After alignment", fontsize=16)
+    ax.set_xlabel("Time (s)", fontsize=16)
+    ax.set_ylabel("Amplitude", fontsize=16)
     ax.set_ylim(ylim)
-    ax.legend()
+    ax.legend(fontsize=14)
     fig.tight_layout()
     _save_figure(fig, "paper_fig3_ab")
     plt.close(fig)
@@ -632,10 +632,10 @@ def generate_fig3(
     for k in ("remote", "local", "phase"):
         if k in before:
             ax.plot(t, before[k], color=colors[k], label=k, alpha=0.9)
-    ax.set_title("(a)")
-    ax.set_xlabel("Time (s)")
-    ax.set_ylabel("Amplitude")
-    ax.legend()
+    ax.set_title("before alignment", fontsize=16)
+    ax.set_xlabel("Time (s)", fontsize=16)
+    ax.set_ylabel("Amplitude", fontsize=16)
+    ax.legend(fontsize=14)
     fig.tight_layout()
     _save_figure(fig, "paper_fig3_a")
     plt.close(fig)
@@ -646,11 +646,11 @@ def generate_fig3(
             ax.plot(t, after[k], color=colors[k], label=k, alpha=0.85)
     if y_fused.size:
         ax.plot(t, y_fused, color="k", linewidth=2.2, label="fused", zorder=5)
-    ax.set_title("(b)")
-    ax.set_xlabel("Time (s)")
-    ax.set_ylabel("Amplitude")
+    ax.set_title("after alignment", fontsize=16)
+    ax.set_xlabel("Time (s)", fontsize=16)
+    ax.set_ylabel("Amplitude", fontsize=16)
     ax.set_ylim(ylim)
-    ax.legend()
+    ax.legend(fontsize=14)
     fig.tight_layout()
     _save_figure(fig, "paper_fig3_b")
     plt.close(fig)
@@ -662,10 +662,10 @@ def generate_fig3(
         for i, lab in enumerate(pair_labels):
             ax.plot(x, dphi[:, i], color=pair_colors[i], label=lab, alpha=0.9)
         ax.axhline(0, color="gray", lw=0.8, ls="--")
-        ax.set_title(studio_titles[sid])
-        ax.set_xlabel("Window index")
-        ax.set_ylabel("Δφ (rad)")
-        ax.legend(fontsize=7)
+        ax.set_title(studio_titles[sid], fontsize=16)
+        ax.set_xlabel("Window index", fontsize=16)
+        ax.set_ylabel("Δφ (rad)", fontsize=16)
+        ax.legend(fontsize=14,loc="upper right")
     fig.tight_layout()
     _save_figure(fig, "paper_fig3_cd")
     plt.close(fig)
