@@ -10,7 +10,7 @@
 
 ## Abstract / 摘要
 
-**EN**: Bluetooth Channel Sounding (CS) provides two endpoint amplitude observations and one composite-phase observation through reciprocal PCT exchanges. This measurement primitive enables contactless respiration sensing on low-power BLE devices. CS has a sparse and potentially irregular event rate. It also has continuous phase relationships across channels and modalities. These properties make it hard to use the observations effectively. We first characterize BLE CS sensing properties with controlled metal-plate experiments across multiple scenes. We then present BreatheCS, which separates respiratory-rate estimation from waveform recovery. The BPM branch aggregates quality-weighted spectra. The waveform branch coherently aligns tones within each endpoint-amplitude modality. For each task, both branches fuse the endpoint-amplitude candidates. They then select between the amplitude and composite-phase candidates by window-level quality. We evaluate BreatheCS on 12 human recordings from four participants under three indoor sensing scenarios. It achieves a mean absolute BPM error of 0.371 breaths/min and a normalized waveform RMSE of 0.937. Ablations show that channel aggregation is the main and stable source of gain. Composite phase is less reliable than endpoint amplitudes in most cases. BLE CS respiration sensing therefore needs algorithms designed for its observation characteristics.
+**EN**: Bluetooth Channel Sounding (CS) provides two endpoint amplitude observations and one composite-phase observation through reciprocal phase correction term (PCT) exchanges. This measurement primitive enables contactless respiration sensing on low-power Bluetooth Low Energy (BLE) devices. CS has a sparse and potentially irregular event rate. It also has continuous phase relationships across channels and modalities. These properties make it hard to use the observations effectively. We first characterize BLE CS sensing properties with controlled metal-plate experiments across multiple scenes. We then present BreatheCS, which separates respiratory-rate estimation from waveform recovery. The breaths-per-minute (BPM) branch aggregates quality-weighted spectra. The waveform branch coherently aligns tones within each endpoint-amplitude modality. For each task, both branches fuse the endpoint-amplitude candidates. They then select between the amplitude and composite-phase candidates by window-level quality. We evaluate BreatheCS on 12 human recordings from four participants under three indoor sensing scenarios. It achieves a mean absolute BPM error of 0.371 breaths/min and a normalized waveform root-mean-square error (RMSE) of 0.937. Ablations show that channel aggregation is the main and stable source of gain. Composite phase is less reliable than endpoint amplitudes in most cases. BLE CS respiration sensing therefore needs algorithms designed for its observation characteristics.
 
 **CN**: 蓝牙信道探测（Channel Sounding, CS）通过互易 PCT 交换提供两个端侧幅值观测与一个组合相位观测，为低功耗 BLE 上的非接触呼吸感知提供了新的测量原语；但其稀疏、可能不均匀的事件率，以及 信道channel/模态间连续相位关系，对合理利用观测量提出了新挑战。本文通过多个场景的受控金属板实验发掘并验证BLE CS的观测特性，随后提出BreatheCS：将呼吸率估计与波形恢复分开处理。BPM 分支做质量加权谱聚合；波形分支在各端侧幅值模态内做复平面相干对齐。两个分支在各自任务上融合端侧幅值候选后，再按窗级质量在幅值候选与组合相位候选之间选择，以确定最终估计。 通过在四名受试者、三种室内感知场景下的 12 条真人记录上验证性能，BreatheCS 的平均绝对 BPM 误差为 0.371 breaths/min，归一化波形 RMSE 为 0.937。消融表明信道聚合是主导且稳定的增益来源，组合相位在大多数情况下不如端侧幅值可靠。结论是：BLE CS 的呼吸感知需要对观测特性做针对性算法设计，才能获得最佳的呼吸监测性能。
 
@@ -24,7 +24,7 @@ Respiration is a basic physiological indicator for sleep monitoring, chronic dis
 
 ### 1.2 为什么 BLE Channel Sounding 值得研究？
 
-BLE is widely deployed. Channel Sounding (CS) is becoming available in Bluetooth Core 6.0-capable chipsets. CS was designed for secure fine ranging via Phase-Based Ranging (PBR) and Round-Trip Timing (RTT). At the same time, it exposes bidirectional phase-related measurements over up to 72 RF channels. This creates a new opportunity for device-free sensing on energy-efficient BLE platforms. We find that the CS measurement structure does not directly fit respiration sensing. Its technical design considered only ranging requirements.
+Bluetooth Low Energy (BLE) is widely deployed. Channel Sounding (CS) is becoming available in Bluetooth Core 6.0-capable chipsets. CS was designed for secure fine ranging via Phase-Based Ranging (PBR) and Round-Trip Timing (RTT). At the same time, it exposes bidirectional phase-related measurements over up to 72 radio-frequency (RF) channels. This creates a new opportunity for device-free sensing on energy-efficient BLE platforms. We find that the CS measurement structure does not directly fit respiration sensing. Its technical design considered only ranging requirements.
 
 BLE 已广泛部署，Channel Sounding（CS）正在新一代支持 Bluetooth Core 6.0 的芯片组中可用【bluetooth6】。CS 本为通过基于相位的测距（PBR）和往返时间（RTT）实现安全的精细测距而设计\cite{bluetooth_channel_sounding}，但它同时暴露了跨多达 72 个 RF 信道的双向相位相关测量，这为低功耗 BLE 平台上的非接触式感知创造了新机遇【wang2025exploration，paulikas2026exploring】。但我们发现，CS 测量结构与呼吸感知系统并不直接适配，因为它的技术特性仅考虑了测距需求。
 
@@ -32,11 +32,11 @@ BLE 已广泛部署，Channel Sounding（CS）正在新一代支持 Bluetooth Co
 
 Through controlled metal-plate experiments, we observe three challenges when applying respiration sensing pipelines to BLE CS:
 
-**Challenge 1: Observable structure.** BLE CS produces two endpoint PCT measurements from a reciprocal bidirectional exchange. After we combine them to suppress local-oscillator offsets, we obtain two endpoint amplitude observables (`remote_amplitudes`, `local_amplitudes`) and one composite-phase observable (`phases`). Existing schemes such as WiFi typically provide single-ended complex CSI or antenna/subcarrier ratios.
+**Challenge 1: Observable structure.** BLE CS produces two endpoint phase correction term (PCT) measurements from a reciprocal bidirectional exchange. After we combine them to suppress local-oscillator offsets, we obtain two endpoint amplitude observables (`remote_amplitudes`, `local_amplitudes`) and one composite-phase observable (`phases`). Existing schemes such as Wi-Fi typically provide single-ended complex channel state information (CSI) or antenna/subcarrier ratios.
 
 **Challenge 2: Sampling conditions.** A BLE CS event typically completes in 250–500 ms. The effective rate is 2–4 Hz. In a 20-second sliding window, only 2–7 respiratory cycles (at 0.1–0.35 Hz) are available. Inter-event intervals can be uneven. Short-window temporal alignment is therefore sensitive to timing irregularity, noise, and non-stationary motion.
 
-**Challenge 3: Inter-channel and inter-modal phase relationships.** Frequency-selective multipath and implementation non-idealities produce continuous, scene-dependent phase offsets across channels and modalities (remote/local/phase). These offsets go beyond typical binary in-phase/anti-phase relationships. Many existing fusion methods (PCA, MRC) assume only a binary relationship and are therefore insufficient.
+**Challenge 3: Inter-channel and inter-modal phase relationships.** Frequency-selective multipath and implementation non-idealities produce continuous, scene-dependent phase offsets across channels and modalities (remote/local/phase). These offsets go beyond typical binary in-phase/anti-phase relationships. Many existing fusion methods, such as principal component analysis (PCA) and maximal-ratio combining (MRC), assume only a binary relationship and are therefore insufficient.
 
 通过受控的金属板实验，我们观察到在BLE CS 上应用呼吸感知管线存在三个挑战：
 
@@ -50,7 +50,7 @@ Through controlled metal-plate experiments, we observe three challenges when app
 
 Our measurements lead to three design insights:
 
-1. **Channel diversity is the dominant gain.** Reliable channel aggregation gives the largest and most consistent improvement. Individual CS channels vary strongly in respiration sensitivity (single-tone BPM error 1.640 → channel-fused 0.381 BPM). No single tone or small tone subset stays reliable across scenes.
+1. **Channel diversity is the dominant gain.** Reliable channel aggregation gives the largest and most consistent improvement. Individual CS channels vary strongly in respiration sensitivity (single-tone breaths-per-minute (BPM) error 1.640 → channel-fused 0.381 BPM). No single tone or small tone subset stays reliable across scenes.
 
 2. **Respiratory rate and waveform require different fusion domains.** Magnitude spectra discard timing information. They are therefore robust to residual temporal offsets between channels. Waveform recovery needs coherent phase alignment to preserve morphological features.
 
@@ -100,32 +100,46 @@ The central thesis connecting all sections of this paper is:
 
 ## 2. Related Work
 
-## 2. 相关工作（中文摘要）
+### 2.1 Device-Free RF Sensing
 
-### 无设备呼吸监测
+Many sensors have been used to monitor human activity. Respiration monitoring is valuable for disease prevention and sleep assessment~\cite{yang2022artificial}. RF sensing is more privacy-preserving and more convenient than cameras or wearables~\cite{liu2020human}. RF sensors fall into active and passive classes~\cite{iannizzotto2022perspective}. Active systems, such as ultra-wideband (UWB) radar~\cite{shyu2018detection} and frequency-modulated continuous-wave (FMCW) radar~\cite{yao2024non}, transmit dedicated probing waveforms. Passive systems reuse commodity radios, including Wi-Fi~\cite{zeng2018fullbreathe}, LoRa~\cite{zhang2020exploring}, BLE~\cite{wang2025exploration}, and IEEE 802.15.4~\cite{patwari2013monitoring}. Reusing existing infrastructure lowers deployment cost.
 
-> *为什么要监测呼吸*
+Passive wireless sensing infers human motion from how a signal changes as it propagates through space~\cite{youssef2007challenges,pahlavan2013principles}. Early studies focused on Wi-Fi. Selected network interface cards (NICs) and drivers can report fine-grained CSI~\cite{liu2015contactless}. CSI exposes fading across multiple orthogonal frequency-division multiplexing (OFDM) subcarriers and thereby enables activity sensing. Because CSI comes from the physical layer, it is more stable and more detailed than the received signal strength indicator (RSSI)~\cite{ma2019wifi,liu2015contactless,iannizzotto2022perspective}. CSI therefore expanded the performance of activity monitoring~\cite{wang2016wifall,liu2015contactless,wang2016human}. Later work extracted more stable phase features from CSI differences or ratios across antennas. These features further improved respiration monitoring and activity sensing~\cite{wang2017phasebeat,wu2022wifi,zeng2019farsense,ma2018signfi,ma2019wifi,zeng2018fullbreathe}. Most fine-grained CSI systems now use phase difference or phase ratio as the primary feature for respiration and other human activities~\cite{wu2020fingerdraw,zeng2019farsense,gao2021towards,chen2024wiphase}.
 
-已经有多种传感器被应用于人体活动的监测，其中呼吸监测具有疾病预防、睡眠监测的重要价值【yang2022artificial】。在感知方式上，基于无线射频的传感具有独特优势，因为其更具隐私性，且更方便【liu2020human】。无线传感的传感器又可进一步分为主动型和被动型传感两类【iannizzotto2022perspective】。前者如UWB【\cite{shyu2018detection}】, FMCW radar 【\cite{yao2024non}】，后者利用WIFi【\cite{zeng2018fullbreathe}】、LoRa【\cite{zhang2020exploring}】、BLE 【wang2025exploration】, IEEE 802.15.4【patwari2013monitoring】等如复用现有商业设施降低成本，具备独特的价值。
+### 2.2 Device-Free Sensing with BLE Channel Sounding
 
-基于被动式的无线感知需要获知信号在空间传播中的变化，以捕捉人体的活动【youssef2007challenges，pahlavan2013principles】。在这类研究早期，WIFI 是最早得到充分研究的，因为它能通过特定型号的设备和驱动向外报告丰富的信道状态信息 （CSI）【liu2015contactless】。CSI可令研究者获得WIFI 多个OFDM子载波在空间中的衰落，并据此感知人体活动。CSI 的稳定性和精细度要优于稍早期的RSSI 【ma2019wifi，liu2015contactless，iannizzotto2022perspective】，因为它来自通信协议的物理层。因此，基于CSI ，活动监测的性能得到了充分拓展【wang2016wifall，liu2015contactless，wang2016human】。【wang2017phasebeat，wu2022wifi，zeng2019farsense】则进一步通过多天线上的CSI 的差、比提取稳定的相位信息，实现了呼吸监测与活动感知性能的进一步提升【ma2018signfi，ma2019wifi，zeng2018fullbreathe】。目前，大多数细粒度CSI感知工作都使用相位差或相位比作为主要特征监测呼吸和其他人体活动【wu2020fingerdraw，zeng2019farsense，gao2021towards，chen2024wiphase】。
+BLE is designed for short-range connectivity. It is the second-largest Internet of Things (IoT) protocol after Wi-Fi~\cite{iotbusinessnews_state_of_iot_2025_21_1b}. To reduce power and cost, BLE uses frequency-hopping spread spectrum (FHSS)~\cite{falsafi1996transmission}. BLE RSSI is therefore highly variable. Relatively stable RSSI typically requires device-specific modifications~\cite{huang2019robust,iannizzotto2022perspective}. This reduced the incentive to use BLE for device-free sensing. Bluetooth 5.1 changed that. Direction Finding (DF) added hardware support for physical-layer channel measurements~\cite{bluetooth5.1overview,zand2019high} and enabled finer BLE sensing~\cite{zhang2023bleselect,taniguchi2024device}.
 
-### 基于BLE CS 的无设备感知
+Bluetooth 6.0 introduced CS with PBR. CS-PBR requires two devices to perform bidirectional channel measurements over multiple frequencies in order to estimate distance~\cite{zand2019high,Kastnes_NDT_2023}. CS ranging has begun to attract attention~\cite{schroder2019investigation,santra2024enhancing,tsemko2025data,de2024multipath,wieme2025performance}. How to use the richer CS observations and the bidirectional procedure for device-free sensing remains largely unexplored~\cite{tian2023bluebreathe,paulikas2026exploring}.
 
-BLE 的功能设计主要面向短距离无线连接，是仅次于Wi-Fi 的第二大物联网协议【iotbusinessnews_state_of_iot_2025_21_1b】。由于追求功耗和成本优化，BLE 选择FHSS作为扩频技术【falsafi1996transmission】，这导致BLE 的RSSI是随机多变的，需要专门对设备修改才能得到相对稳定的RSSI【huang2019robust，iannizzotto2022perspective】 。这使得BLE在无设备感知的应用缺乏动力。不过，这一情况在BLE 5.1版本开始出现改变，该版本引入的 Direction Finding（DF）功能为BLE设备带来了物理层信道测量的硬件支持【bluetooth5.1overview,zand2019high】，这为使用BLE实现更精细的感知带来可能【zhang2023bleselect,taniguchi2024device】。
+Beyond the deployment scale of BLE, CS can report measurements through the standard Host Controller Interface (HCI)~\cite{BluetoothCore6.0Overview}. A CS sensing method is therefore compatible with BLE 6.0 platforms. Table~\ref{tab:rf_comparison} compares representative wireless sensing technologies and their constraints.
 
-BLE 6.0 推出了信道探测 （CS），引入了基于相位的测距（PBR）。CS-PBR需要两个设备在多个频率上执行双向的信道测量，以估计设备的间距【zand2019high，Kastnes_NDT_2023】。基于CS的测距性能优化已经开始得到关注【schroder2019investigation，santra2024enhancing，tsemko2025data，de2024multipath, wieme2025performance】,但如何将BLE CS 这一更丰富的信道观测和全新的双向过程充分应用于无设备感知，当前尚且缺乏探索【tian2023bluebreathe，paulikas2026exploring】。
+This paper develops a respiration sensing model for BLE CS and studies its potential for respiration monitoring.
 
-除了BLE 的广泛部署带来的潜在优势，CS 的独特优势还在于其能通过标准HCI接口直接报告测量结果【BluetoothCore6.0Overview】，这意味着基于CS 的感知方案兼容所有BLE 6.0 平台。我们在【table-比较表】列举了一些典型的无线感知技术，并比较它们的优势和局限。
+## 2. 相关工作
 
-本文通过建立BLE CS的呼吸感知模型，对BLE CS 这一全新的感知技术予以充分探讨和论证，以研究BLE CS 在呼吸感知的应用潜力。
+### 无设备射频感知
+
+已经有多种传感器被应用于人体活动的监测，其中呼吸监测具有疾病预防、睡眠监测的重要价值\cite{yang2022artificial}。在感知方式上，基于无线射频的传感具有独特优势，因为其更具隐私性，且更方便\cite{liu2020human}。无线传感的传感器又可进一步分为主动型和被动型传感两类\cite{iannizzotto2022perspective}。前者如超宽带（ultra-wideband, UWB）雷达\cite{shyu2018detection}、调频连续波（frequency-modulated continuous-wave, FMCW）雷达\cite{yao2024non}；后者利用 Wi-Fi\cite{zeng2018fullbreathe}、LoRa\cite{zhang2020exploring}、BLE\cite{wang2025exploration}、IEEE 802.15.4\cite{patwari2013monitoring} 等，通过复用现有商业设施降低成本，具备独特的价值。
+
+基于被动式的无线感知需要获知信号在空间传播中的变化，以捕捉人体的活动\cite{youssef2007challenges,pahlavan2013principles}。在这类研究早期，Wi-Fi 是最早得到充分研究的，因为它能通过特定型号的网卡和驱动向外报告丰富的信道状态信息（channel state information, CSI）\cite{liu2015contactless}。CSI 可令研究者获得 Wi-Fi 多个正交频分复用（orthogonal frequency-division multiplexing, OFDM）子载波在空间中的衰落，并据此感知人体活动。CSI 的稳定性和精细度要优于稍早期的接收信号强度指示（received signal strength indicator, RSSI）\cite{ma2019wifi,liu2015contactless,iannizzotto2022perspective}，因为它来自通信协议的物理层。因此，基于 CSI，活动监测的性能得到了充分拓展\cite{wang2016wifall,liu2015contactless,wang2016human}。后续工作则进一步通过多天线上 CSI 的差、比提取稳定的相位信息，实现了呼吸监测与活动感知性能的进一步提升\cite{wang2017phasebeat,wu2022wifi,zeng2019farsense,ma2018signfi,ma2019wifi,zeng2018fullbreathe}。目前，大多数细粒度 CSI 感知工作都使用相位差或相位比作为主要特征监测呼吸和其他人体活动\cite{wu2020fingerdraw,zeng2019farsense,gao2021towards,chen2024wiphase}。
+
+### 基于 BLE 信道探测的无设备感知
+
+BLE 的功能设计主要面向短距离无线连接，是仅次于 Wi-Fi 的第二大物联网协议\cite{iotbusinessnews_state_of_iot_2025_21_1b}。由于追求功耗和成本优化，BLE 选择跳频扩频（frequency-hopping spread spectrum, FHSS）作为扩频技术\cite{falsafi1996transmission}，这导致 BLE 的 RSSI 是随机多变的，需要专门对设备修改才能得到相对稳定的 RSSI\cite{huang2019robust,iannizzotto2022perspective}。这使得 BLE 在无设备感知的应用缺乏动力。不过，这一情况在 BLE 5.1 版本开始出现改变，该版本引入的 Direction Finding（DF）功能为 BLE 设备带来了物理层信道测量的硬件支持\cite{bluetooth5.1overview,zand2019high}，这为使用 BLE 实现更精细的感知带来可能\cite{zhang2023bleselect,taniguchi2024device}。
+
+BLE 6.0 推出了信道探测（Channel Sounding, CS），引入了基于相位的测距（phase-based ranging, PBR）。CS-PBR 需要两个设备在多个频率上执行双向的信道测量，以估计设备的间距\cite{zand2019high,Kastnes_NDT_2023}。基于 CS 的测距性能优化已经开始得到关注\cite{schroder2019investigation,santra2024enhancing,tsemko2025data,de2024multipath,wieme2025performance}，但如何将 BLE CS 这一更丰富的信道观测和全新的双向过程充分应用于无设备感知，当前尚且缺乏探索\cite{tian2023bluebreathe,paulikas2026exploring}。
+
+除了 BLE 的广泛部署带来的潜在优势，CS 的独特优势还在于其能通过标准主机控制器接口（Host Controller Interface, HCI）直接报告测量结果\cite{BluetoothCore6.0Overview}，这意味着基于 CS 的感知方案兼容所有 BLE 6.0 平台。我们在表~\ref{tab:rf_comparison} 列举了一些典型的无线感知技术，并比较它们的优势和局限。
+
+本文通过建立 BLE CS 的呼吸感知模型，对 BLE CS 这一全新的感知技术予以充分探讨和论证，以研究 BLE CS 在呼吸感知的应用潜力。
 
 
 
 
-## 3. BLE CS Primer / BLE CS 基础
+## 3. Preliminaries / BLE CS 基础
 
-### 3.1 BLE CS Physical Primer / BLE CS 物理基础
+### 3.1 Channel Sounding Measurements / BLE CS 物理基础
 
 > **EN**: [Brief description of CS exchange, PCT multiplication, LO drift cancellation. Why remote_amplitudes, local_amplitudes, and phases are the three usable observables. Why total amplitude is not used.]
 >
@@ -156,7 +170,7 @@ A_{\text{Local}},A_{\text{Remote}},\Phi
 $$
 由复数乘法获得的乘积的幅值就是幅值的乘积，并未引入新的物理量，因此不使用。
 
-### 3.2 Effective Sampling Rate and Its Consequences / 有效采样率及其影响
+### 3.2 Sampling Rate and Its Implications / 有效采样率及其影响
 
 > **EN**: BLE CS events occur at ~250–500 ms intervals (2–4 Hz). After bandpass filtering (0.1–0.35 Hz) and 20-second windowing, each window contains only ~2–7 breathing cycles (e.g., ~4 cycles for typical 0.2 Hz respiration). At this low effective rate, time-domain waveform alignment is more sensitive to event jitter, boundary effects, and non-stationary perturbations than in typical WiFi CSI streams. The spectral domain (|FFT|) discards timing information. It is therefore more robust for frequency estimation. Narrowband sinusoidal phase can still be estimated precisely at high SNR. Our experiments confirm that magnitude-spectrum fusion achieves consistently higher BPM robustness.
 >
@@ -166,11 +180,11 @@ $$
 
 单个Step的耗时约300us，启用全部的信道后，单个事件的时长约为21ms。但根据BLE6.0规范【引用预留】，远端的PCT需要经由 ranging service 返回，这需要占用更多的时间。我们在nordic nrf54L15 上进行了多次测试，发现最短的事件间隔约为250ms。但如果需要长期执行测量，需要适当放宽最大间隔的上限。因此，实际的事件间隔在 250-500ms之间，频率为2-4Hz。根据奈奎斯特采样定理，这恰好高于呼吸频率的2倍范围，因此可以实现呼吸感知。
 
-## 4. Sensing Respiration with BLE CS / 利用 BLE CS 感知呼吸
+## 4. Respiratory Observation Model / 呼吸观测模型
 
 本节建立用于解释基于 BLE CS 呼吸感知的观测模型。我们首先分析BLE CS的有效物理观测量；接着，我们尝试构建信道、观测量模态之间的呼吸波形关系，以指导如何融合这些呼吸波形，达到提升信噪比、更好地拟合原始呼吸波形的目标。为此，我们讨论同一模态内 CS 信道之间的关系，并分析顺序 CS 信道扫描是否会引入不可忽略的呼吸相位偏移。最后，我们将模型扩展为多有效成分相量表示，从而解释不同观测模态间的连续性相位偏差，以为所提出的两级相干融合方法提供动机。
 
-### 4.1 Respiratory Observation Model /CS的有效观测变量
+### 4.1 Usable Observables / 有效观测变量
 
 在 Section 3.1 中，我们论证了单次CS 测量可获得的变量。在呼吸感知中，我们需要连续进行CS测量，以获得各个变量的时序数据，随后用于进一步提取呼吸。
 
@@ -438,7 +452,7 @@ BreatheCS 用共享前端 + 两条专用分支应对这两个目标：
 
 对每个 tone、三种变量：首先将其插值到均匀的2Hz采样，然后采用短窗中值滤波 → $0.05\,\mathrm{Hz}$ 高通去缓变漂移 → $0.1$--$0.35\,\mathrm{Hz}$ 呼吸带通。相位变量在滤波前先做 unwrap。随后以 $20\,\mathrm{s}$ 窗长、$1\,\mathrm{s}$ 步长滑窗处理。记模态 $m$、信道$i$ 的带通波形为 $x_{m,i}(t)$。
 
-### 5.3 Stage 1: Per-Modal Channel Quality and Weighted Spectra / 逐模态信道质量与加权谱
+### 5.3 Tone Quality and Weighted Spectra / 逐模态信道质量与加权谱
 
 在进入任一分支前，为每个 tone计算并赋予反映呼吸频段主导性的质量分数$\eta$ （见 等式LaTeX: `eq:eta`）。设 $\mathcal{F}_b$ 为呼吸频段，$\mathcal{F}$ 为分析频段。对高通信号求功率谱 $P_{m,i}^{\text{hp}}(f)$ 用于 $\eta$；
 
@@ -466,7 +480,7 @@ $$
 
 （LaTeX: `eq:weighted_spectrum`）
 
-### 5.4 Stage 2a: BPM Branch — Modal Fusion and Rate Estimation / BPM 分支：模态融合与呼吸率估计
+### 5.4 BPM Branch: Amplitude Fusion and Phase Selection / BPM 分支：模态融合与呼吸率估计
 
 BLE CS 的 PCT 测量提供三种模态。信道级融合后，每条模态产生一条融合谱 $\bar{S}_m(f)$。BPM 分支在模态级将这些谱合并为最终谱，然后按窗级质量自适应加权：
 
@@ -499,7 +513,7 @@ $$
 
 该谱域分支是 BreatheCS 的**主 BPM 输出**。它继承质量加权信道融合的稳健性，并避免低采样率下脆弱的时域对齐。各波形的融合参考 MRC（最大比合并）的思想【参考预留】赋予权重。经典 MRC 权重通常与复信道系数和噪声方差有关；在 BreatheCS 中，我们用呼吸能量权重 $w$ 近似这一角色，因此更准确地说是 **MRC-inspired quality-weighted coherent combining**。
 
-### 5.5 Stage 2b: Waveform Branch — Coherent Endpoint Fusion and Phase Selection / 波形分支：端侧相干融合与相位候选选择
+### 5.5 Waveform Branch: Endpoint Coherent Fusion and Phase Selection / 波形分支：端侧相干融合与相位候选选择
 
 波形恢复使用 Hilbert 变换配合的质量加权相干合并（信道级对齐 + 端侧幅值融合，再与 Phase 候选选择）。从第四章出发，我们将模态 $m$、tone $i$ 的带限呼吸分量写为：
 
@@ -607,7 +621,7 @@ $y_{\mathrm{final}}(t) = \operatorname{Re}\{z_{\mathrm{final}}(t)\}.$
 $y_{\mathrm{final}}(t)$ 是 BreatheCS 的主波形输出，用于呼吸波形的恢复。
 
 
-## 6. Experimental Validation / 实验验证
+## 6. Evaluation / 实验验证
 
 ### 6.1 Setup / 实验设置
 
