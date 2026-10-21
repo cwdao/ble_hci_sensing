@@ -584,16 +584,16 @@ Fan 等人【Fan2024】 先计算各信道呼吸能量比（BNR），然后用MR
 
 | Method | Living sitting | Bedroom flat | Bedroom side |
 |---|---:|---:|---:|
-| **BreatheCS** | **0.356** | **0.412** | **0.344** |
+| **BreatheCS** | **0.356 (0.092)** | **0.412 (0.169)** | **0.344 (0.096)** |
 | Pos-Free (PCA) | 0.415 (0.091) | 0.436 (0.182) | 0.455 (0.057) |
 | WiFi-Sleep (MRC-PCA) | 0.609 (0.123) | 0.451 (0.176) | 0.455 (0.065) |
-| BreatheCS-Wave | 0.358 | 0.424 | 0.374 |
+| BreatheCS-Wave | 0.358 (0.070) | 0.424 (0.139) | 0.374 (0.107) |
 | WiFi-Sleep (√η) | 1.521 (1.895) | 0.532 (0.205) | 1.016 (0.787) |
 | PCA sign only | 1.365 (0.806) | 1.212 (0.449) | 1.373 (0.618) |
 | ClessBreath (η-linear) | 1.498 (2.070) | 1.225 (1.286) | 1.434 (1.593) |
 | ClessBreath (η-equal) | 1.400 (1.709) | 2.038 (1.723) | 1.022 (0.758) |
 
-> 每场景 4 subjects 均值（客厅静坐 / 卧室平躺 / 卧室侧躺；后两者同属卧室）。括号内为 4 subject 间标准差（总体 std，N=4，`np.std(ddof=0)`）。单位：BPM abs err。baseline std 来自 `ble_hkh_paper_baselines_summary.json`（by_room `bpm_std_across_scenarios`，ddof=0）。BreatheCS / BreatheCS-Wave 的 per-room std 待补（见 `docs/plans/paper_std_collection_plan.md`，统一 ddof=0）。
+> 每场景 4 subjects 均值（客厅静坐 / 卧室平躺 / 卧室侧躺；后两者同属卧室）。括号内为 4 subject 间标准差（总体 std，N=4，`np.std(ddof=0)`）。单位：BPM abs err。baseline std 来自 `ble_hkh_paper_baselines_summary.json`（by_room `bpm_std_across_scenarios`，ddof=0）。BreatheCS / BreatheCS-Wave 的 per-room std 来自 `outputs/reports/paper_table63b_per_room_std.json`（`draft_s_rl` / `draft_w_rl` 的 `bpm_per_scenario`，按房间 4 subject、ddof=0）。
 
 ![Figure 6a: HKH BPM leaderboard across 12 scenarios. BreatheCS (spectral BPM, ★) = 0.371 breaths/min mean abs error; paper method names.](../../outputs/figures/paper_fig6a_bpm_leaderboard.png)
 
@@ -603,21 +603,21 @@ Fan 等人【Fan2024】 先计算各信道呼吸能量比（BNR），然后用MR
 
 #### Waveform Recovery Accuracy / 波形恢复精度
 
-在【表6.4】展示了各方法在波形恢复的RMSE。相对迁移自 WiFi 的外部 baseline，BreatheCS 取得最低 RMSE（0.937±0.209），相对次优外部方法约降低 10% 以上。内部单模态消融中，Remote-only 亦接近该水平（见表 8-B），说明端侧幅值融合带来的平均波形增益有限，主要收益仍在稳健性与任务分流，而非大幅拉开与最强单端模态的差距。
+在【表6.4】展示了各方法在波形恢复的RMSE。相对迁移自 WiFi 的外部 baseline，BreatheCS 取得最低 RMSE（0.937±0.201），相对次优外部方法约降低 10% 以上。内部单模态消融中，Remote-only 亦接近该水平（见表 8-B），说明端侧幅值融合带来的平均波形增益有限，主要收益仍在稳健性与任务分流，而非大幅拉开与最强单端模态的差距。
 
 - Table 6.4 · Waveform RMSE（对应 Fig 7）
 
 | Method | RMSE mean | RMSE std |
 |---|---:|---:|
-| **BreatheCS** | **0.937** | 0.209 |
-| Pos-Free (PCA) | 1.070 | 0.250 |
-| WiFi-Sleep (MRC-PCA) | 1.063 | 0.245 |
-| WiFi-Sleep (√η) | 1.054 | — |
-| PCA sign only | 1.085 | 0.182 |
-| ClessBreath (η-linear) | 1.025 | 0.241 |
-| ClessBreath (η-equal) | 1.046 | 0.211 |
+| **BreatheCS** | **0.937** | 0.201 |
+| Pos-Free (PCA) | 1.070 | 0.239 |
+| WiFi-Sleep (MRC-PCA) | 1.063 | 0.234 |
+| WiFi-Sleep (√η) | 1.054 | 0.228 |
+| PCA sign only | 1.085 | 0.174 |
+| ClessBreath (η-linear) | 1.025 | 0.231 |
+| ClessBreath (η-equal) | 1.046 | 0.202 |
 
-> HKH 12 scenarios。BreatheCS = 谱 BPM（G0/`draft_s_rl`）+ R+L 波形 RMSE（`draft_w_rl`）；BreatheCS-Wave 行给出同管线时域分支 BPM（0.385）。旧三模态等权波形 RMSE 0.951 仅作消融对照。
+> HKH 12 scenarios。BreatheCS = 谱 BPM（G0/`draft_s_rl`）+ R+L 波形 RMSE（`draft_w_rl`）；BreatheCS-Wave 行给出同管线时域分支 BPM（0.385）。旧三模态等权波形 RMSE 0.951 仅作消融对照。RMSE std 为 12 场景间总体标准差（`np.std(ddof=0)`）。原表数值 std 来自 `chFusion_paper_figure_redraw.py` 的 `np.std(ddof=1)`，已按 √(11/12) 折算。WiFi-Sleep (√η) 原为「—」，现由同一 per-scenario RMSE 序列补为 ddof=0。见 `outputs/reports/paper_table63b_per_room_std.json` 的 `table_64_waveform_rmse`。
 
 ![Figure 7: BPM vs RMSE trade-off on HKH 12 scenarios. BreatheCS (★) best joint; BreatheCS-Wave (◆) shown only for branch contrast, not as a separate table row.](../../outputs/figures/paper_fig7_bpm_vs_rmse.png)
 

@@ -1076,7 +1076,9 @@ These results show that several established fusion strategies remain effective w
 \begin{table*}[t]
     \centering
     \caption{Mean absolute BPM error by sensing scenario, in
-    breaths/min. Each scenario includes four participants.}
+    breaths/min. Each scenario includes four participants.
+    Parentheses are the standard deviation across those four
+    participants (population standard deviation, $N=4$).}
     \label{tab:bpm_scenario}
     \small
     \begin{tabular}{lrrr}
@@ -1087,21 +1089,21 @@ These results show that several established fusion strategies remain effective w
         & Bedroom: side lying \\
         \midrule
         \textbf{BreatheCS}
-        & \textbf{0.356} & \textbf{0.412} & \textbf{0.344} \\
+        & \textbf{0.356 (0.092)} & \textbf{0.412 (0.169)} & \textbf{0.344 (0.096)} \\
         Pos-Free (PCA)
-        & 0.415 & 0.436 & 0.455 \\
+        & 0.415 (0.091) & 0.436 (0.182) & 0.455 (0.057) \\
         WiFi-Sleep (MRC--PCA)
-        & 0.609 & 0.451 & 0.455 \\
+        & 0.609 (0.123) & 0.451 (0.176) & 0.455 (0.065) \\
         BreatheCS-Wave
-        & 0.358 & 0.424 & 0.374 \\
+        & 0.358 (0.070) & 0.424 (0.139) & 0.374 (0.107) \\
         WiFi-Sleep ($\sqrt{\eta}$)
-        & 1.521 & 0.532 & 1.016 \\
+        & 1.521 (1.895) & 0.532 (0.205) & 1.016 (0.787) \\
         PCA sign only
-        & 1.365 & 1.212 & 1.373 \\
+        & 1.365 (0.806) & 1.212 (0.449) & 1.373 (0.618) \\
         ClessBreath ($\eta$-linear)
-        & 1.498 & 1.225 & 1.434 \\
+        & 1.498 (2.070) & 1.225 (1.286) & 1.434 (1.593) \\
         ClessBreath ($\eta$-equal)
-        & 1.400 & 2.038 & 1.022 \\
+        & 1.400 (1.709) & 2.038 (1.723) & 1.022 (0.758) \\
         \bottomrule
     \end{tabular}
 \end{table*}
@@ -1131,7 +1133,7 @@ These results show that several established fusion strategies remain effective w
 
 \subsubsection{Waveform reconstruction}
 
-Table~\ref{tab:waveform_rmse} reports waveform reconstruction error relative to the respiratory belt. BreatheCS obtains the lowest RMSE among the adapted external baselines, at $0.937\pm0.209$. Relative to the next-best external baseline, ClessBreath with $\eta$-linear weighting, this corresponds to an RMSE reduction of approximately 8.6\%.
+Table~\ref{tab:waveform_rmse} reports waveform reconstruction error relative to the respiratory belt. BreatheCS obtains the lowest RMSE among the adapted external baselines, at $0.937\pm0.201$. Relative to the next-best external baseline, ClessBreath with $\eta$-linear weighting, this corresponds to an RMSE reduction of approximately 8.6\%.
 
 The remote-amplitude-only ablation achieves a similar RMSE of 0.941, as shown in Table~\ref{tab:single_modal_ablation}. Thus, endpoint-amplitude fusion provides only a small average improvement over the strongest individual modality. The results do not indicate a large waveform-reconstruction margin over remote amplitude alone.
 
@@ -1140,20 +1142,21 @@ Figure~\ref{fig:bpm_rmse_tradeoff} presents the joint BPM and waveform performan
 \begin{table}[t]
     \centering
     \caption{Normalized waveform RMSE relative to the respiratory-belt
-    reference.}
+    reference. The standard deviation is the population standard
+    deviation across the 12 subject--scenario recordings ($N=12$).}
     \label{tab:waveform_rmse}
     \small
     \begin{tabular}{lrr}
         \toprule
         Method & Mean $\downarrow$ & Std. \\
         \midrule
-        \textbf{BreatheCS} & \textbf{0.937} & 0.209 \\
-        Pos-Free (PCA) & 1.070 & 0.250 \\
-        WiFi-Sleep (MRC--PCA) & 1.063 & 0.245 \\
-        WiFi-Sleep ($\sqrt{\eta}$) & 1.054 & --- \\
-        PCA sign only & 1.085 & 0.182 \\
-        ClessBreath ($\eta$-linear) & 1.025 & 0.241 \\
-        ClessBreath ($\eta$-equal) & 1.046 & 0.211 \\
+        \textbf{BreatheCS} & \textbf{0.937} & 0.201 \\
+        Pos-Free (PCA) & 1.070 & 0.239 \\
+        WiFi-Sleep (MRC--PCA) & 1.063 & 0.234 \\
+        WiFi-Sleep ($\sqrt{\eta}$) & 1.054 & 0.228 \\
+        PCA sign only & 1.085 & 0.174 \\
+        ClessBreath ($\eta$-linear) & 1.025 & 0.231 \\
+        ClessBreath ($\eta$-equal) & 1.046 & 0.202 \\
         \bottomrule
     \end{tabular}
 \end{table}

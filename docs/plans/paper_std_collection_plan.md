@@ -80,4 +80,21 @@ BreatheCS-Wave（`draft_w_rl`）per-room（ddof=0）：
 
 ## 7. 验证状态
 
-待实现
+状态：已完成
+
+实际产出路径：
+- 脚本：`notebooks/scripts/chFusion_paper_std_collection.py`
+- 数值结果：`outputs/reports/paper_table63b_per_room_std.json`
+- 图表：无（纯统计汇总，plan 未要求图）
+- 报告：`docs/reports/paper_std_collection_report.md`
+- 论文回填：`docs/paper_draft/paper_draft_skeleton.md`、`docs/paper_draft/latex.md`
+
+结论摘要：
+- BreatheCS / BreatheCS-Wave 的 per-room std（ddof=0，N=4）与 plan 手算值一致（差 < 0.0015），已写入 Table 6.3-B。
+- Table 6.4 原 RMSE std 确认为 `chFusion_paper_figure_redraw.py` 的 `np.std(ddof=1)`。已按 √(11/12) 折为 ddof=0。BreatheCS 由 0.209 改为 0.201，与 Table 8-B 一致。WiFi-Sleep (√η) 原为「—」，已用同一 per-scenario RMSE 补为 0.228。
+- Remote 波形 RMSE 按 plan 视为已解决，未再改 Table 8-B。
+
+遗留问题：
+- `docs/paper_draft/paper_draft_old.md` 未同步。
+- `latex.md` 中 Table 8-A / 8-B 仍是旧数字（无 std），本 plan 未要求改这两张表。
+- Fig 6 / Fig 7 未按新 std 重绘。
