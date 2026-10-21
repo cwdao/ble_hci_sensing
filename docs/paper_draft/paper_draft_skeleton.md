@@ -22,7 +22,7 @@
 
 ### 1.2 为什么 BLE Channel Sounding 值得研究？
 
-在过去， BLE 仅提供接收信号强度指示（RSSI）等粗略测量，一些前期研究已经表明BLE的感知能力有限【】。蓝牙核心规范 6.0 \cite{bluetooth6}中引入的信道探测（CS）改变了这一局面。信道探测是一种无线测距技术，旨在利用基于相位的测距（PBR）和往返时间测量（RTT）实现两个设备的距离测量\cite{bluetooth_channel_sounding}。尽管CS不是为感知而设计，但它首次为BLE引入了两个实现细粒度感知的重要信息：1）精细的信道信息测量，BLE 6.0设备可以直接测量接收信号的幅值相位；2）可控的信道多信道选择：CS 在多达 72 个信道上实现单独测量，这一点避开了蓝牙跳频技术对感知的影响。这意味着，使用者可以利用CS追踪特定信道上的感知活动，例如呼吸监测。
+在过去， BLE 仅提供接收信号强度指示（RSSI）等粗略测量，一些前期研究已经表明BLE的感知能力有限【iannizzotto2022perspective】。蓝牙核心规范 6.0 \cite{bluetooth6}中引入的信道探测（CS）改变了这一局面。信道探测是一种无线测距技术，旨在利用基于相位的测距（PBR）和往返时间测量（RTT）实现两个设备的距离测量\cite{bluetooth_channel_sounding}。尽管CS不是为感知而设计，但它首次为BLE引入了两个实现细粒度感知的重要信息：1）精细的信道信息测量，BLE 6.0设备可以直接测量接收信号的幅值相位；2）可控的信道多信道选择：CS 在多达 72 个信道上实现单独测量，这一点避开了蓝牙跳频技术对感知的影响。这意味着，使用者可以利用CS追踪特定信道上的感知活动，例如呼吸监测。
 
 
 
@@ -403,7 +403,7 @@ S_{\mathrm{\Phi}}(f)
 \frac{w_{\phi}\bar{S}_{\phi}(f)}{w_{\phi}+\epsilon}
 $$
 
-其中 $w_m$ 由模态级 $\eta$ 或窗级质量门控决定（见消融实验 §6.5），$\epsilon$ 是为了防止除数为0引入的高阶无穷小项。。
+其中 $w_m$ 由模态级 $\eta$ 决定（见消融实验 §6.5），$\epsilon$ 是为了防止除数为0引入的高阶无穷小项。。
 
 鉴于幅值模态和合成相位模态具有互补关系，我们会计算二者最终的呼吸能量比，以确定当前窗口的最佳模态作为$S_{\mathrm{opt}}$，然后用该模态做最终的BPM估计：
 
@@ -420,8 +420,6 @@ $$
 $$
 
 （LaTeX: `eq:bpm_peak`）
-
-该谱域分支是 BreatheCS 的**主 BPM 输出**。它继承质量加权信道融合的稳健性，并避免低采样率下脆弱的时域对齐。各波形的融合参考 MRC（最大比合并）的思想【参考预留】赋予权重。经典 MRC 权重通常与复信道系数和噪声方差有关；在 BreatheCS 中，我们用呼吸能量权重 $w$ 近似这一角色，因此更准确地说是 **MRC-inspired quality-weighted coherent combining**。
 
 ### 5.5 Waveform Branch: Endpoint Coherent Fusion and Phase Selection / 波形分支：端侧相干融合与相位候选选择
 
@@ -676,7 +674,7 @@ Fan 等人【Fan2024】 先计算各信道呼吸能量比（BNR），然后用MR
 
 **EN**: This work presented BreatheCS for contactless respiration sensing with Bluetooth Channel Sounding. By modeling bidirectional PCT measurements, we showed that BLE CS provides two endpoint amplitude observations and one composite-phase observation. These observables have different complex-plane sensitivities and noise characteristics. Our measurements further revealed heterogeneous sensing quality across tones, continuous and scene-dependent phase relationships, and different processing needs for rate estimation and waveform recovery. Based on these findings, BreatheCS uses a shared quality-aware tone-fusion front-end. A spectral branch estimates BPM. A waveform branch coherently fuses endpoint amplitudes and then selects against the composite-phase candidate. Evaluation on controlled mechanical motion and 12 human-subject recordings achieved a mean BPM error of 0.371 breaths/min and a normalized waveform RMSE of 0.937. Ablation and oracle results show that tone diversity is the most reliable source of improvement (1.640 → 0.381 BPM). Modal diversity, especially composite phase, provides conditional rather than universal benefit. Future BLE CS sensing systems should account for the bidirectional measurement structure and the task-specific sensing objective. Future work will study when composite phase provides complementary information, improve robustness to body motion and complex multipath, and extend the framework to irregular breathing and apnea detection.
 
-**CN**: 本文提出了 BreatheCS，一个面向 BLE 信道探测的测量感知非接触呼吸感知框架。通过建模双向 PCT 测量，我们表明 BLE CS 提供了两个端侧幅值观测和一个组合相位观测——三者具有不同的复平面灵敏度和噪声特性。实验测量进一步揭示了各个模态和信道的 tone 间显著的感知质量异质性、连续且场景依赖的相位关系，以及呼吸率估计和波形恢复需要不同的处理域。基于这些发现，BreatheCS 组合了共享的质量驱动信道融合前端、稳健的谱域 BPM 分支，以及端侧幅值相干融合后与组合相位候选选择的波形分支。在 12 条真人记录上的评估实现了 0.371 breaths/min 的平均 BPM 误差和 0.937 的归一化波形 RMSE。消融与 oracle 实验揭示：tone diversity 是最稳定、最大的增益来源，而 modal diversity——特别是组合相位——是条件性的。这些发现为未来 BLE CS 感知系统提供了有价值的参考。
+**CN**: 本文提出了 BreatheCS，一个面向 BLE 信道探测的测量感知非接触呼吸感知框架。通过建模双向 PCT 测量，我们表明 BLE CS 提供了两个端侧幅值观测和一个组合相位观测——三者具有不同的复平面灵敏度和噪声特性。实验测量进一步揭示了各个模态和信道的 tone 间显著的感知质量异质性、连续且场景依赖的相位关系，以及呼吸率估计和波形恢复需要不同的处理域。基于这些发现，BreatheCS 组合了共享的质量驱动信道融合前端、稳健的谱域 BPM 分支，以及端侧幅值相干融合后与组合相位候选选择的波形分支。在 24条真人记录上的评估实现了 0.371 breaths/min 的平均 BPM 误差和 0.937 的归一化波形 RMSE。消融与 oracle 实验揭示：tone diversity 是最稳定、最大的增益来源，而 modal diversity——特别是组合相位——是条件性的。这些发现为未来 BLE CS 感知系统提供了有价值的参考。
 
 
 ## References / 参考文献

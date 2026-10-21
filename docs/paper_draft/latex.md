@@ -423,7 +423,10 @@ and
     \arg\max_{f\in\mathcal{F}_b}P_{m,i}(f),
 \end{aligned}
 \label{eq:rho}
-\end{equation}
+\end{equation}_
+
+_
+
 where $\epsilon$ is a small positive constant that prevents division by zero, and $|\mathcal{F}_b|$ denotes the number of spectral bins in the respiratory band.
 
 Figure~\ref{fig:metal_human_quality} compares the two measures for metal-plate motion and human respiration. Respiratory-band energy concentration is broadly comparable between the two targets, with no pronounced reduction across the modalities. Spectral peak prominence, however, decreases more noticeably for human respiration. A possible explanation is that natural respiration contains rate variation, harmonics, and incidental body motion. Its energy can remain within the respiratory band even when the dominant spectral peak becomes less concentrated.
@@ -782,7 +785,7 @@ The respiratory frequency and rate are estimated from the dominant spectral peak
 
 This spectral branch provides the primary BPM output of BreatheCS. It retains the benefits of quality-weighted channel aggregation without requiring explicit waveform alignment before channel combination.
 
-The weighting strategy is inspired by maximal-ratio combining (MRC) \cite{mrc_reference_placeholder}. Classical MRC uses complex channel coefficients and noise variance, whereas BreatheCS uses respiratory-band quality measures as practical reliability weights. We therefore describe the method as MRC-inspired quality-weighted combining rather than classical MRC.
+
 
 \subsection{Waveform Branch: Coherent Endpoint Fusion and Candidate Selection}
 \label{subsec:waveform_branch}
