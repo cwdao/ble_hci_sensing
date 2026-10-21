@@ -585,15 +585,15 @@ Fan 等人【Fan2024】 先计算各信道呼吸能量比（BNR），然后用MR
 | Method | Living sitting | Bedroom flat | Bedroom side |
 |---|---:|---:|---:|
 | **BreatheCS** | **0.356** | **0.412** | **0.344** |
-| Pos-Free (PCA) | 0.415 | 0.436 | 0.455 |
-| WiFi-Sleep (MRC-PCA) | 0.609 | 0.451 | 0.455 |
+| Pos-Free (PCA) | 0.415 (0.091) | 0.436 (0.182) | 0.455 (0.057) |
+| WiFi-Sleep (MRC-PCA) | 0.609 (0.123) | 0.451 (0.176) | 0.455 (0.065) |
 | BreatheCS-Wave | 0.358 | 0.424 | 0.374 |
-| WiFi-Sleep (√η) | 1.521 | 0.532 | 1.016 |
-| PCA sign only | 1.365 | 1.212 | 1.373 |
-| ClessBreath (η-linear) | 1.498 | 1.225 | 1.434 |
-| ClessBreath (η-equal) | 1.400 | 2.038 | 1.022 |
+| WiFi-Sleep (√η) | 1.521 (1.895) | 0.532 (0.205) | 1.016 (0.787) |
+| PCA sign only | 1.365 (0.806) | 1.212 (0.449) | 1.373 (0.618) |
+| ClessBreath (η-linear) | 1.498 (2.070) | 1.225 (1.286) | 1.434 (1.593) |
+| ClessBreath (η-equal) | 1.400 (1.709) | 2.038 (1.723) | 1.022 (0.758) |
 
-> 每场景 4 subjects 均值（客厅静坐 / 卧室平躺 / 卧室侧躺；后两者同属卧室）。单位：BPM abs err。BreatheCS 分场景来自 G0 per-scenario 均值。
+> 每场景 4 subjects 均值（客厅静坐 / 卧室平躺 / 卧室侧躺；后两者同属卧室）。括号内为 4 subject 间标准差（总体 std，N=4，`np.std(ddof=0)`）。单位：BPM abs err。baseline std 来自 `ble_hkh_paper_baselines_summary.json`（by_room `bpm_std_across_scenarios`，ddof=0）。BreatheCS / BreatheCS-Wave 的 per-room std 待补（见 `docs/plans/paper_std_collection_plan.md`，统一 ddof=0）。
 
 ![Figure 6a: HKH BPM leaderboard across 12 scenarios. BreatheCS (spectral BPM, ★) = 0.371 breaths/min mean abs error; paper method names.](../../outputs/figures/paper_fig6a_bpm_leaderboard.png)
 
@@ -637,18 +637,22 @@ Fan 等人【Fan2024】 先计算各信道呼吸能量比（BNR），然后用MR
 
 | Fusion level | Spec BPM ↓ | Wave BPM ↓ | Wave RMSE ↓ |
 |---|---:|---:|---:|
-| No fusion | 1.640 | 1.192 | 1.007 |
-| Channel only | 0.381 | 1.003 | 0.962 |
-| Modal only | 0.655 | 1.025 | 0.986 |
-| BreatheCS | **0.371** | **0.385** | **0.937** |
+| No fusion | 1.640 (0.464) | 1.192 (1.137) | 1.007 (0.180) |
+| Channel only | 0.381 (0.116) | 1.003 (1.193) | 0.962 (0.195) |
+| Modal only | 0.655 (0.245) | 1.025 (0.988) | 0.986 (0.178) |
+| BreatheCS | **0.371 (0.128)** | **0.385 (0.113)** | **0.937 (0.201)** |
+
+> 括号内为 12 场景间标准差（总体 std，N=12，`np.std(ddof=0)`），由 `ble_hkh_draft_ablation_summary.json` 的 `bpm_std_abs_err`/`rmse_std`（样本 std，ddof=1）按 √(11/12) 折算。
 
 - Table 8-B · Single-modal（对应 Fig 8d–f）
 
 | Domain | Remote | Local | Phase | BreatheCS |
 |---|---:|---:|---:|---:|
-| Spectral BPM | 0.376 | 0.378 | 2.191 | **0.371** |
-| Waveform BPM | 0.399 | 0.439 | 2.395 | **0.385** |
-| Waveform RMSE | 0.941 | 0.947 | 1.109 | **0.937** |
+| Spectral BPM | 0.376 (0.115) | 0.378 (0.119) | 2.191 (1.302) | **0.371 (0.128)** |
+| Waveform BPM | 0.399 (0.121) | 0.439 (0.217) | 2.395 (1.169) | **0.385 (0.113)** |
+| Waveform RMSE | 0.931 (0.207) | 0.947 (0.214) | 1.109 (0.111) | **0.937 (0.201)** |
+
+> 括号内为 12 场景间标准差（总体 std，N=12，`np.std(ddof=0)`），由 `ble_hkh_draft_ablation_summary.json` 的 `bpm_std_abs_err`/`rmse_std`（样本 std，ddof=1）按 √(11/12) 折算。
 
 ![Figure 8a–c: Fusion-level ablation. (a) Spectral BPM; (b) Waveform BPM; (c) Waveform RMSE. Bars: no fusion / channel only / modal only / BreatheCS.](../../outputs/figures/paper_fig8_abc_fusion.png)
 
