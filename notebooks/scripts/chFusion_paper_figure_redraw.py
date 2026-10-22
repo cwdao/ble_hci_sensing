@@ -1,9 +1,12 @@
 """Redraw Chapter 6 paper figures with paper-facing method names.
 
-Does NOT re-run experiments — reads existing JSON / NPY summaries.
+Does NOT re-run experiments — reads existing JSON summaries.
 
-Run:
+Default entry point (plan: docs/plans/paper_ch6_tables_to_figures_plan.md):
     python notebooks/scripts/chFusion_paper_figure_redraw.py
+
+Writes Fig 6a, Fig 6b, and the Table 6.4 RMSE leaderboard only.
+Does not touch Fig 7 or the Fig 8 ablation panels.
 """
 
 from __future__ import annotations
@@ -12,7 +15,7 @@ import json
 import math
 import sys
 from pathlib import Path
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, Optional, Sequence, Tuple
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -30,8 +33,9 @@ if str(_src) not in sys.path:
 from ble_analysis.bootstrap import init_notebook
 from ble_analysis.paper_naming import (
     ABLATION_GROUPS,
-    FIG6A_METHOD_KEYS,
     FIG7_METHOD_KEYS,
+    GROUP_COLORS,
+    RMSE_FIG6_4_KEYS,
     RMSE_TABLE_KEYS,
     WATERFALL_B1_REF_KEY,
     WATERFALL_STEPS,
@@ -66,6 +70,39 @@ ROOM_LABELS = {
 }
 
 ROOM_OF_SCENARIO = {sid: sid.split("-")[0] for sid in SCENARIO_IDS}
+
+# Fig 6a / 6b method set. BPM numbers are read from per-scenario series
+# (ablation summary or baseline scenario files), never hardcoded.
+# slug matches paper_table63b_per_room_std.json → methods.
+CH6_BPM_METHODS = (
+    ("breathecs", "BreatheCS", "draft_s_rl", "BreatheCS", "ablation"),
+    ("breathecs_wave", "BreatheCS-Wave", "draft_w_rl", "BreatheCS", "ablation"),
+    ("pos_free_pca", "Pos-Free (PCA)", "z1_no_vmd", "Pos-Free", "baseline"),
+    ("wifi_sleep_mrc_pca", "WiFi-Sleep (MRC-PCA)", "mrc_pca_eta_equal_pca", "WiFi-Sleep", "baseline"),
+    ("wifi_sleep_sqrt_eta", "WiFi-Sleep (√η)", "mrc_pca_eta_sqrt", "WiFi-Sleep", "baseline"),
+    ("pca_sign_only", "PCA sign only", "b2_a0_pca_sign", "Ablation", "baseline"),
+    ("clessbreath_eta_linear", "ClessBreath (η-linear)", "fan_eta_linear", "ClessBreath", "baseline"),
+    ("clessbreath_eta_equal", "ClessBreath (η-equal)", "fan_eta_equal_wf", "ClessBreath", "baseline"),
+)
+
+CH6_ROOM_ORDER = ("living", "bedroom_flat", "bedroom_side")
+# Same order as SCENARIO_IDS: room_A, room_B, room_C, four subjects each.
+CH6_ROOM_SLICES = {
+    "living": (0, 4),
+    "bedroom_flat": (4, 8),
+    "bedroom_side": (8, 12),
+}
+
+# Fig 6.4 bar color. draft_w_rl is labeled BreatheCS on this figure.
+CH6_RMSE_GROUP = {
+    "draft_w_rl": "BreatheCS",
+    "fan_eta_linear": "ClessBreath",
+    "fan_eta_equal_wf": "ClessBreath",
+    "mrc_pca_eta_sqrt": "WiFi-Sleep",
+    "mrc_pca_eta_equal_pca": "WiFi-Sleep",
+    "z1_no_vmd": "Pos-Free",
+    "b2_a0_pca_sign": "Ablation",
+}
 
 
 def _json_default(obj):
@@ -213,88 +250,434 @@ def load_unified_catalog() -> Dict[str, dict]:
     return catalog
 
 
-def plot_fig6a(catalog: Dict[str, dict]) -> Tuple[Path, List[dict], List[str]]:
+def _load_report(name: str) -> dict:
+    return json.loads((REPORTS_DIR / name).read_text(encoding="utf-8"))
+
+
+def _nonneg_err(means, stds) -> np.ndarray:
+    """Asymmetric whiskers. Lower side stops at 0; upper side is +std.
+
+    The plotted values are absolute errors (or RMSE), so they cannot be
+    negative. mean - std can still be negative when the cross-scenario
+    spread is larger than the mean. The stored std is unchanged.
+    """
+    means = np.asarray(means, dtype=float)
+    stds = np.asarray(stds, dtype=float)
+    lower = np.minimum(stds, np.maximum(means, 0.0))
+    return np.vstack([lower, stds])
+
+
+def _mean_std0(values: Sequence[float]) -> Tuple[float, float]:
+    arr = np.asarray(values, dtype=float)
+    if arr.size == 0 or not np.all(np.isfinite(arr)):
+        raise ValueError("BPM/RMSE series is empty or non-finite")
+    return float(np.mean(arr)), float(np.std(arr, ddof=0))
+
+
+def _baseline_bpm_per_scenario(method_key: str) -> List[float]:
+    vals: List[float] = []
+    for sid in SCENARIO_IDS:
+        payload = _load_report(f"ble_hkh_paper_baselines_{sid}.json")
+        match = [r for r in payload["leaderboard_bpm"] if r["method_key"] == method_key]
+        if len(match) != 1:
+            raise KeyError(f"{sid}: {method_key} not unique in leaderboard_bpm ({len(match)})")
+        vals.append(float(match[0]["bpm_mean_abs_err"]))
+    return vals
+
+
+def load_ch6_bpm_rows() -> List[dict]:
+    """Eight Fig 6a methods. mean/std from the 12-scenario series, ddof=0."""
+    ablation = _load_report("ble_hkh_draft_ablation_summary.json")
     rows = []
-    missing = []
-    for key in FIG6A_METHOD_KEYS:
-        if key not in catalog:
-            missing.append(key)
-            continue
-        e = catalog[key]
+    for slug, label, key, group, source in CH6_BPM_METHODS:
+        if source == "ablation":
+            series = [float(x) for x in ablation["methods"][key]["bpm_per_scenario"]]
+            src = f"ble_hkh_draft_ablation_summary.json methods.{key}.bpm_per_scenario"
+        else:
+            series = _baseline_bpm_per_scenario(key)
+            src = f"ble_hkh_paper_baselines_{{scenario}}.json leaderboard_bpm[{key}]"
+        mean, std = _mean_std0(series)
         rows.append(
             {
+                "slug": slug,
                 "method_key": key,
-                "label": paper_label(key),
-                "color": paper_color(key),
-                "group": paper_group(key),
-                "bpm_mean": e["bpm_mean"],
-                "bpm_std": e["bpm_std"],
+                "label": label,
+                "group": group,
+                "color": GROUP_COLORS[group],
+                "bpm_mean": mean,
+                "bpm_std": std,
+                "series": series,
+                "n": len(series),
+                "source": src,
             }
         )
     rows.sort(key=lambda r: r["bpm_mean"])
+    return rows
+
+
+def _legend_handles() -> List[Patch]:
+    return [
+        Patch(facecolor=GROUP_COLORS["BreatheCS"], label="BreatheCS"),
+        Patch(facecolor=GROUP_COLORS["Pos-Free"], label="Pos-Free"),
+        Patch(facecolor=GROUP_COLORS["WiFi-Sleep"], label="WiFi-Sleep"),
+        Patch(facecolor=GROUP_COLORS["ClessBreath"], label="ClessBreath"),
+        Patch(facecolor=GROUP_COLORS["Ablation"], label="Ablation / simple"),
+    ]
+
+
+def plot_fig6a(rows: Optional[List[dict]] = None) -> Tuple[Path, List[dict]]:
+    """Horizontal BPM leaderboard. No star, no in-figure title."""
+    if rows is None:
+        rows = load_ch6_bpm_rows()
 
     labels = [r["label"] for r in rows][::-1]
     means = [r["bpm_mean"] for r in rows][::-1]
     stds = [r["bpm_std"] for r in rows][::-1]
     colors = [r["color"] for r in rows][::-1]
-    keys = [r["method_key"] for r in rows][::-1]
 
     fig_h = max(4.5, 0.45 * len(labels))
     fig, ax = plt.subplots(figsize=(9.5, fig_h))
     y = np.arange(len(labels))
-    bars = ax.barh(y, means, xerr=stds, capsize=3, color=colors, alpha=0.92, height=0.7)
+    for i, (mean, std, color) in enumerate(zip(means, stds, colors)):
+        ax.barh(
+            y[i],
+            mean,
+            xerr=_nonneg_err([mean], [std]),
+            color=color,
+            ecolor="black",
+            capsize=3,
+            alpha=0.92,
+            height=0.7,
+            error_kw={"elinewidth": 1.0, "capthick": 1.0},
+        )
     ax.set_yticks(y)
     ax.set_yticklabels(labels, fontsize=10)
+    ax.set_xlim(left=0)
     ax.set_xlabel("Mean BPM absolute error (breaths/min) across 12 scenarios")
-
-    for i, key in enumerate(keys):
-        if key == "b3_b1_equal":
-            bars[i].set_edgecolor("black")
-            bars[i].set_linewidth(1.4)
-            ax.text(means[i] + stds[i] + 0.02, i, "★ BreatheCS", va="center", fontsize=9, fontweight="bold", color="#E63946")
-
-    legend_handles = [
-        Patch(facecolor="#E63946", label="BreatheCS"),
-        Patch(facecolor="#81B29A", label="Pos-Free"),
-        Patch(facecolor="#3D405B", label="WiFi-Sleep"),
-        Patch(facecolor="#E07A5F", label="ClessBreath"),
-        Patch(facecolor="#999999", label="Ablation / simple"),
-    ]
-    ax.legend(handles=legend_handles, loc="lower right", fontsize=8, framealpha=0.9)
+    ax.legend(handles=_legend_handles(), loc="upper right", fontsize=8, framealpha=0.9)
     ax.grid(True, axis="x", alpha=0.3)
     fig.tight_layout()
     path = _save_figure(fig, "paper_fig6a_bpm_leaderboard")
     plt.close(fig)
-    return path, rows, missing
+    return path, rows
 
 
-def plot_fig6b(catalog: Dict[str, dict]) -> Path:
-    """Per-room BPM for the same method set as Fig 6a (incl. ClessBreath)."""
-    top_keys = [k for k in FIG6A_METHOD_KEYS if k in catalog]
-    # Sort by overall BPM so axis order matches Fig 6a narrative
-    top_keys.sort(key=lambda k: catalog[k]["bpm_mean"])
+def plot_fig6b(rows: Optional[List[dict]] = None) -> Tuple[Path, List[dict]]:
+    """Grouped bars by room. Same methods as Fig 6a, plus per-room std."""
+    if rows is None:
+        rows = load_ch6_bpm_rows()
+    table = _load_report("paper_table63b_per_room_std.json")
+    methods = table["methods"]
 
-    rooms = ["room_A", "room_B", "room_C"]
-    x = np.arange(len(top_keys))
-    width = 0.8 / len(rooms)
-    fig, ax = plt.subplots(figsize=(12.5, 5.2))
-    for i, room in enumerate(rooms):
-        vals = []
-        for key in top_keys:
-            br = catalog[key].get("by_room", {}).get(room, {})
-            vals.append(br.get("bpm_mean") if br.get("bpm_mean") is not None else np.nan)
-        offset = (i - (len(rooms) - 1) / 2) * width
-        ax.bar(x + offset, vals, width, label=ROOM_LABELS[room].replace("\n", " "), alpha=0.9)
+    room_labels = [methods[rows[0]["slug"]]["per_room"][k]["label"] for k in CH6_ROOM_ORDER]
+    cycle = plt.rcParams["axes.prop_cycle"].by_key()["color"]
+    x = np.arange(len(rows))
+    width = 0.8 / len(CH6_ROOM_ORDER)
+    fig, ax = plt.subplots(figsize=(12.5, 5.4))
+    room_payload = []
+    for i, room_key in enumerate(CH6_ROOM_ORDER):
+        means = []
+        stds = []
+        for row in rows:
+            cell = methods[row["slug"]]["per_room"][room_key]
+            means.append(float(cell["mean"]))
+            stds.append(float(cell["std"]))
+        offset = (i - (len(CH6_ROOM_ORDER) - 1) / 2) * width
+        color = cycle[i % len(cycle)]
+        ax.bar(
+            x + offset,
+            means,
+            width,
+            yerr=_nonneg_err(means, stds),
+            label=room_labels[i],
+            color=color,
+            ecolor="black",
+            capsize=2,
+            alpha=0.9,
+            error_kw={"elinewidth": 0.8, "capthick": 0.8},
+        )
+        room_payload.append(
+            {
+                "room_key": room_key,
+                "label": room_labels[i],
+                "methods": [
+                    {"slug": row["slug"], "label": row["label"], "mean": m, "std": s}
+                    for row, m, s in zip(rows, means, stds)
+                ],
+            }
+        )
 
     ax.set_xticks(x)
-    ax.set_xticklabels([paper_label(k) for k in top_keys], rotation=25, ha="right", fontsize=8)
+    ax.set_xticklabels([r["label"] for r in rows], rotation=25, ha="right", fontsize=8)
+    ax.set_ylim(bottom=0)
     ax.set_ylabel("Mean BPM abs err (breaths/min)")
     ax.legend(fontsize=8)
     ax.grid(True, axis="y", alpha=0.3)
     fig.tight_layout()
     path = _save_figure(fig, "paper_fig6b_bpm_by_room")
     plt.close(fig)
+    return path, room_payload
+
+
+def plot_rmse_leaderboard() -> Tuple[Path, List[dict]]:
+    """Table 6.4 as a horizontal bar chart. One BreatheCS row (waveform RMSE)."""
+    block = _load_report("paper_table63b_per_room_std.json")["table_64_waveform_rmse"]["methods"]
+    by_key = {row["source_key"]: (slug, row) for slug, row in block.items()}
+    missing = [k for k in RMSE_FIG6_4_KEYS if k not in by_key]
+    if missing:
+        raise KeyError(f"table_64_waveform_rmse missing source keys: {missing}")
+
+    rows = []
+    for key in RMSE_FIG6_4_KEYS:
+        slug, row = by_key[key]
+        group = CH6_RMSE_GROUP[key]
+        rows.append(
+            {
+                "slug": slug,
+                "method_key": key,
+                "label": row["label"],
+                "group": group,
+                "color": GROUP_COLORS[group],
+                "rmse_mean": float(row["mean"]),
+                "rmse_std": float(row["std_ddof0"]),
+                "n": int(row["n"]),
+                "source": row["source"],
+            }
+        )
+    rows.sort(key=lambda r: r["rmse_mean"])
+
+    labels = [r["label"] for r in rows][::-1]
+    means = [r["rmse_mean"] for r in rows][::-1]
+    stds = [r["rmse_std"] for r in rows][::-1]
+    colors = [r["color"] for r in rows][::-1]
+
+    fig_h = max(4.2, 0.48 * len(labels))
+    fig, ax = plt.subplots(figsize=(9.5, fig_h))
+    y = np.arange(len(labels))
+    for i, (mean, std, color) in enumerate(zip(means, stds, colors)):
+        ax.barh(
+            y[i],
+            mean,
+            xerr=_nonneg_err([mean], [std]),
+            color=color,
+            ecolor="black",
+            capsize=3,
+            alpha=0.92,
+            height=0.7,
+            error_kw={"elinewidth": 1.0, "capthick": 1.0},
+        )
+    ax.set_yticks(y)
+    ax.set_yticklabels(labels, fontsize=10)
+    ax.set_xlim(left=0)
+    ax.set_xlabel("Waveform RMSE")
+    ax.legend(handles=_legend_handles(), loc="lower right", fontsize=8, framealpha=0.9)
+    ax.grid(True, axis="x", alpha=0.3)
+    fig.tight_layout()
+    path = _save_figure(fig, "paper_fig6_4_rmse_leaderboard")
+    plt.close(fig)
+    return path, rows
+
+
+def _paint_boxes(bp, colors: Sequence[str]) -> None:
+    for patch, color in zip(bp["boxes"], colors):
+        patch.set_facecolor(color)
+        patch.set_edgecolor("black")
+        patch.set_alpha(0.9)
+    for line in bp["medians"]:
+        line.set_color("black")
+        line.set_linewidth(1.2)
+    for key in ("whiskers", "caps"):
+        for line in bp[key]:
+            line.set_color("black")
+            line.set_linewidth(1.0)
+    for flier in bp["fliers"]:
+        flier.set(
+            marker="o",
+            markerfacecolor="black",
+            markeredgecolor="black",
+            markersize=3.5,
+            alpha=0.85,
+        )
+
+
+def _rmse_per_scenario(method_key: str) -> List[float]:
+    """12 scenario RMSEs. Ablation key is read from ablation files; others from baselines."""
+    vals: List[float] = []
+    for sid in SCENARIO_IDS:
+        if method_key == "draft_w_rl":
+            payload = _load_report(f"ble_hkh_draft_ablation_{sid}.json")
+            rmse = payload["methods"][method_key].get("rmse_mean")
+        else:
+            payload = _load_report(f"ble_hkh_paper_baselines_{sid}.json")
+            match = [r for r in payload["leaderboard_bpm"] if r["method_key"] == method_key]
+            if len(match) != 1:
+                raise KeyError(f"{sid}: {method_key} not unique in leaderboard_bpm ({len(match)})")
+            rmse = match[0].get("rmse_mean")
+        if rmse is None or not math.isfinite(float(rmse)):
+            raise ValueError(f"{sid}: {method_key} rmse_mean is not finite")
+        vals.append(float(rmse))
+    return vals
+
+
+def load_ch6_rmse_rows() -> List[dict]:
+    block = _load_report("paper_table63b_per_room_std.json")["table_64_waveform_rmse"]["methods"]
+    by_key = {row["source_key"]: (slug, row) for slug, row in block.items()}
+    rows = []
+    for key in RMSE_FIG6_4_KEYS:
+        slug, row = by_key[key]
+        series = _rmse_per_scenario(key)
+        group = CH6_RMSE_GROUP[key]
+        rows.append(
+            {
+                "slug": slug,
+                "method_key": key,
+                "label": row["label"],
+                "group": group,
+                "color": GROUP_COLORS[group],
+                "rmse_mean": float(row["mean"]),
+                "rmse_std": float(row["std_ddof0"]),
+                "series": series,
+            }
+        )
+    rows.sort(key=lambda r: r["rmse_mean"])
+    return rows
+
+
+def plot_fig6a_box(rows: Optional[List[dict]] = None) -> Path:
+    """Box plot of the 12 per-scenario BPM absolute errors. Does not replace Fig 6a."""
+    if rows is None:
+        rows = load_ch6_bpm_rows()
+    shown = list(reversed(rows))
+    data = [r["series"] for r in shown]
+    labels = [r["label"] for r in shown]
+    colors = [r["color"] for r in shown]
+    y = np.arange(len(shown))
+    fig_h = max(4.5, 0.45 * len(labels))
+    fig, ax = plt.subplots(figsize=(9.5, fig_h))
+    bp = ax.boxplot(
+        data,
+        vert=False,
+        positions=y,
+        widths=0.6,
+        patch_artist=True,
+        showmeans=True,
+        meanprops={"marker": "o", "markerfacecolor": "black", "markeredgecolor": "black", "markersize": 4},
+        manage_ticks=False,
+    )
+    _paint_boxes(bp, colors)
+    ax.set_yticks(y)
+    ax.set_yticklabels(labels, fontsize=10)
+    ax.set_ylim(-0.6, len(shown) - 0.4)
+    ax.set_xlim(left=0)
+    ax.set_xlabel("BPM absolute error (breaths/min) across 12 scenarios")
+    handles = _legend_handles() + [plt.Line2D([0], [0], marker="o", color="none", markerfacecolor="black", markersize=4, label="mean")]
+    ax.legend(handles=handles, loc="upper right", fontsize=8, framealpha=0.9)
+    ax.grid(True, axis="x", alpha=0.3)
+    fig.tight_layout()
+    path = _save_figure(fig, "paper_fig6a_bpm_leaderboard_box")
+    plt.close(fig)
     return path
+
+
+def plot_fig6b_box(rows: Optional[List[dict]] = None) -> Path:
+    """Per-room box plots (4 subjects each). Does not replace Fig 6b."""
+    if rows is None:
+        rows = load_ch6_bpm_rows()
+    table = _load_report("paper_table63b_per_room_std.json")
+    methods = table["methods"]
+    room_labels = [methods[rows[0]["slug"]]["per_room"][k]["label"] for k in CH6_ROOM_ORDER]
+    cycle = plt.rcParams["axes.prop_cycle"].by_key()["color"]
+    x = np.arange(len(rows))
+    width = 0.24
+    fig, ax = plt.subplots(figsize=(12.5, 5.4))
+    legend_handles = []
+    for i, room_key in enumerate(CH6_ROOM_ORDER):
+        lo, hi = CH6_ROOM_SLICES[room_key]
+        data = [r["series"][lo:hi] for r in rows]
+        if any(len(chunk) != hi - lo for chunk in data):
+            raise ValueError(f"{room_key} slice is not length {hi - lo}")
+        positions = x + (i - 1) * width
+        color = cycle[i % len(cycle)]
+        bp = ax.boxplot(
+            data,
+            positions=positions,
+            widths=width * 0.9,
+            patch_artist=True,
+            showmeans=True,
+            meanprops={"marker": "o", "markerfacecolor": "black", "markeredgecolor": "black", "markersize": 3.5},
+            manage_ticks=False,
+        )
+        _paint_boxes(bp, [color] * len(data))
+        legend_handles.append(Patch(facecolor=color, edgecolor="black", label=room_labels[i]))
+    ax.set_xticks(x)
+    ax.set_xticklabels([r["label"] for r in rows], rotation=25, ha="right", fontsize=8)
+    ax.set_xlim(-0.5, len(rows) - 0.5)
+    ax.set_ylim(bottom=0)
+    ax.set_ylabel("BPM absolute error (breaths/min)")
+    legend_handles.append(plt.Line2D([0], [0], marker="o", color="none", markerfacecolor="black", markersize=4, label="mean"))
+    ax.legend(handles=legend_handles, fontsize=8)
+    ax.grid(True, axis="y", alpha=0.3)
+    fig.tight_layout()
+    path = _save_figure(fig, "paper_fig6b_bpm_by_room_box")
+    plt.close(fig)
+    return path
+
+
+def plot_rmse_box(rows: Optional[List[dict]] = None) -> Path:
+    """Box plot of the 12 per-scenario RMSEs. Does not replace Fig 6.4."""
+    if rows is None:
+        rows = load_ch6_rmse_rows()
+    shown = list(reversed(rows))
+    data = [r["series"] for r in shown]
+    labels = [r["label"] for r in shown]
+    colors = [r["color"] for r in shown]
+    y = np.arange(len(shown))
+    fig_h = max(4.2, 0.48 * len(labels))
+    fig, ax = plt.subplots(figsize=(9.5, fig_h))
+    bp = ax.boxplot(
+        data,
+        vert=False,
+        positions=y,
+        widths=0.6,
+        patch_artist=True,
+        showmeans=True,
+        meanprops={"marker": "o", "markerfacecolor": "black", "markeredgecolor": "black", "markersize": 4},
+        manage_ticks=False,
+    )
+    _paint_boxes(bp, colors)
+    ax.set_yticks(y)
+    ax.set_yticklabels(labels, fontsize=10)
+    ax.set_ylim(-0.6, len(shown) - 0.4)
+    ax.set_xlim(left=0)
+    ax.set_xlabel("Waveform RMSE")
+    handles = _legend_handles() + [plt.Line2D([0], [0], marker="o", color="none", markerfacecolor="black", markersize=4, label="mean")]
+    ax.legend(handles=handles, loc="upper center", bbox_to_anchor=(0.5, -0.16), ncol=3, fontsize=8, frameon=False)
+    ax.grid(True, axis="x", alpha=0.3)
+    fig.tight_layout()
+    path = _save_figure(fig, "paper_fig6_4_rmse_leaderboard_box")
+    plt.close(fig)
+    return path
+
+
+def plot_chapter6_box() -> Dict[str, str]:
+    """Write box-plot copies only. Existing Fig 6 bar charts are left in place."""
+    rows = load_ch6_bpm_rows()
+    paths = {
+        "fig6a_box": str(plot_fig6a_box(rows)),
+        "fig6b_box": str(plot_fig6b_box(rows)),
+        "fig6_4_box": str(plot_rmse_box()),
+    }
+    out = REPORTS_DIR / "paper_ch6_tables_to_figures_results.json"
+    payload = {}
+    if out.exists():
+        payload = json.loads(out.read_text(encoding="utf-8"))
+    payload["box_figures"] = {
+        "note": "Per-scenario distribution. Median line, black dot = mean. Does not replace the bar charts.",
+        "whis": 1.5,
+        "figures": paths,
+    }
+    out.write_text(json.dumps(payload, ensure_ascii=False, indent=2, default=_json_default), encoding="utf-8")
+    return paths
 
 
 def build_rmse_table(catalog: Dict[str, dict]) -> List[dict]:
@@ -518,74 +901,73 @@ def rmse_table_markdown(rows: List[dict]) -> str:
 
 
 def main() -> None:
-    catalog = load_unified_catalog()
-    fig6a, rows6a, missing6a = plot_fig6a(catalog)
-    fig6b = plot_fig6b(catalog)
-    rmse_rows = build_rmse_table(catalog)
-    fig7 = plot_fig7(catalog)
-    fig8a, fig8a_faceted = plot_fig8a(catalog)
-    fig8b = plot_fig8b()
+    """Redraw Fig 6a / 6b / Table 6.4. Does not rewrite experiment summaries or Fig 7.
 
-    # Consistency check: B2-D RMSE in both sources
-    paper = json.loads(
-        (REPORTS_DIR / "ble_hkh_paper_baselines_summary.json").read_text(encoding="utf-8")
-    )
-    b3s = json.loads(
-        (REPORTS_DIR / "ble_hkh_b3_simplified_validation_summary.json").read_text(
-            encoding="utf-8"
-        )
-    )
-    paper_b2 = next(r for r in paper["overall_leaderboard"] if r["method_key"] == "b2_d_two_level")
-    b3_b2 = b3s["methods"]["b2_d_two_level"]
-    rmse_delta = abs(float(paper_b2["rmse_mean"]) - float(b3_b2["rmse_mean"]))
+    `--box-only` writes `*_box` figures and does not touch the bar-chart files.
+    """
+    if "--box-only" in sys.argv:
+        paths = plot_chapter6_box()
+        print("=== Chapter 6 box plots (bar charts not rewritten) ===")
+        for key, path in paths.items():
+            print(f"{key}: {Path(path).name}")
+        return
+
+    rows6a = load_ch6_bpm_rows()
+    fig6a, rows6a = plot_fig6a(rows6a)
+    fig6b, rooms6b = plot_fig6b(rows6a)
+    fig64, rows64 = plot_rmse_leaderboard()
 
     summary = {
+        "plan": "docs/plans/paper_ch6_tables_to_figures_plan.md",
+        "ddof": 0,
+        "n_scenarios": 12,
         "figures": {
             "fig6a": str(fig6a),
             "fig6b": str(fig6b),
-            "fig7": str(fig7),
-            "fig8a": str(fig8a),
-            "fig8a_faceted": str(fig8a_faceted),
-            "fig8b": str(fig8b),
+            "fig6_4": str(fig64),
         },
         "fig6a_methods": rows6a,
-        "fig6a_missing_keys": missing6a,
-        "rmse_table": rmse_rows,
-        "rmse_table_markdown": rmse_table_markdown(rmse_rows),
-        "consistency": {
-            "b2_d_rmse_paper": float(paper_b2["rmse_mean"]),
-            "b2_d_rmse_b3": float(b3_b2["rmse_mean"]),
-            "b2_d_rmse_abs_delta": rmse_delta,
-            "breathecs_bpm": catalog["b3_b1_equal"]["bpm_mean"],
-            "breathecs_rmse": catalog["b3_b1_equal"]["rmse_mean"],
-            "breathecs_wave_bpm": catalog["b2_d_two_level"]["bpm_mean"],
-        },
-        "notes": [
-            "Single (Remote) / r12_d_single_remote omitted from Fig 6a: no HKH abs-BPM in paper_baselines JSON.",
-            "BreatheCS BPM from spectral branch (b3_b1_equal = 0.405), not waveform branch.",
-            "Fig 8b uses CS metal-plate relative BPM err %; Fig 8a uses HKH abs BPM.",
+        "fig6b_rooms": rooms6b,
+        "fig6_4_methods": rows64,
+        "not_redrawn": [
+            "paper_fig7_bpm_vs_rmse (shelved)",
+            "paper_fig8_abc_fusion and paper_fig8_def_single_modal are written by chFusion_paper_ablation_draft.py --figures-only",
         ],
     }
-    out = REPORTS_DIR / "paper_figure_redraw_results.json"
-    out.write_text(json.dumps(summary, ensure_ascii=False, indent=2, default=_json_default), encoding="utf-8")
+    out = REPORTS_DIR / "paper_ch6_tables_to_figures_results.json"
+    payload = {}
+    if out.exists():
+        payload = json.loads(out.read_text(encoding="utf-8"))
+    payload.update(summary)
+    out.write_text(json.dumps(payload, ensure_ascii=False, indent=2, default=_json_default), encoding="utf-8")
 
-    md_frag = REPORTS_DIR / "paper_fig6_4_rmse_table.md"
-    md_frag.write_text(
-        "## Waveform RMSE comparison (HKH, 12 scenarios)\n\n" + rmse_table_markdown(rmse_rows) + "\n",
-        encoding="utf-8",
+    md_lines = [
+        "## Waveform RMSE comparison (HKH, 12 scenarios)",
+        "",
+        "| Method | RMSE mean | RMSE std (ddof=0) |",
+        "|---|---:|---:|",
+    ]
+    for r in rows64:
+        md_lines.append(f"| {r['label']} | {r['rmse_mean']:.3f} | {r['rmse_std']:.3f} |")
+    md_lines.append("")
+    md_lines.append(
+        "> Data: `outputs/reports/paper_table63b_per_room_std.json` "
+        "`table_64_waveform_rmse` (12 HKH scenarios, `np.std(ddof=0)`). "
+        "BreatheCS row is waveform-branch RMSE (`draft_w_rl`), not a separate BreatheCS-Wave row."
     )
+    md_frag = REPORTS_DIR / "paper_fig6_4_rmse_table.md"
+    md_frag.write_text("\n".join(md_lines) + "\n", encoding="utf-8")
 
-    print("=== Paper figure redraw ===")
-    print(f"Fig 6a: {fig6a.name}  methods={len(rows6a)} missing={missing6a}")
+    print("=== Chapter 6 figure redraw (6a / 6b / 6.4) ===")
+    print(f"Fig 6a: {fig6a.name}")
+    for r in rows6a:
+        print(f"  {r['label']:<28} {r['bpm_mean']:.3f} ± {r['bpm_std']:.3f}")
     print(f"Fig 6b: {fig6b.name}")
-    print(f"Fig 7:  {fig7.name}")
-    print(f"Fig 8a: {fig8a.name} / {fig8a_faceted.name}")
-    print(f"Fig 8b: {fig8b.name}")
-    print(f"B2-D RMSE delta (paper vs b3): {rmse_delta:.6f}")
+    print(f"Fig 6.4: {fig64.name}")
+    for r in rows64:
+        print(f"  {r['label']:<28} {r['rmse_mean']:.3f} ± {r['rmse_std']:.3f}")
     print(f"Saved: {out}")
     print(f"Saved: {md_frag}")
-    print("\nRMSE table:")
-    print(rmse_table_markdown(rmse_rows))
 
 
 if __name__ == "__main__":

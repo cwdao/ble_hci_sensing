@@ -14,6 +14,9 @@ PAPER_LABEL_MAP: Dict[str, Tuple[str, str, str]] = {
     "b3_b1_equal": ("BreatheCS", "BreatheCS", "#E63946"),
     "b1_vote_modal_equal": ("BreatheCS-Spec", "BreatheCS", "#E63946"),
     "b2_d_two_level": ("BreatheCS-Wave", "BreatheCS", "#E63946"),
+    # Chapter 6 redraw: endpoint-amplitude R+L (not three-modal full fusion).
+    "draft_s_rl": ("BreatheCS", "BreatheCS", "#E63946"),
+    "draft_w_rl": ("BreatheCS-Wave", "BreatheCS", "#E63946"),
     # Pos-Free — green
     "z1_no_vmd": ("Pos-Free (PCA)", "Pos-Free", "#81B29A"),
     "z1": ("Pos-Free (PCA-VMD)", "Pos-Free", "#81B29A"),
@@ -40,7 +43,9 @@ PAPER_LABEL_MAP: Dict[str, Tuple[str, str, str]] = {
     "b2_b_gamma": ("Hilbert + γ-gate (L1)", "Ablation", "#999999"),
 }
 
-# Fig 6a: methods to show (order = ascending BPM intent; actual sort uses data)
+# Legacy Fig 6a keys (three-modal / old waveform branch).
+# Chapter 6 redraw does not use this list: BreatheCS is draft_s_rl / draft_w_rl,
+# loaded from the ablation summary rather than the b3 catalog.
 FIG6A_METHOD_KEYS = [
     "b3_b1_equal",
     "z1_no_vmd",
@@ -75,6 +80,19 @@ FIG7_METHOD_KEYS = [
     "fan_hilbert_equal",
     "z1",
     "z1_fft",
+]
+
+# Table 6.4 / Fig 6.4 waveform RMSE leaderboard.
+# draft_w_rl is the waveform-branch RMSE of BreatheCS; the bar is labeled
+# BreatheCS (not BreatheCS-Wave). Order is sorted by data at plot time.
+RMSE_FIG6_4_KEYS = [
+    "draft_w_rl",
+    "fan_eta_linear",
+    "fan_eta_equal_wf",
+    "mrc_pca_eta_sqrt",
+    "mrc_pca_eta_equal_pca",
+    "z1_no_vmd",
+    "b2_a0_pca_sign",
 ]
 
 # RMSE table rows (BreatheCS as unified pipeline — no separate Wave row)

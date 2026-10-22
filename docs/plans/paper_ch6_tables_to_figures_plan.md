@@ -262,8 +262,22 @@ def plot_rmse_leaderboard():
 
 | 字段 | 内容 |
 |---|---|
-| **验证状态** | 待实现 |
+| **验证状态** | 已完成 |
 | **待用户确认项** | 无（§8 三处 [待确认] 已由用户确认：Fig 7 搁置 / Fig 6a 不强调 / std 统一 0.113） |
+
+状态：已完成
+
+实际产出路径：
+- 脚本：`notebooks/scripts/chFusion_paper_figure_redraw.py`、`notebooks/scripts/chFusion_paper_ablation_draft.py`（仅 `--figures-only`）
+- 模块：`src/ble_analysis/paper_naming.py`（新增 `draft_s_rl` / `draft_w_rl` 标签与 `RMSE_FIG6_4_KEYS`；未改旧 `FIG6A_METHOD_KEYS`）
+- 数值结果：`outputs/reports/paper_ch6_tables_to_figures_results.json`
+- 图表：`outputs/figures/paper_fig6a_bpm_leaderboard.png/.pdf`、`paper_fig6b_bpm_by_room.png/.pdf`、`paper_fig6_4_rmse_leaderboard.png/.pdf`、`paper_fig8_abc_fusion.png/.pdf`、`paper_fig8_def_single_modal.png/.pdf`
+- 报告：`docs/reports/paper_ch6_tables_to_figures_report.md`
+- Skeleton 图注：`docs/paper_draft/paper_draft_skeleton.md` §6.3–§6.4
+
+结论摘要：五张图的 mean 与 `std(ddof=0)` 与 plan §4 三位小数一致。BreatheCS 使用 `draft_s_rl` / `draft_w_rl`。Fig 6a 无星标、无图内长标题。未重跑实验，未改写 `ble_hkh_draft_ablation_summary.json`。Fig 7 未改。
+
+遗留问题：`docs/paper_draft/latex.md` 中 BreatheCS-Wave 的 std 仍为 0.118，本轮只按 plan 更新了 skeleton 图注。
 
 ---
 
