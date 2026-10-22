@@ -595,11 +595,15 @@ Fan 等人【Fan2024】 先计算各信道呼吸能量比（BNR），然后用MR
 
 > 每场景 4 subjects 均值（客厅静坐 / 卧室平躺 / 卧室侧躺；后两者同属卧室）。括号内为 4 subject 间标准差（总体 std，N=4，`np.std(ddof=0)`）。单位：BPM abs err。baseline std 来自 `ble_hkh_paper_baselines_summary.json`（by_room `bpm_std_across_scenarios`，ddof=0）。BreatheCS / BreatheCS-Wave 的 per-room std 来自 `outputs/reports/paper_table63b_per_room_std.json`（`draft_s_rl` / `draft_w_rl` 的 `bpm_per_scenario`，按房间 4 subject、ddof=0）。
 
-![Figure 6a: BPM accuracy across 12 HKH recordings. Mean absolute BPM error with cross-scenario std.](../../outputs/figures/paper_fig6a_bpm_leaderboard.png)
+
+
+![Figure 6a: BPM accuracy across 12 HKH recordings. Mean absolute BPM error with cross-scenario std.](../../outputs/figures/paper_fig6a_bpm_leaderboard_box.png)
+
+
 
 > **Fig. 6a — BPM accuracy across all 12 HKH recordings.** Mean absolute BPM error (breaths/min) and cross-scenario std for BreatheCS and migrated WiFi baselines. BreatheCS (0.371) is lowest; Pos-Free (PCA) and WiFi-Sleep (MRC-PCA) follow around 0.44–0.51; the ClessBreath variants are ≈1.39–1.49.
 
-![Figure 6b: BPM accuracy by room for the same methods as Fig 6a. Rooms: Living sitting / Bedroom flat / Bedroom side.](../../outputs/figures/paper_fig6b_bpm_by_room.png)
+![Figure 6b: BPM accuracy by room for the same methods as Fig 6a. Rooms: Living sitting / Bedroom flat / Bedroom side.](../../outputs/figures/paper_fig6b_bpm_by_room_box.png)
 
 > **Fig. 6b — BPM accuracy by room.** Same method set as Fig. 6a, split by recording scenario (Living sitting / Bedroom flat / Bedroom side). BreatheCS is the lowest in all three rooms; the ClessBreath variants show large per-subject variance (error bars).
 
@@ -621,7 +625,7 @@ Fan 等人【Fan2024】 先计算各信道呼吸能量比（BNR），然后用MR
 
 > HKH 12 scenarios。BreatheCS = 谱 BPM（G0/`draft_s_rl`）+ R+L 波形 RMSE（`draft_w_rl`）；BreatheCS-Wave 行给出同管线时域分支 BPM（0.385）。旧三模态等权波形 RMSE 0.951 仅作消融对照。RMSE std 为 12 场景间总体标准差（`np.std(ddof=0)`）。原表数值 std 来自 `chFusion_paper_figure_redraw.py` 的 `np.std(ddof=1)`，已按 √(11/12) 折算。WiFi-Sleep (√η) 原为「—」，现由同一 per-scenario RMSE 序列补为 ddof=0。见 `outputs/reports/paper_table63b_per_room_std.json` 的 `table_64_waveform_rmse`。
 
-![Figure 6.4: Waveform recovery RMSE across 12 HKH recordings, with cross-scenario std.](../../outputs/figures/paper_fig6_4_rmse_leaderboard.png)
+![Figure 6.4: Waveform recovery RMSE across 12 HKH recordings, with cross-scenario std.](../../outputs/figures/paper_fig6_4_rmse_leaderboard_box.png)
 
 > **Fig. 6.4 — Waveform recovery RMSE across 12 HKH recordings.** Mean RMSE of the recovered waveform against the belt. Before RMSE, each trace is z-scored (demeaned and scaled to unit variance) and sign-aligned, so the value is dimensionless and compares shape rather than raw amplitude. Error bars are the cross-scenario std. BreatheCS (0.937) is lowest; the WiFi-Sleep and Pos-Free baselines cluster around 1.05–1.07.
 
@@ -660,11 +664,11 @@ Fan 等人【Fan2024】 先计算各信道呼吸能量比（BNR），然后用MR
 
 > 括号内为 12 场景间标准差（总体 std，N=12，`np.std(ddof=0)`），由 `ble_hkh_draft_ablation_summary.json` 的 `bpm_std_abs_err`/`rmse_std`（样本 std，ddof=1）按 √(11/12) 折算。
 
-![Figure 8 fusion: grouped bars of spectral BPM, waveform BPM, and waveform RMSE for no fusion / channel only / modal only / BreatheCS.](../../outputs/figures/paper_fig8_abc_fusion.png)
+![Figure 8 fusion: grouped bars of spectral BPM, waveform BPM, and waveform RMSE for no fusion / channel only / modal only / BreatheCS.](../../outputs/figures/paper_fig8_abc_fusion_box.png)
 
 > **Fig. 8 — Fusion-level ablation.** Grouped bars. Left axis: spectral and waveform RR absolute error (BPM). Right axis: waveform RMSE. Methods: no fusion / channel only / modal only / BreatheCS. Error bars are the cross-scenario std, clipped at 0. Channel-level fusion contributes the dominant gain (1.640→0.381 BPM); modal-level fusion adds a smaller, secondary improvement.
 
-![Figure 8 single-modal: grouped bars of spectral BPM, waveform BPM, and waveform RMSE for Remote / Local / Phase / BreatheCS.](../../outputs/figures/paper_fig8_def_single_modal.png)
+![Figure 8 single-modal: grouped bars of spectral BPM, waveform BPM, and waveform RMSE for Remote / Local / Phase / BreatheCS.](../../outputs/figures/paper_fig8_def_single_modal_box.png)
 
 > **Fig. 8 — Single-modal ablation.** Grouped bars. Left axis: spectral and waveform RR absolute error (BPM). Right axis: waveform RMSE. Methods: Remote / Local / Phase / BreatheCS. Remote and Local are nearly equivalent to BreatheCS, while composite Phase degrades sharply (≈2.2–2.4 BPM), confirming phase is unreliable for human-subject respiration sensing and is largely deselected by BreatheCS.
 

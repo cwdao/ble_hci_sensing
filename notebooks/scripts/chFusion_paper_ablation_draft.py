@@ -2,17 +2,20 @@
 
 Plan: docs/plans/paper_ablation_draft_align_plan.md
 
-Run (full):
+Default: Fig 8 box plots from the existing summary (does not rerun experiments
+or overwrite the bar charts):
     python notebooks/scripts/chFusion_paper_ablation_draft.py
 
-Replot only (reuse summary JSON; still rewrites the summary file):
+Run the ablation matrix, then redraw Fig 8 bar charts:
+    python notebooks/scripts/chFusion_paper_ablation_draft.py --run
+
+Replot bar charts only (reuse per-scenario JSON; still rewrites the summary file):
     python notebooks/scripts/chFusion_paper_ablation_draft.py --plot-only
 
-Redraw Fig 8 from existing JSON without rewriting the summary:
+Redraw Fig 8 bar charts from existing JSON without rewriting the summary:
     python notebooks/scripts/chFusion_paper_ablation_draft.py --figures-only
 
-Box-plot copies only (does not overwrite Fig 8 bar charts):
-    python notebooks/scripts/chFusion_paper_ablation_draft.py --box-only
+`--box-only` is accepted and does the same as the default.
 
 Only run selected keys then merge + replot:
     python notebooks/scripts/chFusion_paper_ablation_draft.py --only-keys draft_ms_remote,draft_ms_local,...
@@ -280,13 +283,13 @@ def _grouped_metric_boxes(
     handles.append(plt.Line2D([0], [0], marker="o", color="none", markerfacecolor="black", markersize=4, label="mean"))
     rmse_top = float(np.max(np.asarray(rmse_groups, dtype=float)))
     ax.set_xticks(x)
-    ax.set_xticklabels(list(method_labels), fontsize=10)
+    ax.set_xticklabels(list(method_labels), fontsize=18)
     ax.set_xlim(-0.5, n_methods - 0.5)
     ax.set_ylim(0, bpm_top * 1.12 if bpm_top > 0 else 1.0)
     ax2.set_ylim(0, rmse_top * 1.12 if rmse_top > 0 else 1.0)
-    ax.set_ylabel("RR absolute error (BPM)")
-    ax2.set_ylabel("Waveform RMSE")
-    ax.legend(handles=handles, fontsize=8, loc="lower center", bbox_to_anchor=(0.5, 1.02), ncol=4, frameon=False)
+    ax.set_ylabel("RR absolute error (BPM)", fontsize=18)
+    ax2.set_ylabel("Waveform RMSE", fontsize=18)
+    ax.legend(handles=handles, fontsize=16, loc="lower center", bbox_to_anchor=(0.5, 1.02), ncol=2, frameon=False)
     ax.grid(True, axis="y", alpha=0.3)
     fig.tight_layout()
     return fig
@@ -527,18 +530,27 @@ def plot_draft_fig8(summary: dict) -> Tuple[List[Path], dict]:
     return paths, stats
 
 
+def _wants_bars_or_run(args: argparse.Namespace) -> bool:
+    return bool(args.run or args.plot_only or args.figures_only or args.only_keys.strip())
+
+
 def parse_args() -> argparse.Namespace:
     p = argparse.ArgumentParser(description=__doc__)
-    p.add_argument("--plot-only", action="store_true", help="Only replot from existing per-scenario JSON")
+    p.add_argument(
+        "--run",
+        action="store_true",
+        help="Run the ablation matrix, then redraw Fig 8 bar charts.",
+    )
+    p.add_argument("--plot-only", action="store_true", help="Only replot bar charts from existing per-scenario JSON")
     p.add_argument(
         "--figures-only",
         action="store_true",
-        help="Redraw Fig 8 from existing JSON. Do not rerun experiments or rewrite the summary.",
+        help="Redraw Fig 8 bar charts from existing JSON. Do not rerun experiments or rewrite the summary.",
     )
     p.add_argument(
         "--box-only",
         action="store_true",
-        help="Write Fig 8 box-plot copies. Do not overwrite the bar charts or the summary.",
+        help="Write Fig 8 box plots (also the default). Do not overwrite the bar charts or the summary.",
     )
     p.add_argument(
         "--only-keys",
@@ -566,7 +578,7 @@ def _write_fig8_numbers(stats: dict, paths: List[Path]) -> Path:
 
 def main() -> None:
     args = parse_args()
-    if args.box_only:
+    if not _wants_bars_or_run(args):
         summary_path = REPORTS_DIR / "ble_hkh_draft_ablation_summary.json"
         summary = json.loads(summary_path.read_text(encoding="utf-8"))
         paths = plot_draft_fig8_box(summary)

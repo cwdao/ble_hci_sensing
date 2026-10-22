@@ -5,7 +5,10 @@ Does NOT re-run experiments — reads existing JSON summaries.
 Default entry point (plan: docs/plans/paper_ch6_tables_to_figures_plan.md):
     python notebooks/scripts/chFusion_paper_figure_redraw.py
 
-Writes Fig 6a, Fig 6b, and the Table 6.4 RMSE leaderboard only.
+Writes the Fig 6a / 6b / Table 6.4 box plots.
+Bar-chart leaderboards (does not touch the box-plot files):
+    python notebooks/scripts/chFusion_paper_figure_redraw.py --bars
+
 Does not touch Fig 7 or the Fig 8 ablation panels.
 """
 
@@ -351,7 +354,7 @@ def plot_fig6a(rows: Optional[List[dict]] = None) -> Tuple[Path, List[dict]]:
             error_kw={"elinewidth": 1.0, "capthick": 1.0},
         )
     ax.set_yticks(y)
-    ax.set_yticklabels(labels, fontsize=10)
+    ax.set_yticklabels(labels, fontsize=20)
     ax.set_xlim(left=0)
     ax.set_xlabel("Mean BPM absolute error (breaths/min) across 12 scenarios")
     ax.legend(handles=_legend_handles(), loc="upper right", fontsize=8, framealpha=0.9)
@@ -566,12 +569,12 @@ def plot_fig6a_box(rows: Optional[List[dict]] = None) -> Path:
     )
     _paint_boxes(bp, colors)
     ax.set_yticks(y)
-    ax.set_yticklabels(labels, fontsize=10)
+    ax.set_yticklabels(labels, fontsize=16)
     ax.set_ylim(-0.6, len(shown) - 0.4)
     ax.set_xlim(left=0)
-    ax.set_xlabel("BPM absolute error (breaths/min) across 12 scenarios")
+    ax.set_xlabel("BPM absolute error ", fontsize=16)
     handles = _legend_handles() + [plt.Line2D([0], [0], marker="o", color="none", markerfacecolor="black", markersize=4, label="mean")]
-    ax.legend(handles=handles, loc="upper right", fontsize=8, framealpha=0.9)
+    ax.legend(handles=handles, loc="upper right", fontsize=16, framealpha=0.9)
     ax.grid(True, axis="x", alpha=0.3)
     fig.tight_layout()
     path = _save_figure(fig, "paper_fig6a_bpm_leaderboard_box")
@@ -610,12 +613,12 @@ def plot_fig6b_box(rows: Optional[List[dict]] = None) -> Path:
         _paint_boxes(bp, [color] * len(data))
         legend_handles.append(Patch(facecolor=color, edgecolor="black", label=room_labels[i]))
     ax.set_xticks(x)
-    ax.set_xticklabels([r["label"] for r in rows], rotation=25, ha="right", fontsize=8)
+    ax.set_xticklabels([r["label"] for r in rows], rotation=25, ha="right", fontsize=24)
     ax.set_xlim(-0.5, len(rows) - 0.5)
     ax.set_ylim(bottom=0)
-    ax.set_ylabel("BPM absolute error (breaths/min)")
+    ax.set_ylabel("BPM absolute error ", fontsize=24)
     legend_handles.append(plt.Line2D([0], [0], marker="o", color="none", markerfacecolor="black", markersize=4, label="mean"))
-    ax.legend(handles=legend_handles, fontsize=8)
+    ax.legend(handles=legend_handles, fontsize=24)
     ax.grid(True, axis="y", alpha=0.3)
     fig.tight_layout()
     path = _save_figure(fig, "paper_fig6b_bpm_by_room_box")
@@ -646,12 +649,12 @@ def plot_rmse_box(rows: Optional[List[dict]] = None) -> Path:
     )
     _paint_boxes(bp, colors)
     ax.set_yticks(y)
-    ax.set_yticklabels(labels, fontsize=10)
+    ax.set_yticklabels(labels, fontsize=20, rotation=0)
     ax.set_ylim(-0.6, len(shown) - 0.4)
     ax.set_xlim(left=0)
-    ax.set_xlabel("Waveform RMSE")
+    ax.set_xlabel("Waveform RMSE", fontsize=20)
     handles = _legend_handles() + [plt.Line2D([0], [0], marker="o", color="none", markerfacecolor="black", markersize=4, label="mean")]
-    ax.legend(handles=handles, loc="upper center", bbox_to_anchor=(0.5, -0.16), ncol=3, fontsize=8, frameon=False)
+    ax.legend(handles=handles, loc="upper center", bbox_to_anchor=(0.5, -0.16), ncol=3, fontsize=16, frameon=False)
     ax.grid(True, axis="x", alpha=0.3)
     fig.tight_layout()
     path = _save_figure(fig, "paper_fig6_4_rmse_leaderboard_box")
@@ -671,11 +674,11 @@ def plot_chapter6_box() -> Dict[str, str]:
     payload = {}
     if out.exists():
         payload = json.loads(out.read_text(encoding="utf-8"))
-    payload["box_figures"] = {
-        "note": "Per-scenario distribution. Median line, black dot = mean. Does not replace the bar charts.",
-        "whis": 1.5,
-        "figures": paths,
-    }
+    box = payload.get("box_figures", {})
+    box["note"] = "Per-scenario distribution. Median line, black dot = mean. Does not replace the bar charts."
+    box["whis"] = 1.5
+    box["figures"] = paths
+    payload["box_figures"] = box
     out.write_text(json.dumps(payload, ensure_ascii=False, indent=2, default=_json_default), encoding="utf-8")
     return paths
 
@@ -903,9 +906,11 @@ def rmse_table_markdown(rows: List[dict]) -> str:
 def main() -> None:
     """Redraw Fig 6a / 6b / Table 6.4. Does not rewrite experiment summaries or Fig 7.
 
-    `--box-only` writes `*_box` figures and does not touch the bar-chart files.
+    Default writes the `*_box` figures and does not touch the bar-chart files.
+    `--bars` writes the bar-chart leaderboards instead.
+    `--box-only` is accepted and does the same as the default.
     """
-    if "--box-only" in sys.argv:
+    if "--bars" not in sys.argv:
         paths = plot_chapter6_box()
         print("=== Chapter 6 box plots (bar charts not rewritten) ===")
         for key, path in paths.items():
