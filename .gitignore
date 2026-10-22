@@ -32,3 +32,6 @@ sampleData/metal_verify/
 # Build artifacts (legacy)
 build/
 dist/
+
+# drawio editor backup files
+.$*.drawio.bkp
