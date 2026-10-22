@@ -119,23 +119,23 @@ Fig 6b 的房间 mean / std 直接来自 `paper_table63b_per_room_std.json` 的 
   - `outputs/figures/paper_fig8_abc_fusion.png`
   - `outputs/figures/paper_fig8_def_single_modal.png`
   - 以上均有同名 `.pdf`
-- 另有箱线图版本，文件名加 `_box`，不替换上面的条形图。每箱是 12 个场景的绝对误差（Fig 6b 为每个房间 4 名受试者）。箱内黑线是中位数，黑点是均值，须为 1.5 IQR。
+- 正文以箱线图为准，文件名带 `_box`。每箱是 12 个场景的绝对误差或 RMSE（Fig 6b 为每个房间 4 名受试者）。箱内黑线是中位数，黑点是均值，须为 1.5 IQR。同名不带 `_box` 的条形图仍保留，不再作为正文图。
 
 ### 4.4 题注（写入正文，不画在图上）
 
-**Fig. 6a — BPM accuracy across all 12 HKH recordings.** Mean absolute BPM error (breaths/min) and cross-scenario std for BreatheCS and migrated WiFi baselines. BreatheCS (0.371) is lowest; Pos-Free (PCA) and WiFi-Sleep (MRC-PCA) follow around 0.44–0.51; the ClessBreath variants are ≈1.39–1.49.
+**Fig. 6a — BPM accuracy across all 12 HKH recordings.** Box plots of BPM absolute error (breaths/min). Each box is the 12 recordings of one method. The line inside the box is the median, and the black dot is the mean. BreatheCS has the lowest mean (0.371). Pos-Free (PCA) and WiFi-Sleep (MRC-PCA) follow around 0.44–0.51. The ClessBreath variants are about 1.39–1.49 and spread more widely.
 
-**Fig. 6b — BPM accuracy by room.** Same method set as Fig. 6a, split by recording scenario (Living sitting / Bedroom flat / Bedroom side). BreatheCS is the lowest in all three rooms; the ClessBreath variants show large per-subject variance (error bars).
+**Fig. 6b — BPM accuracy by room.** Same methods as Fig. 6a, split into Living sitting, Bedroom flat, and Bedroom side. Each box is the four subjects in that room. The line is the median and the black dot is the mean. BreatheCS has the lowest mean in all three rooms. The ClessBreath variants spread widely across subjects.
 
-**Fig. 6.4 — Waveform recovery RMSE across 12 HKH recordings.** Mean RMSE of the recovered waveform against the belt. Before RMSE, each trace is z-scored (demeaned and scaled to unit variance) and sign-aligned, so the value is dimensionless and compares shape rather than raw amplitude. Error bars are the cross-scenario std. BreatheCS (0.937) is lowest; the WiFi-Sleep and Pos-Free baselines cluster around 1.05–1.07.
+**Fig. 6.4 — Waveform recovery RMSE across 12 HKH recordings.** Box plots of waveform RMSE against the belt. Each box is the 12 recordings of one method. Before RMSE, each trace is z-scored and sign-aligned, so the value compares shape. The line inside the box is the median, and the black dot is the mean. BreatheCS has the lowest mean (0.937). WiFi-Sleep and Pos-Free cluster around 1.05–1.07.
 
-**Fig. 8 — Fusion-level ablation.** Grouped bars. Left axis: spectral and waveform RR absolute error (BPM). Right axis: waveform RMSE. Methods: no fusion / channel only / modal only / BreatheCS. Channel-level fusion contributes the dominant gain (1.640→0.381 BPM).
+**Fig. 8 — Fusion-level ablation.** Grouped box plots. Each box is the 12 recordings. Left axis: spectral and waveform RR absolute error (BPM). Right axis: waveform RMSE. The line inside a box is the median, and the black dot is the mean. Methods: no fusion / channel only / modal only / BreatheCS. Channel-level fusion accounts for most of the mean BPM drop (1.640→0.381).
 
-**Fig. 8 — Single-modal ablation.** Same dual-axis layout. Methods: Remote / Local / Phase / BreatheCS. Remote and Local are nearly equivalent to BreatheCS; composite Phase degrades sharply (≈2.2–2.4 BPM).
+**Fig. 8 — Single-modal ablation.** Grouped box plots with the same axes as the fusion figure. Each box is the 12 recordings. Methods: Remote / Local / Phase / BreatheCS. Remote and Local means stay close to BreatheCS. Composite Phase is much higher (about 2.2–2.4 BPM).
 
-误差线仍是 12 场景绝对误差（或 RMSE）的总体 std。画图时下端收到 0，表内 std 不改。
+表内数字仍是 12 场景均值和总体 std。箱线图展示的是各场景的分布，黑点对应表中的均值。
 
-同一段题注已写入 `docs/paper_draft/paper_draft_skeleton.md` §6.3–§6.4。
+同一段题注已写入 `docs/paper_draft/paper_draft_skeleton.md` §6.3–§6.4，并同步到 `docs/paper_draft/latex.md`。
 
 ---
 

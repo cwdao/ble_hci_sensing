@@ -1111,19 +1111,22 @@ These results show that several established fusion strategies remain effective w
 \begin{figure}[t]
     \centering
     \includegraphics[width=\linewidth]
-    {../../outputs/figures/paper_fig6a_bpm_leaderboard.png}
-    \caption{Overall mean absolute BPM error across the 12
-    subject--scenario recordings. BreatheCS uses the spectral branch
-    for its primary BPM estimate.}
+    {../../outputs/figures/paper_fig6a_bpm_leaderboard_box.png}
+    \caption{Box plots of absolute BPM error across the 12
+    subject--scenario recordings. Each box is one method. The line
+    inside the box is the median, and the black dot is the mean.
+    BreatheCS uses the spectral branch for its primary BPM estimate.}
     \label{fig:bpm_overall}
 \end{figure}
 
 \begin{figure}[t]
     \centering
     \includegraphics[width=\linewidth]
-    {../../outputs/figures/paper_fig6b_bpm_by_room.png}
-    \caption{Mean absolute BPM error under the three sensing scenarios:
-    living-room sitting, bedroom supine lying, and bedroom side lying.}
+    {../../outputs/figures/paper_fig6b_bpm_by_room_box.png}
+    \caption{Box plots of absolute BPM error under the three sensing
+    scenarios: living-room sitting, bedroom supine lying, and bedroom
+    side lying. Each box contains the four participants in that
+    scenario. The line is the median and the black dot is the mean.}
     \label{fig:bpm_scenario}
 \end{figure}
 
@@ -1223,10 +1226,11 @@ The waveform branch behaves differently. Channel-only fusion gives a waveform-de
 \begin{figure}[t]
     \centering
     \includegraphics[width=\linewidth]
-    {../../outputs/figures/paper_fig8_abc_fusion.png}
-    \caption{Fusion-level ablation for (a) spectral BPM estimation,
-    (b) waveform-derived BPM estimation, and (c) waveform
-    reconstruction.}
+    {../../outputs/figures/paper_fig8_abc_fusion_box.png}
+    \caption{Fusion-level ablation as grouped box plots. Each box is
+    the 12 recordings. Left axis: spectral and waveform RR absolute
+    error (BPM). Right axis: waveform RMSE. The line inside a box is
+    the median, and the black dot is the mean.}
     \label{fig:fusion_ablation}
 \end{figure}
 
@@ -1265,11 +1269,12 @@ Because composite phase generally has a lower respiratory-band energy concentrat
 \begin{figure}[t]
     \centering
     \includegraphics[width=\linewidth]
-    {../../outputs/figures/paper_fig8_def_single_modal.png}
-    \caption{Single-modality ablation for spectral BPM estimation,
-    waveform-derived BPM estimation, and waveform reconstruction.
-    The remote-amplitude, local-amplitude, and composite-phase
-    configurations are compared with BreatheCS.}
+    {../../outputs/figures/paper_fig8_def_single_modal_box.png}
+    \caption{Single-modality ablation as grouped box plots, with the
+    same axes as the fusion figure. Each box is the 12 recordings.
+    Remote amplitude, local amplitude, and composite phase are
+    compared with BreatheCS. The line is the median and the black
+    dot is the mean.}
     \label{fig:single_modal_ablation}
 \end{figure}
 
