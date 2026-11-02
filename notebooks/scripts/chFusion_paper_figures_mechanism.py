@@ -342,8 +342,8 @@ def generate_fig2(
 
     X_sel = X[selected]
     labels = [
-        f"tone {t}"
-        + (" (ref)" if t == ref_idx else f" Δφ={phases[t]:.2f}")
+        f"ch {t}"
+        # + (" (ref)" if t == ref_idx else f" Δφ={phases[t]:.2f}")
         for t in selected
     ]
     raw = np.vstack([_zscore(row) for row in X_sel])
@@ -376,8 +376,8 @@ def generate_fig2(
     colors = ["#1f77b4", "#ff7f0e", "#2ca02c", "#d62728"]
 
     panels = [
-        ("(a) Bandpass waveforms of representative tones", raw, "paper_fig2_a"),
-        ("(b) After PCA $\pm 1$ sign correction", pca_sign, "paper_fig2_b"),
+        ("(a) Bandpass waveforms of representative channels", raw, "paper_fig2_a"),
+        ("(b) After PCA sign correction", pca_sign, "paper_fig2_b"),
         ("(c) After Hilbert continuous phase alignment", hilbert_aligned, "paper_fig2_c"),
     ]
 

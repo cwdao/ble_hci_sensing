@@ -592,7 +592,7 @@ def plot_fig6b_box(rows: Optional[List[dict]] = None) -> Path:
     cycle = plt.rcParams["axes.prop_cycle"].by_key()["color"]
     x = np.arange(len(rows))
     width = 0.24
-    fig, ax = plt.subplots(figsize=(12.5, 5.4))
+    fig, ax = plt.subplots(figsize=(12.5, 8))
     legend_handles = []
     for i, room_key in enumerate(CH6_ROOM_ORDER):
         lo, hi = CH6_ROOM_SLICES[room_key]

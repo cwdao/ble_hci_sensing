@@ -8,7 +8,13 @@
 
 ## Abstract / 摘要
 
-**CN**: 蓝牙信道探测（Channel Sounding, CS）通过互易 PCT 交换提供两个端侧幅值观测与一个组合相位观测，为低功耗 BLE 上的非接触呼吸感知提供了新的测量原语；但其稀疏、可能不均匀的事件率，以及 信道channel/模态间连续相位关系，对合理利用观测量提出了新挑战。本文通过多个场景的受控金属板实验发掘并验证BLE CS的观测特性，随后提出BreatheCS：将呼吸率估计与波形恢复分开处理。BPM 分支做质量加权谱聚合；波形分支在各端侧幅值模态内做复平面相干对齐。两个分支在各自任务上融合端侧幅值候选后，再按窗级质量在幅值候选与组合相位候选之间选择，以确定最终估计。 通过在四名受试者、三种室内感知场景下的 12 条真人记录上验证性能，BreatheCS 的平均绝对 BPM 误差为 0.371 breaths/min，归一化波形 RMSE 为 0.937。消融表明信道聚合是主导且稳定的增益来源，组合相位在大多数情况下不如端侧幅值可靠。结论是：BLE CS 的呼吸感知需要对观测特性做针对性算法设计，才能获得最佳的呼吸监测性能。
+ Wireless sensing with commodity communication devices has attracted considerable attention because of its contactless operation and low deployment cost. Despite its widespread adoption, Bluetooth has played a limited role in this field, largely because fine-grained sensing measurements have not been readily accessible. The introduction of Channel Sounding (CS) in Bluetooth Core 6.0 provides new opportunities for wireless sensing. However, CS was developed for ranging rather than sensing, and the extent to which its protocol characteristics and measurement structure support sensing tasks remains insufficiently understood. This paper uses respiration monitoring as a representative task to systematically investigate the sensing capabilities of BLE CS through theoretical modeling and experimental validation. We further propose BreatheCS, a respiration sensing framework tailored to the characteristics of CS measurements to effectively exploit the available observations. Experiments on recordings from eight participants demonstrate that measurements obtained through the standardized Bluetooth Core 6.0 CS interface support contactless respiration sensing. Compared with representative methods adapted from recent wireless sensing studies, BreatheCS achieves the lowest errors in both respiratory-rate estimation and waveform reconstruction, with a mean absolute error of 0.371 breaths/min and a normalized waveform root-mean-square error (RMSE) of 0.937, respectively. These results demonstrate the potential of Bluetooth CS for wireless sensing, with additional practical advantages arising from its low deployment cost and compatibility with CS-capable commodity devices.
+
+
+
+基于商用设备的无线感知具有非接触式、部署成本低等优势，已得到了相当的关注。尽管蓝牙应用广泛，却因为长期缺乏可用的感知信息而几乎缺席这一领域。蓝牙在6.0版本推出了信道探测这一新测距技术，同样为无线感知的研究带来了极大的便利。但信道探测是测距技术，并非专为感知而设计，因此其规范特性、信息特征等在多大程度上可用于感知，尚缺乏严谨的探讨。本文以呼吸监测作为典型感知任务，通过理论建模和实验验证，对信道探测这一测距技术在感知任务上的性能给予严谨的实验评估。进一步地，本文针对信道探测的特性提出 BreathCS，以充分利用可用的测量信息。我们在8个实验对象的数据上所进行的实验结果表明，基于 6.0版本接口的信道探测，其测量数据完全可用于呼吸感知。同时，所提出的BreathCS 在与无线感知领域的近期相关工作的比较中也取得了最低的误差，对于呼吸频率和呼吸波形的最佳误差分别为 0.371 BPM 与0.937的 RMSE。结果进一步表明，蓝牙信道探测在无线感知领域具有相当的潜力，此外，当考虑部署成本与商用设备兼容性时，蓝牙则具备更大的优势。
+
+
 
 ## 1. Introduction / 引言
 
@@ -44,27 +50,30 @@
 
 ## 2. Related Work
 
-### 无线感知
+### \subsection{基于商用通信设备的射频呼吸感知}
 
-已经有多种传感器被应用于人体活动的监测，其中呼吸监测具有疾病预防、睡眠监测的重要价值\cite{yang2022artificial}。在感知方式上，基于无线射频的传感具有独特优势，因为其更具隐私性，且更方便\cite{liu2020human}。无线传感的传感器又可进一步分为主动型和被动型传感两类\cite{iannizzotto2022perspective}。前者如超宽带（ultra-wideband, UWB）雷达\cite{shyu2018detection}、调频连续波（frequency-modulated continuous-wave, FMCW）雷达\cite{yao2024non}等，这些传感器普遍带宽大，具有较高的距离分辨率，因而适合细粒度的活动感知。例如，基于毫米波雷达的技术能够分辨人体的四肢和躯干【\cite{shyu2018detection}】；后者利用 Wi-Fi\cite{zeng2018fullbreathe}、LoRa\cite{zhang2020exploring}、BLE\cite{wang2025exploration}、IEEE 802.15.4\cite{patwari2013monitoring} 等，通过复用现有商用通信设施，进一步降低感知技术的部署成本，具备独特的价值。
+射频呼吸感知通过测量呼吸引起的无线传播变化，在无需被监测者佩戴传感器的情况下获取呼吸信息。超宽带雷达和调频连续波雷达等专用雷达系统已经验证了非接触式生命体征监测的可行性 \cite{shyu18detection,yao24non}。另一条研究路线是复用通信信号和通信设备实现感知。已有研究利用 Wi-Fi \cite{zhang24wi,wang16human,wang17phasebeat,zeng19farsense} 和 LoRa \cite{zhang20exploring} 进行呼吸监测，表明商用通信技术能够为微弱生理运动提供可用的观测。这些研究为进一步探索基于蓝牙信道探测（Channel Sounding，CS）的呼吸感知奠定了基础。
 
-### 基于商用通信设备的无线感知
+基于通信信号的呼吸感知面临的一个核心问题是信道观测量的选择和处理。与接收信号强度指示值（RSSI）相比，Wi-Fi 信道状态信息（CSI）能够提供不同子载波上更细粒度的幅度和相位测量。早期研究证明了从 CSI 变化中提取呼吸运动的可行性 \cite{wang16human}，后续研究则通过不同的信号表示提高感知灵敏度和鲁棒性。例如，PhaseBeat 利用不同接收天线间的 CSI 相位差进行生命体征监测 \cite{wang17phasebeat}，FarSense 则利用不同接收天线间的 CSI 比值模型改善呼吸感知，提高感知精度并扩展感知距离 \cite{zeng19farsense}。这些方法表明，一种测量是否适合感知，不仅取决于能否获取该测量，还取决于如何处理硬件引入的扰动，以及与运动相关的信道响应。
 
-基于商用通信设备的无线感知属于被动型感知，感知过程在收发设备通信过程中完成。通过获知射频信号在空间传播中的变化，研究者可以捕捉人体的活动信息\cite{youssef2007challenges,pahlavan2013principles}。在这类研究早期，Wi-Fi 是最早得到充分研究的，因为它能通过特定型号的网卡和驱动向外报告丰富的信道状态信息（channel state information, CSI）\cite{liu2015contactless}。CSI 可令研究者获得 Wi-Fi 多个正交频分复用（orthogonal frequency-division multiplexing, OFDM）子载波在空间中的衰落，并据此感知人体活动。CSI 的稳定性和精细度要优于稍早期的接收信号强度指示（received signal strength indicator, RSSI）\cite{ma2019wifi,liu2015contactless,iannizzotto2022perspective}，因为它来自通信协议的物理层。因此，基于 CSI，活动监测的性能得到了充分拓展\cite{wang2016wifall,liu2015contactless,wang2016human}。后续工作则进一步通过多天线上 CSI 的差、比提取稳定的相位信息，实现了呼吸监测与活动感知性能的进一步提升\cite{wang2017phasebeat,wu2022wifi,zeng2019farsense,ma2018signfi,ma2019wifi,zeng2018fullbreathe}。目前，大多数细粒度 CSI 感知工作都使用相位差或相位比作为主要特征监测呼吸和其他人体活动\cite{wu2020fingerdraw,zeng2019farsense,gao2021towards,chen2024wiphase}。
+不同感知平台在测量信息的获取方式上也存在差异。传统的基于 CSI 的 Wi-Fi 感知系统通常依赖受支持的网络接口和相应的提取工具，而基于波束成形反馈的方法提供了另一条获取信道相关信息的路径 \cite{yi24bfmsense}。BLE CS 则通过标准化的探测流程和控制器测量上报机制提供了不同的测量接口 \cite{bluetoothsig24bluetooth,woolley24bluetooth,bluetoothsig25bluetooth}。然而，测量接口的可用并不意味着现有感知方法可以直接应用于基于 BLE CS 的感知。BLE 和 CS 具有不同于常见 Wi-Fi CSI 平台的特点：对于许多面向低成本、低功耗应用的 BLE 设备，天线阵列并非默认配置，引入阵列会增加硬件成本和复杂度；同时，双向 CS 测量的观测结构也是 BLE CS 感知需要专门考虑的特性。因此，本文研究 BLE CS 能够提供哪些呼吸观测量，以及这些观测量之间的关系应当如何指导信号处理环节。
 
-除了WIFi外，还有一些通信协议也得到了感知研究者的关注。LoRa 专为长距离的物联网通信设计，它的信号调制方式非常适合长距离传输。因此，基于LoRa 的感知通常能够报告十米以上的感知距离\cite{zhang2020exploring}。IEEE802.15.4 则在无线感知的早期有探索，但它的可用信息比较少，仅有RSSI\cite{patwari2013monitoring} ，因而近些年不再得到更多关注。BLE 虽然知名且应用广泛，但与 IEEE802.15.4 一样缺乏细粒度信息\cite{iannizzotto2022perspective}。 
+### \subsection{基于蓝牙的无设备感知}
 
-### 基于 BLE 信道探测的无设备感知
+基于蓝牙的人体感知逐步从粗粒度的信号强度测量（RSSI）发展到更细粒度的观测。早期 BLE 感知主要利用 RSSI 的变化，实现人员占用检测和运动相关感知等任务 \cite{iannizzotto22perspective,huang19robust}。虽然许多设备能够直接提供这类测量，但其有限的测量粒度，以及随工作频率变化的信号响应，使微弱呼吸运动的观测更加困难。随后，蓝牙测向（Direction Finding，DF）功能引入了用于方向相关测量的同相与正交（IQ）采样 \cite{woolley19bluetooth}。研究人员进一步将这一能力用于无设备手势识别和运动感知 \cite{zhang23bleselect,taniguchi24device}。这些工作表明，蓝牙测量不仅能够用于无线定位，也具有其他感知价值。不过，基于到达角或出发角的蓝牙测向需要至少一端配备天线阵列，这限制了其在单天线设备上的适用性。
 
-BLE 的功能设计主要面向短距离无线连接，是仅次于 Wi-Fi 的第二大物联网协议\cite{iotbusinessnews_state_of_iot_2025_21_1b}。由于追求功耗和成本优化，BLE 选择跳频扩频（frequency-hopping spread spectrum, FHSS）作为扩频技术\cite{falsafi1996transmission}，这导致 BLE 的 RSSI 是随机多变的，需要专门对设备修改才能得到相对稳定的 RSSI\cite{huang2019robust,iannizzotto2022perspective}。这种特性阻碍了无线感知的应用。直到 BLE 5.1 版本，这一情况开始出现改变，该版本引入的 Direction Finding（DF）功能为 BLE 设备带来了物理层信道测量的硬件支持\cite{bluetooth5.1overview,zand2019high}，这为使用 BLE 实现更精细的感知带来可能\cite{zhang2023bleselect,taniguchi2024device}。但 DF 没有引入单独的物理层内容，它的工作信道仍然受到调频算法的控制，这限制了研究者对更进一步的细粒度信息的获取。
+蓝牙 CS 通过支持跨多个频率信道的双向测量，为无线感知提供了新的机会 \cite{bluetoothsig24bluetooth,woolley24bluetooth}。CS 允许两个设备通过单天线的双向测量实现高精度测距。在标准 CS 推出之前，已有研究探索了 BLE 的高精度相位测距 \cite{zand19high}；相关的相位测距与 CS 研究进一步讨论了多径效应、距离估计方法以及测距性能等问题 \cite{schroder19investigation,santra24enhancing,tsemko25data,debuyst24multipath,wieme25performance}。这些研究建立了重要的测量与处理基础，但其主要目标是估计参与测量的设备之间的距离。无设备呼吸感知则面临不同的问题：需要从包含强静态分量和环境多径的传播信道中，恢复呼吸引起的微弱扰动。此外，呼吸感知通常需要持续采样，并对采样时序的规则性提出要求，而单次距离估计并不必然具有相同要求。
 
-BLE 6.0 推出了信道探测（Channel Sounding, CS），引入了基于相位的测距（phase-based ranging, PBR）。CS-PBR 需要两个设备在多个频率上执行双向的信道测量，以估计设备的间距\cite{zand2019high,Kastnes_NDT_2023}。目前，已经有一些工作开始关注 CS 测距性能的优化\cite{schroder2019investigation,santra2024enhancing,tsemko2025data,de2024multipath,wieme2025performance}，但如何将 BLE CS 这一更丰富的信道观测和全新的双向过程充分应用于无设备感知，当前尚且缺乏探索\cite{tian2023bluebreathe,paulikas2026exploring}。
-
-除了 BLE 的广泛部署带来的潜在优势，CS 的另一个独特而巨大的优势还在于，其能通过标准主机控制器接口（Host Controller Interface, HCI）直接报告测量结果\cite{BluetoothCore6.0Overview}。这意味着基于 CS 的感知方案兼容所有 BLE 6.0 平台，获得感知信息无需对商用产品做任何特殊改造，或者像BFM/BFI 那样仍需额外嗅探设备才能获取\cite{yi2024bfmsense}。我们在表~\ref{tab:rf_comparison} 列举了一些典型的无线感知技术，并比较它们的优势和局限。
-
-本文以呼吸感知作为典型任务，通过建立 BLE CS 的呼吸感知模型讨论CS的感知特性，并提出 BreatheCS以适配BLE CS。通过对 BLE CS 这一全新的感知技术予以充分探讨，本文初步论证了BLE CS 在感知领域的应用潜力。
+近期研究开始探索蓝牙呼吸监测 \cite{tian23bluebreathe}，以及基于 BLE CS 的无设备感知 \cite{wang25exploration,paulikas26exploring}。Wang 等人的研究 \cite{wang25exploration} 初步展示了 CS 距离序列用于活动识别的价值，但未进一步展开对双向测量结构的分析。随后，Paulikas 和 Paulikienė 从 BLE CS 得到的距离估计中提取时间特征，用于跌倒检测 \cite{paulikas26exploring}，但并未讨论原始的幅度和相位观测量。上述两项 CS 感知工作尚未针对本文关注的呼吸观测量开展细致的理论建模和性能评估。本文关注的是建立端点幅度、复合相位与呼吸运动之间的联系，刻画这些观测量随信道变化的响应，并将其用于呼吸率估计和波形重建。
 
 
+### \subsection{多信道融合与呼吸波形重建}
+
+由于不同信道对同一运动的灵敏度可能存在显著差异，信道多样性被广泛用于改善无线呼吸感知。近年的代表性方法包括基于质量的信道选择、主成分分析（PCA）以及最大比合并（MRC）等加权组合方法。例如，ClessBreath \cite{fan24contactless} 评估呼吸相关能量的集中程度，并将其用于信道组合和观测选择。Position-free \cite{zhuo23position} 采用基于 PCA 的处理方法，WiFi-Sleep \cite{yu21wifi} 则在睡眠监测中引入最大比合并与 PCA 相关处理。这些研究为从含噪且质量不一致的测量中提取共同呼吸分量提供了有效思路。
+
+然而，呼吸率估计与波形重建对观测组合提出了不同要求。由于恒定的波形相位偏移不会改变相应频率分量的功率，功率谱可以在不预先对齐呼吸波形相位的情况下进行聚合。相比之下，直接组合相位不一致的时域波形，可能削弱目标分量，甚至导致相互抵消 \cite{fan24contactless}。利用 PCA 处理波形的同相与反相关系，并结合加权组合，为波形融合提供了有用的基础方法 \cite{zeng18fullbreathe}，但其适用性需要结合目标平台的波形关系与测量条件进行考虑。对于 BLE CS，这些条件包括双向观测结构，以及本文实现中较低的有效更新速率。
+
+观测融合还需要正确区分互补信息和不可靠测量。以 FarSense \cite{zeng19farsense} 和 Position-free \cite{zhuo23position} 为代表的多天线 CSI 比值方法，可以在 IQ 平面上寻找突出呼吸运动的投影方向，直接从复数表示中提取有效波形，而不必分别处理幅度和相位。然而，这类处理依赖特定的多天线 CSI 比值表示；BLE CS 的双端幅度和复合相位并不构成相同的输入表示，因此相关方法不能不加修改地直接迁移。此外，能够获取多个观测量，并不意味着它们都应当始终参与最终输出。因此，BreatheCS 在共享质量评估的基础上采用面向不同任务的处理方式：频谱分支聚合信道频谱，并在端点幅度候选与复合相位候选之间进行选择；波形分支则在信道融合和端点幅度融合之前对齐呼吸波形的相位，随后进行候选选择。通过这些针对性的设计，BreatheCS 利用 BLE CS 提供的可用观测，使信号处理流程与其测量特性相适配。
 
 
 ## 3. Preliminaries / BLE CS 基础
