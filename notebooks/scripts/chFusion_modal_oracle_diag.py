@@ -7,6 +7,7 @@ Run:
     python notebooks/scripts/chFusion_modal_oracle_diag.py --domain hkh
     python notebooks/scripts/chFusion_modal_oracle_diag.py --domain cs
     python notebooks/scripts/chFusion_modal_oracle_diag.py --plot-only
+    python notebooks/scripts/chFusion_modal_oracle_diag.py --plot-only --oracle-single
 """
 
 from __future__ import annotations
@@ -66,6 +67,7 @@ HKH_SCENARIO_IDS = [
 ]
 CS_SCENARIO_IDS = ["cs_091339", "cs_095806", "cs_102621"]
 MODALS = ("remote", "local", "phase")
+MODAL_COLORS = {"remote": "#1f77b4", "local": "#d62728", "phase": "#9467bd"}
 
 ORACLE_VARIANT = B3VariantConfig(
     use_voting=True,
@@ -467,13 +469,13 @@ def plot_oracle_figures(arr: np.ndarray, summary: dict) -> List[Path]:
             continue
         pct = summary[domain]["best_pct"]
         vals = [pct[m] for m in MODALS]
-        colors = ["#4C78A8", "#F58518", "#54A24B"]
+        colors = [MODAL_COLORS[m] for m in MODALS]
         ax.bar(MODALS, vals, color=colors, edgecolor="black", linewidth=0.6)
         for i, v in enumerate(vals):
             ax.text(i, v + 1.0, f"{v:.1f}%", ha="center", fontsize=9)
         ax.set_ylim(0, max(vals) * 1.2 if vals else 1)
         ax.set_ylabel("Windows where modal is best (%)")
-        ax.set_title(f"{title}: oracle best-modal share")
+        ax.set_title(f"{title}: GT-optimal modal share")
         ax.grid(True, axis="y", alpha=0.3)
     fig.tight_layout()
     paths.append(_save_figure(fig, "modal_oracle_optimal_pie"))
@@ -496,7 +498,11 @@ def plot_oracle_figures(arr: np.ndarray, summary: dict) -> List[Path]:
             s["local_mean_abs_err"],
             s["phase_mean_abs_err"],
         ]
-        ax.barh(keys, vals, color=["#E63946", "#4C78A8", "#F58518", "#54A24B"])
+        ax.barh(
+            keys,
+            vals,
+            color=["#7f7f7f", MODAL_COLORS["remote"], MODAL_COLORS["local"], MODAL_COLORS["phase"]],
+        )
         ax.set_xlabel(ylabel)
         ax.set_title(f"{domain.upper()}: oracle vs single-modal")
         ax.grid(True, axis="x", alpha=0.3)
@@ -515,10 +521,10 @@ def plot_oracle_figures(arr: np.ndarray, summary: dict) -> List[Path]:
             continue
         ax.hist(all_phase["eta_phase"], bins=30, alpha=0.45, label="all windows", color="#999999")
         if len(sub):
-            ax.hist(sub["eta_phase"], bins=30, alpha=0.75, label="phase-best", color="#54A24B")
+            ax.hist(sub["eta_phase"], bins=30, alpha=0.75, label="phase is GT-optimal", color=MODAL_COLORS["phase"])
         ax.set_xlabel(r"$\eta_{phase}$")
         ax.set_ylabel("Count")
-        ax.set_title(f"{domain.upper()}: Phase η when Phase is oracle-best")
+        ax.set_title(f"{domain.upper()}: Phase η when phase is the GT-optimal modal")
         ax.legend(fontsize=8)
         ax.grid(True, alpha=0.3)
     fig.tight_layout()
@@ -533,7 +539,7 @@ def plot_oracle_figures(arr: np.ndarray, summary: dict) -> List[Path]:
             continue
         mets = summary[domain]["selection_metrics"]
         hit = [mets[m]["top1_hit_rate"] * 100 for m in metric_order]
-        ax.bar(metric_order, hit, color="#4C78A8", edgecolor="black", linewidth=0.5)
+        ax.bar(metric_order, hit, color="#2ca02c", edgecolor="black", linewidth=0.5)
         ax.set_ylabel("Top-1 hit rate (%)")
         ax.set_title(f"{domain.upper()}: modal selection metric accuracy")
         ax.set_ylim(0, 100)
@@ -546,7 +552,7 @@ def plot_oracle_figures(arr: np.ndarray, summary: dict) -> List[Path]:
 
     # Per-window quality scatter (η vs ρ, colored by best modal)
     fig, axes = plt.subplots(1, 2, figsize=(11, 4.5))
-    color_map = {"remote": "#4C78A8", "local": "#F58518", "phase": "#54A24B"}
+    color_map = dict(MODAL_COLORS)
     for ax, domain in zip(axes, ("hkh", "cs")):
         sub = arr[arr["domain"] == domain]
         if len(sub) == 0:
@@ -565,9 +571,9 @@ def plot_oracle_figures(arr: np.ndarray, summary: dict) -> List[Path]:
                 c=color_map[m],
                 label=m,
             )
-        ax.set_xlabel(r"$\eta$ of oracle-best modal")
-        ax.set_ylabel(r"$\rho$ of oracle-best modal")
-        ax.set_title(f"{domain.upper()}: quality of oracle-best modal")
+        ax.set_xlabel(r"$\eta$ of GT-optimal modal")
+        ax.set_ylabel(r"$\rho$ of GT-optimal modal")
+        ax.set_title(f"{domain.upper()}: quality of GT-optimal modal")
         ax.legend(fontsize=8)
         ax.grid(True, alpha=0.3)
     fig.tight_layout()
@@ -576,29 +582,166 @@ def plot_oracle_figures(arr: np.ndarray, summary: dict) -> List[Path]:
     return paths
 
 
+def _save_png_pdf(fig: plt.Figure, stem: str) -> Path:
+    png = FIGURES_DIR / f"{stem}.png"
+    pdf = FIGURES_DIR / f"{stem}.pdf"
+    fig.savefig(png, dpi=150, bbox_inches="tight", facecolor="white")
+    fig.savefig(pdf, bbox_inches="tight", facecolor="white")
+    plt.close(fig)
+    print(f"  saved {png.name} + {pdf.name}")
+    return png
+
+
+def plot_oracle_phase_eta_single(arr: np.ndarray, domain: str = "hkh", form: str = "v1") -> Path:
+    """Single-panel fig17 candidates from modal_oracle_per_window rows.
+
+    GT-optimal modal means the modality with the lowest BPM error against
+    ground truth (field ``best_modal``). This does not overwrite the canonical
+    ``paper_fig_modal_oracle_phase_eta_hkh`` files.
+    """
+    if form not in {"v1", "v2", "v3"}:
+        raise ValueError(f"unknown form: {form}")
+    sub = arr[np.asarray(arr["domain"]).astype(str) == domain]
+    eta_r = np.asarray(sub["eta_remote"], dtype=float)
+    eta_l = np.asarray(sub["eta_local"], dtype=float)
+    eta_p = np.asarray(sub["eta_phase"], dtype=float)
+    best = np.asarray(sub["best_modal"]).astype(str)
+    finite = np.isfinite(eta_r) & np.isfinite(eta_l) & np.isfinite(eta_p)
+    eta_r, eta_l, eta_p, best = eta_r[finite], eta_l[finite], eta_p[finite], best[finite]
+    n = int(eta_p.size)
+    if n == 0:
+        raise RuntimeError(f"no finite eta rows for domain={domain}")
+
+    rank1_phase = eta_p > np.maximum(eta_r, eta_l)
+    rank1_share = float(np.mean(rank1_phase))
+    gt_phase_share = float(np.mean(best == "phase"))
+    defin = "GT-optimal modal: the modality with the lowest BPM error against ground truth"
+    print(
+        f"  {domain} n={n}: phase eta rank-1 share={rank1_share * 100:.2f}%; "
+        f"phase is GT-optimal modal in {gt_phase_share * 100:.2f}% of windows"
+    )
+    print(f"  definition: {defin}")
+
+    stems = {
+        "v1": "paper_fig_modal_oracle_phase_eta_hkh_v1_modal_dist",
+        "v2": "paper_fig_modal_oracle_phase_eta_hkh_v2_ratio_hist",
+        "v3": "paper_fig_modal_oracle_phase_eta_hkh_v3_share_bar",
+    }
+    stem = stems[form] if domain == "hkh" else stems[form].replace("_hkh", f"_{domain}")
+
+    if form == "v1":
+        fig, ax = plt.subplots(figsize=(7.2, 4.4), dpi=150)
+        bins = 30
+        ax.hist(eta_r, bins=bins, alpha=0.45, color=MODAL_COLORS["remote"], label="remote")
+        ax.hist(eta_l, bins=bins, alpha=0.45, color=MODAL_COLORS["local"], label="local")
+        ax.hist(eta_p, bins=bins, alpha=0.45, color=MODAL_COLORS["phase"], label="phase")
+        ax.set_xlabel(r"$\eta$")
+        ax.set_ylabel("Windows")
+        ax.set_title(
+            f"{domain.upper()}: η distribution by modality\n"
+            f"phase η > max(remote, local): {rank1_share * 100:.1f}%; "
+            f"phase is GT-optimal modal: {gt_phase_share * 100:.1f}%"
+        )
+        ax.legend(fontsize=11, loc="upper left", bbox_to_anchor=(1.02, 1.0), borderaxespad=0.0)
+        fig.text(0.01, 0.01, defin, ha="left", va="bottom", fontsize=8)
+        fig.tight_layout(rect=(0.0, 0.06, 1.0, 1.0))
+    elif form == "v2":
+        denom = np.maximum(np.maximum(eta_r, eta_l), 1e-12)
+        ratio = eta_p / denom
+        positive = ratio[ratio > 0]
+        n_drop = int(np.sum(ratio <= 0))
+        r_gt1 = float(np.mean(ratio > 1.0))
+        fig, ax = plt.subplots(figsize=(7.2, 4.4), dpi=150)
+        if positive.size:
+            lo = max(float(np.min(positive)), 1e-4)
+            hi = max(float(np.max(positive)), lo * 1.01)
+            bins = np.logspace(np.log10(lo), np.log10(hi), 30)
+            ax.hist(positive, bins=bins, color=MODAL_COLORS["phase"], alpha=0.75, edgecolor="white")
+        ax.set_xscale("log")
+        ax.axvline(1.0, color="#333333", ls="--", lw=1.2, label="r = 1")
+        ax.set_xlabel(r"$r = \eta_{phase} / \max(\eta_{remote}, \eta_{local})$")
+        ax.set_ylabel("Windows")
+        title = f"{domain.upper()}: phase-to-amplitude η ratio\nr > 1: {r_gt1 * 100:.1f}%"
+        if n_drop:
+            title += f" (excluded r≤0: {n_drop})"
+        ax.set_title(title)
+        ax.legend(fontsize=11, loc="upper left")
+        fig.text(0.01, 0.01, defin, ha="left", va="bottom", fontsize=8)
+        fig.tight_layout(rect=(0.0, 0.06, 1.0, 1.0))
+        print(f"  ratio r>1 share={r_gt1 * 100:.2f}% (dropped r<=0: {n_drop})")
+    else:
+        rank_r = eta_r > np.maximum(eta_l, eta_p)
+        rank_l = eta_l > np.maximum(eta_r, eta_p)
+        shares = [
+            float(np.mean(rank_r)),
+            float(np.mean(rank_l)),
+            float(np.mean(rank1_phase)),
+        ]
+        fig, axes = plt.subplots(1, 2, figsize=(10.5, 4.4), dpi=150)
+        labels = ["remote", "local", "phase"]
+        ax = axes[0]
+        ax.bar(
+            labels,
+            [s * 100 for s in shares],
+            color=[MODAL_COLORS[m] for m in labels],
+            edgecolor="black",
+            linewidth=0.6,
+        )
+        for i, s in enumerate(shares):
+            ax.text(i, s * 100 + 1.0, f"{s * 100:.1f}%", ha="center", fontsize=10)
+        ax.set_ylim(0, max(max(shares) * 100 * 1.25, 1.0))
+        ax.set_ylabel("Windows where modal has rank-1 η (%)")
+        ax.set_title("η rank-1 share")
+        ax = axes[1]
+        bins = 30
+        ax.hist(eta_r, bins=bins, alpha=0.45, color=MODAL_COLORS["remote"], label="remote")
+        ax.hist(eta_l, bins=bins, alpha=0.45, color=MODAL_COLORS["local"], label="local")
+        ax.hist(eta_p, bins=bins, alpha=0.45, color=MODAL_COLORS["phase"], label="phase")
+        ax.set_xlabel(r"$\eta$")
+        ax.set_ylabel("Windows")
+        ax.set_title("η distribution")
+        ax.legend(fontsize=11)
+        fig.suptitle(defin, fontsize=10)
+        fig.tight_layout()
+        print(
+            "  eta rank-1 shares: "
+            + ", ".join(f"{lab}={s * 100:.2f}%" for lab, s in zip(labels, shares))
+        )
+
+    return _save_png_pdf(fig, stem)
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description="Modal oracle diagnosis E1/E2")
     parser.add_argument("--domain", choices=["all", "hkh", "cs"], default="all")
     parser.add_argument("--plot-only", action="store_true")
+    parser.add_argument("--oracle-single", action="store_true")
+    parser.add_argument("--oracle-form", default="all", choices=["v1", "v2", "v3", "all"])
+    parser.add_argument("--oracle-domain", default="hkh")
     parser.add_argument("--verbose", action="store_true", default=True)
     args = parser.parse_args()
 
     npy_path = REPORTS_DIR / "modal_oracle_per_window.npy"
     summary_path = REPORTS_DIR / "modal_oracle_summary.json"
 
-    if args.plot_only:
+    if args.plot_only or args.oracle_single:
         if not npy_path.exists():
             raise FileNotFoundError(npy_path)
         arr = np.load(npy_path, allow_pickle=False)
-        summary = summarize_oracle(arr)
-        paths = plot_oracle_figures(arr, summary)
-        summary_path.write_text(
-            json.dumps(summary, ensure_ascii=False, indent=2, default=_json_default),
-            encoding="utf-8",
-        )
-        print(f"Saved {summary_path}")
-        for p in paths:
-            print(f"Figure: {p}")
+        if args.plot_only:
+            summary = summarize_oracle(arr)
+            paths = plot_oracle_figures(arr, summary)
+            summary_path.write_text(
+                json.dumps(summary, ensure_ascii=False, indent=2, default=_json_default),
+                encoding="utf-8",
+            )
+            print(f"Saved {summary_path}")
+            for p in paths:
+                print(f"Figure: {p}")
+        if args.oracle_single:
+            forms = ["v1", "v2", "v3"] if args.oracle_form == "all" else [args.oracle_form]
+            for form in forms:
+                plot_oracle_phase_eta_single(arr, domain=args.oracle_domain, form=form)
         return
 
     records: List[dict] = []

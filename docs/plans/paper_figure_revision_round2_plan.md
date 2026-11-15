@@ -4,7 +4,7 @@
 > **目标报告**：`docs/reports/paper_figure_revision_round2_report.md`
 > **建议 plan 路径**：`docs/plans/paper_figure_revision_round2_plan.md`
 > **日期**：2026-11-15
-> **验证状态**：待实现
+> **验证状态**：已完成
 
 ---
 
@@ -270,12 +270,24 @@ def plot_oracle_phase_eta_single(arr, domain="hkh", form="v1|v2|v3") -> Path:
 
 ## 9. 验证状态
 
-| 字段 | 内容 |
-|------|------|
-| **验证状态** | 待实现 |
-| **实际脚本** | — |
-| **报告链接** | — |
-| **一句话结论** | — |
+状态：已完成
+
+实际产出路径：
+- 脚本：`notebooks/scripts/chFusion_position_sweep_observation.py`、`notebooks/scripts/chFusion_paper_figures_mechanism.py`、`notebooks/scripts/chFusion_modal_oracle_diag.py`
+- 数值结果：未新写指标文件。`modal_oracle_per_window.npy` 未修改。机制图脚本按原路径重写了 `outputs/reports/paper_figures_diagnostics.npy`。
+- 图表：`outputs/figures/position_sweep_figB2_channel_position_matrix.{png,pdf}`、`position_sweep_figC1_hard_remote.{png,pdf}`、`position_sweep_figD2_dphi_vs_position_ch20_40_60.{png,pdf}`、`paper_fig2_inter_tone_phase.{png,pdf}`、`paper_fig3_ab.{png,pdf}`、`paper_fig3_cd.{png,pdf}`、`paper_fig_modal_oracle_phase_eta_hkh_v1_modal_dist.{png,pdf}`、`..._v2_ratio_hist.{png,pdf}`、`..._v3_share_bar.{png,pdf}`
+- 报告：`docs/reports/paper_figure_revision_round2_report.md`
+
+结论摘要：
+
+图 6 相位检查通过（ref=71；ch13 反相 φ=−3.1305、γ=0.9735；ch64 同相 φ=−0.0004、γ=0.9986；ch71 同相 φ=0、γ=1）。图 17 HKH n=1730：phase η 排名第 1 占 5.49%，phase 为 GT-optimal modal 占 6.07%。正稿 `phase_oracle_eta.pdf` 未覆盖。`wang26breathecs.tex` 已编译通过（13 页）。
+
+遗留问题：
+
+- Q1 图 5 题注措辞仍待作者定，报告里给了建议，未改 tex。
+- Q2 模态对橙/青/棕观感待作者看 `paper_fig3_cd` 与图 8。
+- 图 17 三候选待作者择优后再覆盖正稿。
+- 图 8 上 R-P 与 L-P 在 0 和 ±π 处仍然叠在一起，图例已移到轴外。
 
 ---
 

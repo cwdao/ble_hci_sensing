@@ -16,6 +16,7 @@ from typing import Any, Dict, List, Optional, Sequence, Tuple
 
 import matplotlib.pyplot as plt
 import numpy as np
+from matplotlib.lines import Line2D
 from scipy.signal import hilbert
 
 _cwd = Path.cwd().resolve()
@@ -93,8 +94,8 @@ METAL_SEG1_WALK_END_SEQ = 450
 
 MODAL_COLORS = {
     "remote_amplitudes": "#1f77b4",
-    "local_amplitudes": "#2ca02c",
-    "phases": "#d62728",
+    "local_amplitudes": "#d62728",
+    "phases": "#9467bd",
 }
 MODAL_LABELS = {
     "remote_amplitudes": "Remote amp",
@@ -107,7 +108,11 @@ MODAL_SHORT = {
     "phases": "phase",
 }
 
-CHANNEL_COLORS = ["#1f77b4", "#ff7f0e", "#2ca02c", "#d62728", "#9467bd"]
+# Channel series must not reuse the three modal colors (blue/red/purple).
+CHANNEL_COLORS = ["#ff7f0e", "#17becf", "#2ca02c", "#8c564b", "#bcbd22", "#7f7f7f"]
+PAIR_COLORS = ["#ff7f0e", "#17becf", "#8c564b"]  # R-L, R-P, L-P
+C1_HARD_CHANNELS = [13, 64, 71]
+DOMAIN_COLORS = {"metal": "#9e9e9e", "human": "#e07a3d"}
 
 STYLE = {
     "linewidth": 1.6,
@@ -303,6 +308,15 @@ def _apply_hilbert_align(X: np.ndarray, phases: np.ndarray) -> np.ndarray:
         z = hilbert(X[i]) * np.exp(-1j * phases[i])
         out[i] = _zscore(np.real(z))
     return out
+
+
+def _classify_tone_phase(phase: float, coherence: float) -> str:
+    """In-phase / anti-phase test used by ``_select_representative_tones``."""
+    if coherence > 0.7 and abs(phase) < 0.35:
+        return "in-phase"
+    if coherence > 0.7 and abs(abs(phase) - np.pi) < 0.35:
+        return "anti-phase"
+    return "other"
 
 
 def _select_representative_tones(
@@ -703,8 +717,9 @@ def plot_fig_c(
     metal_segs: Dict[str, Dict[str, Any]],
     cfg: ChFusionConfig,
     figures_dir: Path,
-) -> List[Path]:
+) -> Tuple[List[Path], bool]:
     paths: List[Path] = []
+    c1_hard_blocked = False
     positions = {
         "good": ("seg5", metal_distance_cm(5)),
         "hard": ("seg14", metal_distance_cm(14)),
@@ -724,31 +739,48 @@ def plot_fig_c(
             short = MODAL_SHORT[var]
             t = block["time_sec"]
 
-            # Paper C1 hard_remote: panel (a) only, 6–8 tones, vertical stack
+            # Paper C1 hard_remote: panel (a) only, fixed tones 13/64/71
             if pos_key == "hard" and var == "remote_amplitudes":
-                selected = _select_representative_tones(
-                    phases, coherences, eta, rho, ref, k=8
-                )
-                fig, ax = plt.subplots(figsize=(8, 6.5), dpi=150)
-                for i, ch in enumerate(selected):
-                    y = _zscore(X[ch]) + i * 3.0
-                    ax.plot(
-                        t,
-                        y,
-                        color=CHANNEL_COLORS[i % len(CHANNEL_COLORS)],
-                        lw=1.5,
-                        label=f"ch{ch}",
+                selected = list(C1_HARD_CHANNELS)
+                print("  C1 hard remote phase check (estimate_phase_hilbert):")
+                print(f"    ref_idx={ref}")
+                classes: Dict[int, str] = {}
+                for ch in selected:
+                    kind = _classify_tone_phase(float(phases[ch]), float(coherences[ch]))
+                    classes[ch] = kind
+                    print(
+                        f"    ch{ch}: phase={float(phases[ch]):+.4f} rad, "
+                        f"coherence={float(coherences[ch]):.4f}, class={kind}"
                     )
-                ax.set_xlabel("Time (s)", fontsize=STYLE["fontsize"])
-                ax.set_ylabel("Offset z-score", fontsize=STYLE["fontsize"])
-                ax.legend(loc="upper right", fontsize=14, frameon=True, ncol=2)
-                _apply_style(ax)
-                fig.tight_layout()
-                out_stem = figures_dir / f"position_sweep_figC1_{pos_key}_{short}"
-                png, pdf = _save_png_pdf(fig, out_stem)
-                plt.close(fig)
-                paths.extend([png, pdf])
-                print(f"  wrote {png.name} + {pdf.name}")
+                kinds = set(classes.values())
+                if "in-phase" not in kinds or "anti-phase" not in kinds:
+                    print(
+                        "  STOP: channels 13/64/71 are not jointly in-phase and "
+                        "anti-phase representatives. Figure not written; "
+                        "channels not substituted."
+                    )
+                    c1_hard_blocked = True
+                else:
+                    fig, ax = plt.subplots(figsize=(8, 6.5), dpi=150)
+                    for i, ch in enumerate(selected):
+                        y = _zscore(X[ch]) + i * 3.0
+                        ax.plot(
+                            t,
+                            y,
+                            color=CHANNEL_COLORS[i % len(CHANNEL_COLORS)],
+                            lw=1.5,
+                            label=f"ch{ch}",
+                        )
+                    ax.set_xlabel("Time (s)", fontsize=STYLE["fontsize"])
+                    ax.set_ylabel("Offset z-score", fontsize=STYLE["fontsize"])
+                    ax.legend(loc="upper right", fontsize=14, frameon=True, ncol=2)
+                    _apply_style(ax)
+                    fig.tight_layout()
+                    out_stem = figures_dir / f"position_sweep_figC1_{pos_key}_{short}"
+                    png, pdf = _save_png_pdf(fig, out_stem)
+                    plt.close(fig)
+                    paths.extend([png, pdf])
+                    print(f"  wrote {png.name} + {pdf.name}")
             else:
                 selected = _select_representative_tones(
                     phases, coherences, eta, rho, ref, k=4
@@ -814,7 +846,7 @@ def plot_fig_c(
             plt.close(fig)
             paths.append(out)
             print(f"  wrote {out.name}")
-    return paths
+    return paths, c1_hard_blocked
 
 
 # ---------------------------------------------------------------------------
@@ -867,7 +899,7 @@ def plot_fig_d(
         ("remote_amplitudes", "phases", "Δφ(R,P)"),
         ("local_amplitudes", "phases", "Δφ(L,P)"),
     ]
-    pair_colors = ["#1f77b4", "#ff7f0e", "#2ca02c"]
+    pair_colors = list(PAIR_COLORS)
 
     for ch in d2_channels:
         xs, series = [], {lab: [] for _, _, lab in pairs}
@@ -914,11 +946,13 @@ def plot_fig_d(
         paths.extend([png, pdf])
         print(f"  wrote {png.name} + {pdf.name}")
 
-    # Stitched vertical panel for spaced tones (paper Ch.4)
+    # Stitched single panel: color = modal pair, marker = channel
     stitch_chs = [c for c in (20, 40, 60) if c in set(d2_channels)]
+    channel_markers = {20: "o", 40: "s", 60: "*"}
+    channel_sizes = {20: 36, 40: 36, 60: 90}
     if len(stitch_chs) == 3:
-        fig, axes = plt.subplots(3, 1, figsize=(8, 8.5), dpi=150, sharex=True)
-        for ax, ch in zip(axes, stitch_chs):
+        fig, ax = plt.subplots(figsize=(11.2, 4.6), dpi=150)
+        for ch in stitch_chs:
             xs, series = [], {lab: [] for _, _, lab in pairs}
             for seg_i in range(1, 17):
                 name = f"seg{seg_i}"
@@ -933,23 +967,65 @@ def plot_fig_d(
                     b = seg[vb]["bp"]["bandpass"][ch][sl]
                     series[lab].append(_instantaneous_dphi(a, b))
             for (va, vb, lab), color in zip(pairs, pair_colors):
-                ax.plot(
+                ax.scatter(
                     xs,
                     series[lab],
-                    "o-",
+                    marker=channel_markers[ch],
+                    s=channel_sizes[ch],
                     color=color,
-                    lw=STYLE["linewidth"],
-                    ms=5,
-                    label=lab,
+                    alpha=0.85,
+                    zorder=3,
                 )
-            ax.set_ylabel("Δφ (rad)", fontsize=STYLE["fontsize"])
-            ax.set_title(f"ch {ch}", fontsize=STYLE["fontsize"])
-            ax.set_xlim(101, 84)
-            if ax is axes[0]:
-                ax.legend(loc="upper right", fontsize=14, frameon=True)
-            _apply_style(ax)
-        axes[-1].set_xlabel("Distance (cm)", fontsize=STYLE["fontsize"])
-        fig.tight_layout()
+        ax.set_xlabel("Distance (cm)", fontsize=STYLE["fontsize"])
+        ax.set_ylabel("Δφ (rad)", fontsize=STYLE["fontsize"])
+        ax.set_xlim(101, 84)
+        color_handles = [
+            Line2D(
+                [0],
+                [0],
+                marker="o",
+                linestyle="None",
+                markerfacecolor=color,
+                markeredgecolor=color,
+                markersize=8,
+                label=lab,
+            )
+            for (_, _, lab), color in zip(pairs, pair_colors)
+        ]
+        marker_handles = [
+            Line2D(
+                [0],
+                [0],
+                marker=channel_markers[ch],
+                linestyle="None",
+                markerfacecolor="#333333",
+                markeredgecolor="#333333",
+                markersize=12 if ch == 60 else 8,
+                label=f"ch{ch}",
+            )
+            for ch in stitch_chs
+        ]
+        leg_color = ax.legend(
+            handles=color_handles,
+            title="Modal pair",
+            loc="upper left",
+            bbox_to_anchor=(1.02, 1.0),
+            fontsize=11,
+            frameon=True,
+            borderaxespad=0.0,
+        )
+        ax.add_artist(leg_color)
+        ax.legend(
+            handles=marker_handles,
+            title="Channel",
+            loc="upper left",
+            bbox_to_anchor=(1.02, 0.48),
+            fontsize=11,
+            frameon=True,
+            borderaxespad=0.0,
+        )
+        _apply_style(ax)
+        fig.tight_layout(rect=(0.0, 0.0, 0.74, 1.0))
         out_stem = figures_dir / "position_sweep_figD2_dphi_vs_position_ch20_40_60"
         png, pdf = _save_png_pdf(fig, out_stem)
         plt.close(fig)
@@ -1021,8 +1097,8 @@ def plot_fig_e(
             ym = _zscore(mseg[var]["bp"]["bandpass"][ch])
             yh = _zscore(hseg[var]["bp"]["bandpass"][ch])
             label_m = f"Metal {mdist} cm" + ("" if exact else f" (≈{hdist} cm req.)")
-            ax.plot(tm, ym, color="#7f7f7f", lw=STYLE["linewidth"], label=label_m)
-            ax.plot(th, yh, color="#e07a3d", lw=STYLE["linewidth"], label=f"Human {hdist} cm")
+            ax.plot(tm, ym, color=DOMAIN_COLORS["metal"], lw=STYLE["linewidth"], label=label_m)
+            ax.plot(th, yh, color=DOMAIN_COLORS["human"], lw=STYLE["linewidth"], label=f"Human {hdist} cm")
             ax.set_xlabel("Time (s)", fontsize=STYLE["fontsize"])
             ax.set_ylabel("z-score", fontsize=STYLE["fontsize"])
             short = MODAL_SHORT[var]
@@ -1255,6 +1331,7 @@ def main() -> None:
     print(f"D2 channels (35+71 + spaced): {d2_channels}")
 
     all_paths: List[Path] = []
+    c1_hard_blocked = False
 
     if only is None or "A" in only:
         print("\n--- Figure A ---")
@@ -1266,7 +1343,8 @@ def main() -> None:
 
     if only is None or "C" in only:
         print("\n--- Figure C ---")
-        all_paths.extend(plot_fig_c(metal_segs, cfg, FIGURES_DIR))
+        c_paths, c1_hard_blocked = plot_fig_c(metal_segs, cfg, FIGURES_DIR)
+        all_paths.extend(c_paths)
 
     if only is None or "D" in only:
         print("\n--- Figure D ---")
@@ -1334,11 +1412,17 @@ def main() -> None:
         print(f"Figures: {len(all_paths)}")
         print(f"Typical channel: ch{ch_typ}")
         print(f"Saved: {seg_quality_path.name}, {dphi_path.name}, {hv_path.name}, {meta_path.name}")
+        if c1_hard_blocked:
+            print("C1 hard remote was NOT written: phase check failed.")
+            sys.exit(2)
     else:
         print("\n=== Done (partial) ===")
         print(f"Figures: {len(all_paths)}")
         for p in all_paths:
             print(f"  {p.name}")
+        if c1_hard_blocked:
+            print("C1 hard remote was NOT written: phase check failed.")
+            sys.exit(2)
 
 
 

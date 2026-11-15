@@ -373,7 +373,7 @@ def generate_fig2(
     gamma_hard = _pairwise_coherence(X_h[order_h])
 
     t = np.arange(raw.shape[1]) / fs_good
-    colors = ["#1f77b4", "#ff7f0e", "#2ca02c", "#d62728"]
+    colors = ["#ff7f0e", "#17becf", "#2ca02c", "#8c564b"]
 
     panels = [
         ("(a) Bandpass waveforms of representative channels", raw, "paper_fig2_a"),
@@ -592,9 +592,9 @@ def generate_fig3(
     print(f"  scenario2 windows={len(dphi2)}")
 
     t = np.arange(win_len) / fs_plot
-    colors = {"remote": "#1f77b4", "local": "#ff7f0e", "phase": "#2ca02c"}
+    colors = {"remote": "#1f77b4", "local": "#d62728", "phase": "#9467bd"}
     pair_labels = ["R-L", "R-P", "L-P"]
-    pair_colors = ["#1f77b4", "#d62728", "#9467bd"]
+    pair_colors = ["#ff7f0e", "#17becf", "#8c564b"]
     studio_titles = {
         s1: "Studio position 1",
         s2: "Studio position 2",
