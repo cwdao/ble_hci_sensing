@@ -761,7 +761,8 @@ def plot_fig_c(
                     )
                     c1_hard_blocked = True
                 else:
-                    fig, ax = plt.subplots(figsize=(8, 6.5), dpi=150)
+                    # Height ~60% of original (8, 6.5) for paper layout.
+                    fig, ax = plt.subplots(figsize=(8, 3.9), dpi=150)
                     for i, ch in enumerate(selected):
                         y = _zscore(X[ch]) + i * 3.0
                         ax.plot(
@@ -951,7 +952,7 @@ def plot_fig_d(
     channel_markers = {20: "o", 40: "s", 60: "*"}
     channel_sizes = {20: 36, 40: 36, 60: 90}
     if len(stitch_chs) == 3:
-        fig, ax = plt.subplots(figsize=(11.2, 4.6), dpi=150)
+        fig, ax = plt.subplots(figsize=(8, 4.5), dpi=150)
         for ch in stitch_chs:
             xs, series = [], {lab: [] for _, _, lab in pairs}
             for seg_i in range(1, 17):
@@ -1009,23 +1010,20 @@ def plot_fig_d(
             handles=color_handles,
             title="Modal pair",
             loc="upper left",
-            bbox_to_anchor=(1.02, 1.0),
-            fontsize=11,
+            fontsize=10,
             frameon=True,
-            borderaxespad=0.0,
         )
         ax.add_artist(leg_color)
         ax.legend(
             handles=marker_handles,
             title="Channel",
-            loc="upper left",
-            bbox_to_anchor=(1.02, 0.48),
-            fontsize=11,
+            loc="center",
+            bbox_to_anchor=(0.38, 0.22),
+            fontsize=10,
             frameon=True,
-            borderaxespad=0.0,
         )
         _apply_style(ax)
-        fig.tight_layout(rect=(0.0, 0.0, 0.74, 1.0))
+        fig.tight_layout()
         out_stem = figures_dir / "position_sweep_figD2_dphi_vs_position_ch20_40_60"
         png, pdf = _save_png_pdf(fig, out_stem)
         plt.close(fig)
@@ -1245,12 +1243,12 @@ def plot_fig_e(
     ax2.bar(idx + 1.5 * w, vals["h_rho"], w, yerr=errs["h_rho"], color="#c44e1a",
             label="Human ρ", capsize=2, edgecolor="black", linewidth=0.5, alpha=0.85)
     ax.set_xticks(idx)
-    ax.set_xticklabels(x_labels, fontsize=14)
-    ax.set_ylabel("η (energy ratio)", fontsize=STYLE["fontsize"])
-    ax2.set_ylabel("ρ (peak prominence)", fontsize=STYLE["fontsize"])
+    ax.set_xticklabels(x_labels, fontsize=18)
+    ax.set_ylabel("η (energy ratio)", fontsize=22)
+    ax2.set_ylabel("ρ (peak prominence)", fontsize=22)
     h1, l1 = ax.get_legend_handles_labels()
     h2, l2 = ax2.get_legend_handles_labels()
-    ax.legend(h1 + h2, l1 + l2, frameon=True, fontsize=14, loc="upper right")
+    ax.legend(h1 + h2, l1 + l2, frameon=True, fontsize=20, loc="upper right")
     _apply_style(ax)
     fig.tight_layout()
     out_stem = figures_dir / "position_sweep_figE3_eta_rho_comparison"

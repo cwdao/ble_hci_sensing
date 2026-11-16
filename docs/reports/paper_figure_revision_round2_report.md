@@ -76,8 +76,19 @@
 | phase η 排名第 1 | 5.49% |
 | `r = η_phase / max(η_remote, η_local) > 1` | 5.49%（`r ≤ 0` 丢弃 0 窗） |
 | phase 为 GT-optimal modal | 6.07% |
+| amplitude η 排名第 1 | 94.51% |
+| amplitude 为 GT-optimal | 93.93% |
 
-GT-optimal modal 的定义（图内已写）：相对 ground truth，BPM 误差最低的那个模态。它和「η 排名第 1」不是同一个量。
+v4 把 remote 与 local 合成 amplitude：每个窗取 `η_amplitude = max(η_remote, η_local)`，再和 composite phase 比较。无并列窗。GT-optimal amplitude 指 `best_modal` 为 remote 或 local。
+
+GT-optimal modal：相对 ground truth，BPM 误差最低的那个模态。它和「η 排名第 1」不是同一个量。
+
+图 17 的四张候选图内没有大标题，也没有底部题注。下面的句子供直接放进论文题注：
+
+- v1：HKH 上 remote、local、composite phase 的 η 分布。phase 的 η 高于 max(remote, local) 的窗占 5.5%；phase 为 GT-optimal modal 的窗占 6.1%。GT-optimal modal 指相对 ground truth 的 BPM 误差最低的模态。
+- v2：HKH 上 `r = η_phase / max(η_remote, η_local)` 的分布。`r > 1` 的窗占 5.5%。竖线为 `r = 1`。
+- v3：左为各模态 η 排名第 1 的窗占比（remote 70.2%，local 24.3%，phase 5.5%）；右为三模态 η 分布。
+- v4：amplitude 与 composite phase 的比较。每个窗的 amplitude η 取 max(η_remote, η_local)。η 更高的窗中 amplitude 占 94.5%，composite phase 占 5.5%。GT-optimal 为 amplitude 的窗占 93.9%，为 composite phase 的窗占 6.1%。
 
 未覆盖正稿 `phase_oracle_eta.pdf` / `paper_fig_modal_oracle_phase_eta_hkh.*`。
 
@@ -87,7 +98,7 @@ GT-optimal modal 的定义（图内已写）：相对 ground truth，BPM 误差�
 |------|------|----------|
 | 图 4 保持 3×3 波形，信道色去掉蓝/红/紫 | B2 仍是 3×3；ch20/40/60 为橙/青/绿 | ✅ |
 | 图 6 仅 13/64/71 | 已打印相位并落图 | ✅ |
-| 图 8 单子图、纯散点、双图例 | 画布加宽，图例放在坐标轴右侧并留出空白，避免裁切和盖住数据 | ✅ |
+| 图 8 单子图、纯散点、双图例 | 图例放在图内左上角，画布宽 8 in | ✅ |
 | 图 9 模态对橙/青/棕 | `paper_fig3_cd` | ✅ |
 | 图 10 单模态蓝/红/紫 | `paper_fig3_ab` | ✅ |
 | fig2 信道色去掉蓝/红 | 橙/青/绿/棕 | ✅ |
@@ -105,6 +116,7 @@ GT-optimal modal 的定义（图内已写）：相对 ground truth，BPM 误差�
 - 图 10：`outputs/figures/paper_fig3_ab.png`
 - fig2：`outputs/figures/paper_fig2_inter_tone_phase.png`
 - 图 17 v1/v2/v3：`outputs/figures/paper_fig_modal_oracle_phase_eta_hkh_v1_modal_dist.png`、`..._v2_ratio_hist.png`、`..._v3_share_bar.png`
+- 图 17 v4（amplitude vs composite phase）：`outputs/figures/paper_fig_modal_oracle_phase_eta_hkh_v4_amp_vs_phase.png`
 
 图 8 上，R-L 大多贴在 0 附近，R-P / L-P 在 0 与 ±π 上叠在一起。这是数据本身靠在一起，不是画错坐标。双图例已分开。
 

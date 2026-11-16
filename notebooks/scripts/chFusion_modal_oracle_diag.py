@@ -599,7 +599,7 @@ def plot_oracle_phase_eta_single(arr: np.ndarray, domain: str = "hkh", form: str
     ground truth (field ``best_modal``). This does not overwrite the canonical
     ``paper_fig_modal_oracle_phase_eta_hkh`` files.
     """
-    if form not in {"v1", "v2", "v3"}:
+    if form not in {"v1", "v2", "v3", "v4"}:
         raise ValueError(f"unknown form: {form}")
     sub = arr[np.asarray(arr["domain"]).astype(str) == domain]
     eta_r = np.asarray(sub["eta_remote"], dtype=float)
@@ -626,6 +626,7 @@ def plot_oracle_phase_eta_single(arr: np.ndarray, domain: str = "hkh", form: str
         "v1": "paper_fig_modal_oracle_phase_eta_hkh_v1_modal_dist",
         "v2": "paper_fig_modal_oracle_phase_eta_hkh_v2_ratio_hist",
         "v3": "paper_fig_modal_oracle_phase_eta_hkh_v3_share_bar",
+        "v4": "paper_fig_modal_oracle_phase_eta_hkh_v4_amp_vs_phase",
     }
     stem = stems[form] if domain == "hkh" else stems[form].replace("_hkh", f"_{domain}")
 
@@ -637,14 +638,8 @@ def plot_oracle_phase_eta_single(arr: np.ndarray, domain: str = "hkh", form: str
         ax.hist(eta_p, bins=bins, alpha=0.45, color=MODAL_COLORS["phase"], label="phase")
         ax.set_xlabel(r"$\eta$")
         ax.set_ylabel("Windows")
-        ax.set_title(
-            f"{domain.upper()}: η distribution by modality\n"
-            f"phase η > max(remote, local): {rank1_share * 100:.1f}%; "
-            f"phase is GT-optimal modal: {gt_phase_share * 100:.1f}%"
-        )
         ax.legend(fontsize=11, loc="upper left", bbox_to_anchor=(1.02, 1.0), borderaxespad=0.0)
-        fig.text(0.01, 0.01, defin, ha="left", va="bottom", fontsize=8)
-        fig.tight_layout(rect=(0.0, 0.06, 1.0, 1.0))
+        fig.tight_layout()
     elif form == "v2":
         denom = np.maximum(np.maximum(eta_r, eta_l), 1e-12)
         ratio = eta_p / denom
@@ -661,15 +656,10 @@ def plot_oracle_phase_eta_single(arr: np.ndarray, domain: str = "hkh", form: str
         ax.axvline(1.0, color="#333333", ls="--", lw=1.2, label="r = 1")
         ax.set_xlabel(r"$r = \eta_{phase} / \max(\eta_{remote}, \eta_{local})$")
         ax.set_ylabel("Windows")
-        title = f"{domain.upper()}: phase-to-amplitude η ratio\nr > 1: {r_gt1 * 100:.1f}%"
-        if n_drop:
-            title += f" (excluded r≤0: {n_drop})"
-        ax.set_title(title)
         ax.legend(fontsize=11, loc="upper left")
-        fig.text(0.01, 0.01, defin, ha="left", va="bottom", fontsize=8)
-        fig.tight_layout(rect=(0.0, 0.06, 1.0, 1.0))
+        fig.tight_layout()
         print(f"  ratio r>1 share={r_gt1 * 100:.2f}% (dropped r<=0: {n_drop})")
-    else:
+    elif form == "v3":
         rank_r = eta_r > np.maximum(eta_l, eta_p)
         rank_l = eta_l > np.maximum(eta_r, eta_p)
         shares = [
@@ -701,11 +691,51 @@ def plot_oracle_phase_eta_single(arr: np.ndarray, domain: str = "hkh", form: str
         ax.set_ylabel("Windows")
         ax.set_title("η distribution")
         ax.legend(fontsize=11)
-        fig.suptitle(defin, fontsize=10)
         fig.tight_layout()
         print(
             "  eta rank-1 shares: "
             + ", ".join(f"{lab}={s * 100:.2f}%" for lab, s in zip(labels, shares))
+        )
+    elif form == "v4":
+        # Amplitude η is the better of the two amplitude modalities on each window.
+        eta_a = np.maximum(eta_r, eta_l)
+        amp_rank1 = eta_a > eta_p
+        n_tie = int(np.sum(eta_a == eta_p))
+        amp_share = float(np.mean(amp_rank1))
+        gt_amp_share = float(np.mean(np.isin(best, ["remote", "local"])))
+        amp_color = "#ff7f0e"
+        fig, axes = plt.subplots(1, 2, figsize=(11.2, 4.6), dpi=150)
+        labels = ["amplitude", "composite phase"]
+        shares = [amp_share, rank1_share]
+        colors = [amp_color, MODAL_COLORS["phase"]]
+        ax = axes[0]
+        ax.bar(labels, [s * 100 for s in shares], color=colors, edgecolor="black", linewidth=0.6)
+        for i, s in enumerate(shares):
+            pct = s * 100
+            # Tall amplitude bar: label inside near top (white); short phase bar: above.
+            if i == 0:
+                ax.text(i, pct - 3.5, f"{pct:.1f}%", ha="center", va="top",
+                        fontsize=20, color="white", fontweight="bold")
+            else:
+                ax.text(i, pct + 1.2, f"{pct:.1f}%", ha="center", va="bottom",
+                        fontsize=20, color="black")
+        ax.set_ylim(0, 100)
+        ax.tick_params(axis="both", labelsize=20)
+        ax.set_ylabel("Windows where side has\nhigher η (%)", fontsize=22)
+        ax.set_title("η rank-1 share", fontsize=22)
+        ax = axes[1]
+        bins = 30
+        ax.hist(eta_a, bins=bins, alpha=0.55, color=amp_color, label="amplitude")
+        ax.hist(eta_p, bins=bins, alpha=0.45, color=MODAL_COLORS["phase"], label="composite phase")
+        ax.set_xlabel(r"$\eta$", fontsize=22)
+        ax.set_ylabel("Windows", fontsize=22)
+        ax.set_title("η distribution", fontsize=22)
+        ax.legend(fontsize=20, loc="upper left")
+        fig.tight_layout()
+        print(
+            f"  amplitude vs phase: eta rank-1 amplitude={amp_share * 100:.2f}%, "
+            f"phase={rank1_share * 100:.2f}%, ties={n_tie}; "
+            f"GT-optimal amplitude={gt_amp_share * 100:.2f}%, phase={gt_phase_share * 100:.2f}%"
         )
 
     return _save_png_pdf(fig, stem)
@@ -716,7 +746,7 @@ def main() -> None:
     parser.add_argument("--domain", choices=["all", "hkh", "cs"], default="all")
     parser.add_argument("--plot-only", action="store_true")
     parser.add_argument("--oracle-single", action="store_true")
-    parser.add_argument("--oracle-form", default="all", choices=["v1", "v2", "v3", "all"])
+    parser.add_argument("--oracle-form", default="all", choices=["v1", "v2", "v3", "v4", "all"])
     parser.add_argument("--oracle-domain", default="hkh")
     parser.add_argument("--verbose", action="store_true", default=True)
     args = parser.parse_args()
@@ -739,7 +769,7 @@ def main() -> None:
             for p in paths:
                 print(f"Figure: {p}")
         if args.oracle_single:
-            forms = ["v1", "v2", "v3"] if args.oracle_form == "all" else [args.oracle_form]
+            forms = ["v1", "v2", "v3", "v4"] if args.oracle_form == "all" else [args.oracle_form]
             for form in forms:
                 plot_oracle_phase_eta_single(arr, domain=args.oracle_domain, form=form)
         return
