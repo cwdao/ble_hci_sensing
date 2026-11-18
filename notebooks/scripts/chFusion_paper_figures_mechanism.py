@@ -10,12 +10,14 @@ Run:
 from __future__ import annotations
 
 import argparse
+import json
 import sys
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Sequence, Tuple
 
 import matplotlib.pyplot as plt
 import numpy as np
+from matplotlib.lines import Line2D
 from scipy.signal import hilbert
 
 _cwd = Path.cwd().resolve()
@@ -38,6 +40,7 @@ FIGURES_DIR = Path(_env["FIGURES_DIR"])
 REPORTS_DIR = Path(_env["REPORTS_DIR"])
 CACHE_DIR = str(project_root / "outputs" / "cache")
 
+from ble_analysis.channels import find_channel_key
 from ble_analysis.chfusion import (
     ChFusionConfig,
     _bpm_from_fused_spectrum,
@@ -63,6 +66,22 @@ from ble_analysis.wifi_mrc import _collect_modal_window_matrix
 
 VARIABLE = "remote_amplitudes"
 MODAL_VARS = ("remote_amplitudes", "local_amplitudes", "phases")
+# Fixed inter-channel tones (same indices as D2). Pairs stay inside this set.
+FIG3_CHANNEL_TONES = (20, 40, 60)
+FIG3_CHANNEL_PAIRS = ((40, 20), (60, 20), (60, 40))
+FIG3_CHANNEL_COLORS = ("#ff7f0e", "#17becf", "#2ca02c")
+FIG3_CHANNEL_NONINTEGER_RAD = 0.3
+# Per-channel inter-modal pairs, same estimator and tone ids as D2.
+FIG3_MODAL_CHANNELS = (20, 40, 60)
+FIG3_MODAL_PAIRS = (
+    ("remote_amplitudes", "local_amplitudes", "R-L"),
+    ("remote_amplitudes", "phases", "R-P"),
+    ("local_amplitudes", "phases", "L-P"),
+)
+FIG3_MODAL_PAIR_COLORS = ("#ff7f0e", "#17becf", "#8c564b")
+FIG3_MODAL_MARKERS = {20: "o", 40: "s", 60: "*"}
+FIG3_MODAL_MARKER_SIZES = {20: 36, 40: 36, 60: 90}
+FIG3_MODAL_NONINTEGER_RAD = 0.3
 
 plt.rcParams.update(
     {
@@ -100,7 +119,7 @@ def parse_args() -> argparse.Namespace:
         "--only",
         type=str,
         default="",
-        help="Comma-separated figures to generate: 2,3,5,S1 (default: all)",
+        help="Comma-separated figures to generate: 2,3,5,S1,3channel,3modal (default: all)",
     )
     return p.parse_args()
 
@@ -1035,6 +1054,548 @@ def generate_figS1(
     }
 
 
+def _row_for_tone(ch_list: Sequence[Any], tone: int) -> int:
+    """Map a numeric tone id to its row in ``ch_list`` (list order is not tone order)."""
+    for i, ch in enumerate(ch_list):
+        try:
+            if int(ch) == int(tone):
+                return i
+        except (TypeError, ValueError):
+            continue
+    raise KeyError(f"tone {tone} not found in channel list")
+
+
+def _angle_to_pi_multiple(dphi: np.ndarray) -> np.ndarray:
+    """Distance from wrapped angle to the nearest integer multiple of π."""
+    a = np.abs(np.asarray(dphi, dtype=float))
+    return np.minimum(a, np.pi - a)
+
+
+def _collect_fixed_tone_dphi(
+    mc_var: dict,
+    fs: float,
+    cfg: ChFusionConfig,
+    metric_params: BreathMetricParams,
+    max_windows: int,
+) -> dict:
+    """Per-window Δφ among fixed tones on one remote_amplitudes segment."""
+    seg_name = _longest_breath_segment(mc_var)
+    ch_list, ch_map, starts, win_len = _segment_window_setup(
+        mc_var, seg_name, fs, metric_params
+    )
+    if max_windows > 0:
+        starts = starts[:max_windows]
+    rows = {tone: _row_for_tone(ch_list, tone) for tone in FIG3_CHANNEL_TONES}
+    # One Hilbert pass per distinct reference (20 and 40).
+    ref_tones = []
+    for _ch, ref in FIG3_CHANNEL_PAIRS:
+        if ref not in ref_tones:
+            ref_tones.append(ref)
+
+    dphi = np.full((len(starts), len(FIG3_CHANNEL_PAIRS)), np.nan, dtype=float)
+    eta_rows = np.full((len(starts), len(FIG3_CHANNEL_TONES)), np.nan, dtype=float)
+    rho_rows = np.full((len(starts), len(FIG3_CHANNEL_TONES)), np.nan, dtype=float)
+
+    for wi, st in enumerate(starts):
+        end = st + win_len
+        X, eta, rho = _collect_modal_window_matrix(
+            ch_list, ch_map, VARIABLE, st, end, fs, cfg
+        )
+        q = eta * np.clip(rho, 0.0, None)
+        phase_by_ref: Dict[int, np.ndarray] = {}
+        for ref in ref_tones:
+            _y, phases, _coh, info = estimate_phase_hilbert(
+                X, q, ref_idx=rows[ref]
+            )
+            if int(info["ref_idx"]) != rows[ref]:
+                raise RuntimeError(
+                    f"ref_idx drifted: requested tone {ref} row {rows[ref]}, "
+                    f"got {info['ref_idx']}"
+                )
+            phase_by_ref[ref] = phases
+        for pi, (ch, ref) in enumerate(FIG3_CHANNEL_PAIRS):
+            dphi[wi, pi] = float(phase_by_ref[ref][rows[ch]])
+        for ti, tone in enumerate(FIG3_CHANNEL_TONES):
+            eta_rows[wi, ti] = float(eta[rows[tone]])
+            rho_rows[wi, ti] = float(rho[rows[tone]])
+
+    delta = _angle_to_pi_multiple(dphi)
+    nonint = delta > FIG3_CHANNEL_NONINTEGER_RAD
+    pair_stats = []
+    for pi, (ch, ref) in enumerate(FIG3_CHANNEL_PAIRS):
+        col = dphi[:, pi]
+        finite = np.isfinite(col)
+        a_abs = np.abs(col)
+        near0 = a_abs <= FIG3_CHANNEL_NONINTEGER_RAD
+        near_pi = (np.pi - a_abs) <= FIG3_CHANNEL_NONINTEGER_RAD
+        pair_stats.append(
+            {
+                "pair": [int(ch), int(ref)],
+                "label": f"ch{ch}−ch{ref}",
+                "n": int(np.sum(finite)),
+                "mean": float(np.nanmean(col)) if np.any(finite) else float("nan"),
+                "std": float(np.nanstd(col)) if np.any(finite) else float("nan"),
+                "min": float(np.nanmin(col)) if np.any(finite) else float("nan"),
+                "max": float(np.nanmax(col)) if np.any(finite) else float("nan"),
+                "near0_frac": (
+                    float(np.mean(near0[finite])) if np.any(finite) else float("nan")
+                ),
+                "near_pi_frac": (
+                    float(np.mean(near_pi[finite])) if np.any(finite) else float("nan")
+                ),
+                "noninteger_frac": (
+                    float(np.mean(nonint[:, pi][finite])) if np.any(finite) else float("nan")
+                ),
+                "delta_mean": (
+                    float(np.nanmean(delta[:, pi])) if np.any(finite) else float("nan")
+                ),
+            }
+        )
+    tone_quality = []
+    for ti, tone in enumerate(FIG3_CHANNEL_TONES):
+        tone_quality.append(
+            {
+                "tone": int(tone),
+                "row": int(rows[tone]),
+                "eta_median": float(np.nanmedian(eta_rows[:, ti])),
+                "rho_median": float(np.nanmedian(rho_rows[:, ti])),
+            }
+        )
+    finite_all = np.isfinite(dphi)
+    abs_all = np.abs(dphi)
+    return {
+        "segment": seg_name,
+        "n_windows": int(len(starts)),
+        "win_len": int(win_len),
+        "fs": float(fs),
+        "dphi": dphi,
+        "tone_quality": tone_quality,
+        "pair_stats": pair_stats,
+        "near0_frac": (
+            float(np.mean((abs_all <= FIG3_CHANNEL_NONINTEGER_RAD)[finite_all]))
+            if np.any(finite_all)
+            else float("nan")
+        ),
+        "near_pi_frac": (
+            float(np.mean(((np.pi - abs_all) <= FIG3_CHANNEL_NONINTEGER_RAD)[finite_all]))
+            if np.any(finite_all)
+            else float("nan")
+        ),
+        "noninteger_frac": (
+            float(np.mean(nonint[finite_all])) if np.any(finite_all) else float("nan")
+        ),
+        "delta_mean": (
+            float(np.nanmean(delta)) if np.any(finite_all) else float("nan")
+        ),
+    }
+
+
+def generate_fig3_channel(
+    data_by_scenario: Dict[str, Tuple[dict, float]],
+    cfg: ChFusionConfig,
+    metric_params: BreathMetricParams,
+    max_windows: int = 0,
+) -> dict:
+    """Cross-window inter-channel Δφ on fixed tones 20/40/60 (remote only)."""
+    print("\n=== Figure 3-channel: Inter-channel Δφ across windows ===")
+    print(
+        f"  fixed tones={list(FIG3_CHANNEL_TONES)} "
+        f"pairs={list(FIG3_CHANNEL_PAIRS)} "
+        f"(no η-based substitution)"
+    )
+    scenario_ids = ("cs_095806", "cs_102621")
+    studio_titles = {
+        "cs_095806": "Studio position 1",
+        "cs_102621": "Studio position 2",
+    }
+    by_scenario: Dict[str, dict] = {}
+    for sid in scenario_ids:
+        mc, fs = data_by_scenario[sid]
+        rec = _collect_fixed_tone_dphi(
+            mc[VARIABLE], fs, cfg, metric_params, max_windows
+        )
+        by_scenario[sid] = rec
+        print(
+            f"  {sid} seg={rec['segment']} windows={rec['n_windows']} "
+            f"noninteger_frac(δ>{FIG3_CHANNEL_NONINTEGER_RAD})="
+            f"{rec['noninteger_frac']:.3f}"
+        )
+        for tq in rec["tone_quality"]:
+            print(
+                f"    tone {tq['tone']}: median η={tq['eta_median']:.4f} "
+                f"median ρ={tq['rho_median']:.4f} row={tq['row']}"
+            )
+        for ps in rec["pair_stats"]:
+            print(
+                f"    {ps['label']}: mean={ps['mean']:.3f} std={ps['std']:.3f} "
+                f"noninteger={ps['noninteger_frac']:.3f}"
+            )
+
+    fig, axes = plt.subplots(1, 2, figsize=(12, 4.2))
+    for ax, sid in zip(axes, scenario_ids):
+        dphi = by_scenario[sid]["dphi"]
+        x = np.arange(len(dphi))
+        for i, (ch, ref) in enumerate(FIG3_CHANNEL_PAIRS):
+            ax.plot(
+                x,
+                dphi[:, i],
+                color=FIG3_CHANNEL_COLORS[i],
+                label=f"ch{ch}−ch{ref}",
+                alpha=0.9,
+            )
+        ax.axhline(0.0, color="gray", lw=0.8, ls="--")
+        ax.axhline(np.pi, color="gray", lw=0.8, ls=":")
+        ax.axhline(-np.pi, color="gray", lw=0.8, ls=":")
+        ax.set_ylim(-np.pi - 0.35, np.pi + 0.35)
+        ax.set_title(studio_titles[sid], fontsize=16)
+        ax.set_xlabel("Window index", fontsize=16)
+        ax.set_ylabel("Δφ (rad)", fontsize=16)
+        ax.legend(fontsize=14, loc="upper right")
+    fig.tight_layout()
+    _save_figure(fig, "paper_fig3_channel_dphi_cross_window")
+    plt.close(fig)
+
+    return {
+        "tones": list(FIG3_CHANNEL_TONES),
+        "pairs": [list(p) for p in FIG3_CHANNEL_PAIRS],
+        "variable": VARIABLE,
+        "noninteger_threshold_rad": FIG3_CHANNEL_NONINTEGER_RAD,
+        "scenarios": by_scenario,
+    }
+
+
+def _fig3_channel_jsonable(result: dict) -> dict:
+    """Drop waveform arrays; keep the summary the report cites."""
+    scenarios = {}
+    for sid, rec in result["scenarios"].items():
+        scenarios[sid] = {
+            "segment": rec["segment"],
+            "n_windows": rec["n_windows"],
+            "win_len": rec["win_len"],
+            "fs": rec["fs"],
+            "tone_quality": rec["tone_quality"],
+            "pair_stats": rec["pair_stats"],
+            "near0_frac": rec["near0_frac"],
+            "near_pi_frac": rec["near_pi_frac"],
+            "noninteger_frac": rec["noninteger_frac"],
+            "delta_mean": rec["delta_mean"],
+        }
+    return {
+        "tones": result["tones"],
+        "pairs": result["pairs"],
+        "variable": result["variable"],
+        "noninteger_threshold_rad": result["noninteger_threshold_rad"],
+        "note": (
+            "Δφ is the Hilbert cross-phase among fixed tones "
+            f"{list(FIG3_CHANNEL_TONES)} on remote_amplitudes. "
+            "Tones are not replaced when η is low."
+        ),
+        "scenarios": scenarios,
+    }
+
+
+def _instantaneous_dphi(a: np.ndarray, b: np.ndarray) -> float:
+    """Circular mean of the instantaneous Hilbert phase difference.
+
+    Same estimator as ``chFusion_position_sweep_observation._instantaneous_dphi``.
+    Uses this script's ``_zscore`` (no second definition).
+    """
+    za = hilbert(_zscore(a))
+    zb = hilbert(_zscore(b))
+    dphi = np.angle(za * np.conj(zb))
+    return float(np.angle(np.mean(np.exp(1j * dphi))))
+
+
+def _require_channel_key(ch_map: dict, tone: int):
+    key = find_channel_key(ch_map, tone)
+    if key is None:
+        raise KeyError(f"tone {tone} not found in channel map")
+    return key
+
+
+def _window_series(ch_map: dict, key, variable: str, st: int, end: int):
+    block = ch_map[key][variable]
+    bp = block["bandpass_filtered"]
+    hp = block["highpass_filtered"]
+    if len(bp) < end or len(hp) < end:
+        return None, None
+    return np.asarray(bp[st:end], dtype=float), np.asarray(hp[st:end], dtype=float)
+
+
+def _angle_fracs(col: np.ndarray, thr: float) -> dict:
+    finite = np.isfinite(col)
+    n = int(np.sum(finite))
+    if n == 0:
+        nan = float("nan")
+        return {
+            "n": 0,
+            "mean": nan,
+            "std": nan,
+            "near0_frac": nan,
+            "near_pi_frac": nan,
+            "noninteger_frac": nan,
+        }
+    a = np.abs(col)
+    delta = np.minimum(a, np.pi - a)
+    return {
+        "n": n,
+        "mean": float(np.nanmean(col)),
+        "std": float(np.nanstd(col)),
+        "near0_frac": float(np.mean(a[finite] <= thr)),
+        "near_pi_frac": float(np.mean((np.pi - a[finite]) <= thr)),
+        "noninteger_frac": float(np.mean(delta[finite] > thr)),
+    }
+
+
+def _collect_modal_per_channel(
+    multichannel: dict,
+    fs: float,
+    cfg: ChFusionConfig,
+    metric_params: BreathMetricParams,
+    max_windows: int,
+) -> dict:
+    """Per-window, per-channel modal Δφ on the longest non-apnea segment."""
+    seg_name = _longest_breath_segment(multichannel["remote_amplitudes"])
+    maps = {}
+    for var in MODAL_VARS:
+        seg = multichannel[var].get(seg_name)
+        if seg is None or not seg.get("channels"):
+            raise RuntimeError(f"{var} has no segment {seg_name}")
+        maps[var] = seg["channels"]
+    keys = {}
+    lengths = []
+    for var in MODAL_VARS:
+        for tone in FIG3_MODAL_CHANNELS:
+            key = _require_channel_key(maps[var], tone)
+            keys.setdefault(tone, key)
+            lengths.append(len(maps[var][key][var]["bandpass_filtered"]))
+    # Selected tones are shorter than the longest of all 72 channels.
+    # Slide only where every selected tone still has samples.
+    ref_len = int(min(lengths))
+    win_len = int(round(metric_params.window_length_sec * fs))
+    step_len = int(round(metric_params.step_length_sec * fs))
+    starts = _sliding_window_indices(ref_len, win_len, step_len)
+    if max_windows > 0:
+        starts = starts[:max_windows]
+
+    n_win = len(starts)
+    n_ch = len(FIG3_MODAL_CHANNELS)
+    n_pair = len(FIG3_MODAL_PAIRS)
+    dphi = np.full((n_win, n_ch, n_pair), np.nan, dtype=float)
+    eta = np.full((n_win, n_ch, len(MODAL_VARS)), np.nan, dtype=float)
+
+    for wi, st in enumerate(starts):
+        end = st + win_len
+        series = {}
+        for ci, tone in enumerate(FIG3_MODAL_CHANNELS):
+            key = keys[tone]
+            for vi, var in enumerate(MODAL_VARS):
+                bp, hp = _window_series(maps[var], find_channel_key(maps[var], tone), var, st, end)
+                series[(ci, var)] = bp
+                if hp is not None:
+                    eta[wi, ci, vi] = float(_energy_ratio(hp, fs, cfg))
+        for ci in range(n_ch):
+            for pi, (va, vb, _lab) in enumerate(FIG3_MODAL_PAIRS):
+                a = series[(ci, va)]
+                b = series[(ci, vb)]
+                if a is None or b is None or len(a) < 4 or len(b) < 4:
+                    continue
+                dphi[wi, ci, pi] = _instantaneous_dphi(a, b)
+
+    thr = FIG3_MODAL_NONINTEGER_RAD
+    channel_stats = []
+    for ci, tone in enumerate(FIG3_MODAL_CHANNELS):
+        pair_stats = []
+        for pi, (_va, _vb, lab) in enumerate(FIG3_MODAL_PAIRS):
+            stats = _angle_fracs(dphi[:, ci, pi], thr)
+            stats["pair"] = lab
+            pair_stats.append(stats)
+        overall = _angle_fracs(dphi[:, ci, :].ravel(), thr)
+        quality = []
+        for vi, var in enumerate(MODAL_VARS):
+            quality.append(
+                {
+                    "variable": var,
+                    "eta_median": float(np.nanmedian(eta[:, ci, vi])),
+                }
+            )
+        channel_stats.append(
+            {
+                "tone": int(tone),
+                "channel_key": int(keys[tone]),
+                "quality": quality,
+                "pair_stats": pair_stats,
+                "noninteger_frac": overall["noninteger_frac"],
+                "near0_frac": overall["near0_frac"],
+                "near_pi_frac": overall["near_pi_frac"],
+            }
+        )
+    overall = _angle_fracs(dphi.ravel(), thr)
+    return {
+        "segment": seg_name,
+        "n_windows": int(n_win),
+        "win_len": int(win_len),
+        "series_len_min": int(ref_len),
+        "series_len_max_selected": int(max(lengths)),
+        "fs": float(fs),
+        "dphi": dphi,
+        "channel_stats": channel_stats,
+        "near0_frac": overall["near0_frac"],
+        "near_pi_frac": overall["near_pi_frac"],
+        "noninteger_frac": overall["noninteger_frac"],
+    }
+
+
+def generate_fig3_modal_per_channel(
+    data_by_scenario: Dict[str, Tuple[dict, float]],
+    cfg: ChFusionConfig,
+    metric_params: BreathMetricParams,
+    max_windows: int = 0,
+) -> dict:
+    """Cross-window per-channel inter-modal Δφ on tones 20/40/60."""
+    print("\n=== Figure 3-modal: per-channel inter-modal Δφ ===")
+    print(
+        f"  channels={list(FIG3_MODAL_CHANNELS)} "
+        f"pairs={[p[2] for p in FIG3_MODAL_PAIRS]} "
+        "estimator=_instantaneous_dphi (full 20 s window, no 10 s slice)"
+    )
+    scenario_ids = ("cs_095806", "cs_102621")
+    studio_titles = {
+        "cs_095806": "Studio position 1",
+        "cs_102621": "Studio position 2",
+    }
+    by_scenario: Dict[str, dict] = {}
+    for sid in scenario_ids:
+        mc, fs = data_by_scenario[sid]
+        rec = _collect_modal_per_channel(mc, fs, cfg, metric_params, max_windows)
+        by_scenario[sid] = rec
+        print(
+            f"  {sid} seg={rec['segment']} windows={rec['n_windows']} "
+            f"series_len={rec['series_len_min']}..{rec['series_len_max_selected']} "
+            f"noninteger_frac(δ>{FIG3_MODAL_NONINTEGER_RAD})="
+            f"{rec['noninteger_frac']:.3f}"
+        )
+        for ch in rec["channel_stats"]:
+            eta_txt = ", ".join(
+                f"{q['variable'].split('_')[0]} η={q['eta_median']:.3f}"
+                for q in ch["quality"]
+            )
+            print(
+                f"    ch{ch['tone']}: noninteger={ch['noninteger_frac']:.3f} "
+                f"near0={ch['near0_frac']:.3f} nearπ={ch['near_pi_frac']:.3f} | {eta_txt}"
+            )
+
+    fig, axes = plt.subplots(1, 2, figsize=(12, 5.0))
+    for ax, sid in zip(axes, scenario_ids):
+        dphi = by_scenario[sid]["dphi"]
+        x = np.arange(dphi.shape[0])
+        for ci, tone in enumerate(FIG3_MODAL_CHANNELS):
+            for pi, color in enumerate(FIG3_MODAL_PAIR_COLORS):
+                ax.scatter(
+                    x,
+                    dphi[:, ci, pi],
+                    marker=FIG3_MODAL_MARKERS[tone],
+                    s=FIG3_MODAL_MARKER_SIZES[tone],
+                    color=color,
+                    alpha=0.85,
+                    zorder=3,
+                )
+        ax.axhline(0.0, color="gray", lw=0.8, ls="--")
+        ax.axhline(np.pi, color="gray", lw=0.8, ls=":")
+        ax.axhline(-np.pi, color="gray", lw=0.8, ls=":")
+        ax.set_ylim(-np.pi - 0.35, np.pi + 0.35)
+        ax.set_title(studio_titles[sid], fontsize=16)
+        ax.set_xlabel("Window index", fontsize=16)
+        ax.set_ylabel("Δφ (rad)", fontsize=16)
+    color_handles = [
+        Line2D(
+            [0],
+            [0],
+            marker="o",
+            linestyle="None",
+            markerfacecolor=color,
+            markeredgecolor=color,
+            markersize=8,
+            label=lab,
+        )
+        for color, (_va, _vb, lab) in zip(FIG3_MODAL_PAIR_COLORS, FIG3_MODAL_PAIRS)
+    ]
+    marker_handles = [
+        Line2D(
+            [0],
+            [0],
+            marker=FIG3_MODAL_MARKERS[tone],
+            linestyle="None",
+            markerfacecolor="#333333",
+            markeredgecolor="#333333",
+            markersize=12 if tone == 60 else 8,
+            label=f"ch{tone}",
+        )
+        for tone in FIG3_MODAL_CHANNELS
+    ]
+    fig.tight_layout()
+    fig.subplots_adjust(bottom=0.24)
+    fig.legend(
+        handles=color_handles,
+        title="Modal pair",
+        loc="lower left",
+        bbox_to_anchor=(0.08, 0.0),
+        ncol=3,
+        fontsize=9,
+        frameon=False,
+    )
+    fig.legend(
+        handles=marker_handles,
+        title="Channel",
+        loc="lower right",
+        bbox_to_anchor=(0.92, 0.0),
+        ncol=3,
+        fontsize=9,
+        frameon=False,
+    )
+    _save_figure(fig, "paper_fig3_modal_dphi_per_channel")
+    plt.close(fig)
+
+    return {
+        "channels": list(FIG3_MODAL_CHANNELS),
+        "pairs": [p[2] for p in FIG3_MODAL_PAIRS],
+        "estimator": "instantaneous_dphi_circular_mean",
+        "window": "full_20s",
+        "noninteger_threshold_rad": FIG3_MODAL_NONINTEGER_RAD,
+        "scenarios": by_scenario,
+    }
+
+
+def _fig3_modal_jsonable(result: dict) -> dict:
+    scenarios = {}
+    for sid, rec in result["scenarios"].items():
+        scenarios[sid] = {
+            "segment": rec["segment"],
+            "n_windows": rec["n_windows"],
+            "win_len": rec["win_len"],
+            "series_len_min": rec["series_len_min"],
+            "series_len_max_selected": rec["series_len_max_selected"],
+            "fs": rec["fs"],
+            "channel_stats": rec["channel_stats"],
+            "near0_frac": rec["near0_frac"],
+            "near_pi_frac": rec["near_pi_frac"],
+            "noninteger_frac": rec["noninteger_frac"],
+        }
+    return {
+        "channels": result["channels"],
+        "pairs": result["pairs"],
+        "estimator": result["estimator"],
+        "window": result["window"],
+        "noninteger_threshold_rad": result["noninteger_threshold_rad"],
+        "note": (
+            "Per-channel inter-modal Δφ on tones 20/40/60 using the D2 "
+            "circular-mean instantaneous-phase estimator over the full 20 s "
+            "window. Not the fig3_cd cross-correlation phase on fused waveforms."
+        ),
+        "scenarios": scenarios,
+    }
+
+
 def main() -> None:
     args = parse_args()
     filter_params = FilterParams()
@@ -1070,6 +1631,38 @@ def main() -> None:
     want = lambda key: only is None or key in only
 
     fig2 = fig3 = fig5 = figS1 = None
+    if only is not None and "3CHANNEL" in only:
+        fig3_channel = generate_fig3_channel(
+            data_by_scenario, cfg, metric_params, max_windows=args.max_windows
+        )
+        np.save(
+            FIGURES_DIR / "paper_fig3_channel_diagnostics.npy",
+            fig3_channel,
+            allow_pickle=True,
+        )
+        summary = _fig3_channel_jsonable(fig3_channel)
+        json_path = REPORTS_DIR / "inter_channel_phase_cross_window_results.json"
+        json_path.write_text(
+            json.dumps(summary, indent=2, ensure_ascii=False),
+            encoding="utf-8",
+        )
+        print(f"  saved {json_path.name}")
+    if only is not None and "3MODAL" in only:
+        fig3_modal = generate_fig3_modal_per_channel(
+            data_by_scenario, cfg, metric_params, max_windows=args.max_windows
+        )
+        np.save(
+            FIGURES_DIR / "paper_fig3_modal_dphi_per_channel_diagnostics.npy",
+            fig3_modal,
+            allow_pickle=True,
+        )
+        modal_summary = _fig3_modal_jsonable(fig3_modal)
+        modal_json = REPORTS_DIR / "inter_modal_phase_per_channel_results.json"
+        modal_json.write_text(
+            json.dumps(modal_summary, indent=2, ensure_ascii=False),
+            encoding="utf-8",
+        )
+        print(f"  saved {modal_json.name}")
     if want("2"):
         fig2 = generate_fig2(data_by_scenario, cfg, metric_params)
     if want("3"):
@@ -1107,9 +1700,12 @@ def main() -> None:
         np.save(FIGURES_DIR / "paper_fig3_diagnostics.npy", fig3, allow_pickle=True)
     if fig5 is not None:
         np.save(FIGURES_DIR / "paper_fig5_diagnostics.npy", fig5, allow_pickle=True)
-    out_npy = REPORTS_DIR / "paper_figures_diagnostics.npy"
-    np.save(out_npy, diagnostics, allow_pickle=True)
-    print(f"\nSaved diagnostics: {out_npy}")
+    if only is not None and only.isdisjoint({"2", "3", "5", "S1"}):
+        print(f"\nPartial --only {args.only}: left paper_figures_diagnostics.npy unchanged.")
+    else:
+        out_npy = REPORTS_DIR / "paper_figures_diagnostics.npy"
+        np.save(out_npy, diagnostics, allow_pickle=True)
+        print(f"\nSaved diagnostics: {out_npy}")
     print("Done.")
 
 

@@ -4,7 +4,7 @@
 > **目标报告**：`docs/reports/inter_channel_phase_cross_window_report.md`（模板：`docs/templates/algorithm_validation_report.md`，按图任务适配）
 > **建议 plan 路径**：`docs/plans/inter_channel_phase_cross_window_plan.md`
 > **日期**：2026-11-17
-> **验证状态**：待实现
+> **验证状态**：已完成
 
 ---
 
@@ -220,10 +220,27 @@ python notebooks/scripts/chFusion_paper_figures_mechanism.py --only 3channel
 
 | 字段 | 内容 |
 |------|------|
-| **验证状态** | 待实现 |
-| **实际脚本** | — |
-| **报告链接** | — |
-| **一句话结论** | — |
+| **验证状态** | 已完成 |
+| **实际脚本** | `notebooks/scripts/chFusion_paper_figures_mechanism.py`（`generate_fig3_channel`，`--only 3channel`） |
+| **报告链接** | `docs/reports/inter_channel_phase_cross_window_report.md` |
+| **一句话结论** | 固定 tone 20/40/60 的信道间 Δφ 随场景不同：`cs_095806` 非整数占比 0.230，`cs_102621` 为 0.642；不能写成与 fig3_cd 同构的全局结论。 |
+
+执行采用的定义（作者 2026-11-17 确认）：
+
+- 信道号固定为 20、40、60，全程不按 η 替换。
+- Δφ 只在这三条 tone 的三对之间计算（ch40−ch20、ch60−ch20、ch60−ch40），不再另选质量最高的参考 tone。
+- 图名用 `paper_fig3_channel_dphi_cross_window`。未做 2×2 合图。
+
+实际产出路径：
+
+- 脚本：`notebooks/scripts/chFusion_paper_figures_mechanism.py`
+- 数值结果：`outputs/reports/inter_channel_phase_cross_window_results.json`、`outputs/figures/paper_fig3_channel_diagnostics.npy`
+- 图表：`outputs/figures/paper_fig3_channel_dphi_cross_window.{png,pdf}`
+- 报告：`docs/reports/inter_channel_phase_cross_window_report.md`
+
+结论摘要：两场景都用最长非 apnea 段 `1b`。Studio position 1 多数窗口仍靠近 0 或 ±π；Studio position 2 约六成窗口落在非整数相位。同段模态间 fig3_cd 的非整数占比分别约 0.659 与 0.699。
+
+遗留问题：Q4 的 2×2 合图未做；正稿题注与编号仍由作者定。`cs_102621` 的 tone 40 中位 η 只有 0.392，已按确认保留。
 
 ### 保留问题（交付前由作者拍板）
 
