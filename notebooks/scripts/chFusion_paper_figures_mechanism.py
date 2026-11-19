@@ -578,6 +578,64 @@ def _collect_cross_window_phases(
     )
 
 
+def _plot_fig3_cd(dphi1: np.ndarray, dphi2: np.ndarray) -> plt.Figure:
+    """Studio inter-modal Δφ as scatter, same axes rules as the per-channel panel."""
+    studio_titles = {
+        "cs_095806": "Studio position 1",
+        "cs_102621": "Studio position 2",
+    }
+    pair_labels = [p[2] for p in FIG3_MODAL_PAIRS]
+    fig, axes = plt.subplots(1, 2, figsize=(12, 5.8))
+    for ax, dphi, sid in (
+        (axes[0], dphi1, "cs_095806"),
+        (axes[1], dphi2, "cs_102621"),
+    ):
+        x = np.arange(len(dphi))
+        for i, color in enumerate(FIG3_MODAL_PAIR_COLORS):
+            ax.scatter(
+                x,
+                dphi[:, i],
+                marker="o",
+                s=36,
+                color=color,
+                alpha=0.85,
+                zorder=3,
+            )
+        ax.axhline(0.0, color="gray", lw=0.8, ls="--")
+        ax.axhline(np.pi, color="gray", lw=0.8, ls=":")
+        ax.axhline(-np.pi, color="gray", lw=0.8, ls=":")
+        ax.set_ylim(-np.pi - 0.35, np.pi + 0.35)
+        ax.set_title(studio_titles[sid], fontsize=16)
+        ax.set_xlabel("Window index", fontsize=16)
+        ax.set_ylabel("Δφ (rad)", fontsize=16)
+    color_handles = [
+        Line2D(
+            [0],
+            [0],
+            marker="o",
+            linestyle="None",
+            markerfacecolor=color,
+            markeredgecolor=color,
+            markersize=14,
+            label=lab,
+        )
+        for color, lab in zip(FIG3_MODAL_PAIR_COLORS, pair_labels)
+    ]
+    fig.tight_layout()
+    fig.subplots_adjust(bottom=0.28)
+    fig.legend(
+        handles=color_handles,
+        title="Modal pair",
+        loc="lower center",
+        bbox_to_anchor=(0.5, 0.0),
+        ncol=3,
+        fontsize=20,
+        title_fontsize=20,
+        frameon=False,
+    )
+    return fig
+
+
 def generate_fig3(
     data_by_scenario: Dict[str, Tuple[dict, float]],
     cfg: ChFusionConfig,
@@ -674,18 +732,8 @@ def generate_fig3(
     _save_figure(fig, "paper_fig3_b")
     plt.close(fig)
 
-    # --- Combined studio Δφ panels (former c/d) ---
-    fig, axes = plt.subplots(1, 2, figsize=(12, 4.2))
-    for ax, dphi, sid in ((axes[0], dphi1, s1), (axes[1], dphi2, s2)):
-        x = np.arange(len(dphi))
-        for i, lab in enumerate(pair_labels):
-            ax.plot(x, dphi[:, i], color=pair_colors[i], label=lab, alpha=0.9)
-        ax.axhline(0, color="gray", lw=0.8, ls="--")
-        ax.set_title(studio_titles[sid], fontsize=16)
-        ax.set_xlabel("Window index", fontsize=16)
-        ax.set_ylabel("Δφ (rad)", fontsize=16)
-        ax.legend(fontsize=14,loc="upper right")
-    fig.tight_layout()
+    # --- Combined studio Δφ panels (former c/d): scatter, fused waveforms ---
+    fig = _plot_fig3_cd(dphi1, dphi2)
     _save_figure(fig, "paper_fig3_cd")
     plt.close(fig)
 

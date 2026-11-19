@@ -286,6 +286,7 @@ def plot_oracle_phase_eta_single(arr, domain="hkh", form="v1|v2|v3") -> Path:
 
 - Q1 图 5 题注措辞仍待作者定，报告里给了建议，未改 tex。
 - Q2 模态对橙/青/棕观感待作者看 `paper_fig3_cd` 与图 8。
+- 2026-11-20：作者随后要求图 9（`paper_fig3_cd`）由折线改为散点，图例字号 20。本轮「结构不动」只覆盖当时那一次配色；后来的散点重画见 `docs/reports/paper_figure_revision_round2_report.md` §9。相位未重算。
 - 图 17 三候选待作者择优后再覆盖正稿。
 - 图 8 上 R-P 与 L-P 在 0 和 ±π 处仍然叠在一起，图例已移到轴外。
 

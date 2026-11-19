@@ -223,3 +223,19 @@ python notebooks/scripts/chFusion_modal_oracle_diag.py --oracle-single
 - **验证状态**：已完成
 - **实际脚本**：上述三个脚本
 - **结论一句话**：配色和图 6/8/17 的版式已按 plan 落地；图 17 正稿文件和图 5 题注留给作者选定。
+
+---
+
+## 9. 后续（2026-11-20）：图 9 改为散点
+
+作者要求把 `paper_fig3_cd` 从折线改成散点，并把图例字号加到 20。
+
+| 项 | 内容 |
+|----|------|
+| 数据 | 仍用 `outputs/figures/paper_fig3_diagnostics.npy` 里已保存的融合后 Δφ。`cs_095806` 42 窗，`cs_102621` 41 窗。没有重算相位 |
+| 画法 | `_plot_fig3_cd`：模态对橙/青/棕，圆点；0 为灰色虚线，±π 为灰色点线；纵轴锁在 ±π 附近；图例在图下，`fontsize=20`、`title_fontsize=20` |
+| 脚本 | `notebooks/scripts/chFusion_paper_figures_mechanism.py` |
+| 图表 | `outputs/figures/paper_fig3_cd.{png,pdf}`（`outputs/` 被 gitignore，不入库） |
+| 未改 | `paper_fig3_studio_pos1` / `pos2` 与 `paper_fig3_inter_modal_phase` 仍是折线。未把新 PDF 复制到 `paper_sj_ble_sensing/figs/modal_phase_diff_in_two_room.pdf` |
+
+来源说明已同步：`docs/paper_figure_source_map.md`，以及 `docs/plans/inter_modal_phase_per_channel_plan.md` 里原先「折线 vs 散点」的对照表述。

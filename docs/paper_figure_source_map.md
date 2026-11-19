@@ -160,7 +160,7 @@ plt.rcParams.update(
 | `paper_fig2_inter_tone_phase` | `generate_fig2` | ~385–396 | 组合图 legend **硬编码 `fontsize=7`**（仅 panel a） |
 | `paper_fig2_a/b/c` | 同上 | ~399–408 | 各面板 legend **`fontsize=7`** |
 | `paper_fig3_ab` | `generate_fig3` | ~603–627 | `ax.legend()` → 走 rc 的 `legend.fontsize` |
-| `paper_fig3_cd` | 同上 | ~657–670 | legend **`fontsize=7`**；子标题为 `"Studio position 1/2"` |
+| `paper_fig3_cd` | `_plot_fig3_cd`（由 `generate_fig3` 调用） | ~581–636 | **散点**（模态对橙/青/棕）；图例在图下，`fontsize=20`、`title_fontsize=20`；0 为虚线、±π 为点线；子标题为 `"Studio position 1/2"`。数据仍是 `paper_fig3_diagnostics.npy` 里已保存的融合后 Δφ |
 
 Fig2 legend 硬编码示例：
 
